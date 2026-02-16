@@ -1,0 +1,298 @@
+print("Load Main");
+import math;
+
+var KEY_RIGHT           = 262;
+var KEY_LEFT            = 263;
+var KEY_DOWN            = 264;
+var KEY_UP              = 265;
+var KEY_SPACE           = 32;
+var KEY_ESCAPE          = 256;
+
+var WINDOW_WIDTH = 1035;
+var WINDOW_HEIGHT = 641;
+
+ 
+var WHITE = Color(255, 255, 255, 255);
+var RED = Color(255, 0, 0, 255);
+var GREEN = Color(0, 255, 0, 255);
+var BLUE = Color(0, 0, 255, 255);
+var BLACK = Color(0, 0, 0, 255);
+
+
+process box (_x,_y)
+{
+    graph=20;
+    x=_x;
+    y=_y;
+    set_rect_shape(0,0, 16, 16);
+    size=200;
+    
+    loop
+    {
+      // x=get_mouse_x();
+      //  y=get_mouse_y();
+      // angle=angle+1;
+        frame;
+    }
+}
+
+process bullet (_x,_y, _face)
+{
+    graph=19;
+    x=_x;
+    y=_y;
+    set_rect_shape(-4, -2, 6, 4);
+
+    if (_face > 0) 
+    {
+        flip_horizontal(false);
+    } else 
+    {
+        flip_horizontal(true);
+    }
+    var speed = _face;
+    loop
+    {
+        advance(speed);
+     
+         if (!place_free(x+_face, y))
+         {
+            start_camera_shake(-2,-2,20,30);
+            if (_face > 0) 
+            {
+                create_wall_impact(x+10, y,20,true,20.0,0.5);
+            } else 
+            {
+                create_wall_impact(x-10, y,20,false,20.0,0.5);
+            }
+            break;
+         }
+        frame;
+    }
+}
+ 
+process player ()
+{
+    graph=3;
+    x=240;
+    y=200;
+    
+    var state="idle";
+    var image=0;
+    var frames_idle=[1,2,3,4];
+    var frames_walk=[6,7,8,9,10];
+    var frames_jump=[11,12,13];
+    var current_frames = frames_idle;
+    var anim_timer = 0;
+    var anim_speed = 0.2;
+    
+    var camera_x = 0;
+    var camera_y = 0;
+    var level_width = 24 * 32;
+    var level_height = 124 * 20;
+    
+    // Variáveis de física
+    var velocity_y = 0;           // Velocidade vertical
+    var gravity = 800;            // Força da gravidade
+    var jump_force = -650;        // Força do salto (negativo = para cima)
+    var is_grounded = false;      // Está no chão?
+    var move_speed = 150;         // Velocidade de movimento horizontal
+    var is_flipped = false;         // Está virado para a esquerda?
+    var jump_count = 0;
+    set_rect_shape( 0,0, 20, 32);
+    
+    loop
+    {
+        var delta_frame = delta();
+        
+        // Aplicar gravidade
+        velocity_y += gravity * delta_frame;
+        
+        // Movimento horizontal
+        var move_x = 0;
+        if (key_down(KEY_LEFT))
+        {
+            move_x = -move_speed * delta_frame;
+            flip_horizontal(true);
+            is_flipped = true;
+        } else if (key_down(KEY_RIGHT))
+        {
+            move_x = move_speed * delta_frame;
+            flip_horizontal(false);
+            is_flipped = false;
+        }
+        
+        // Tentar mover horizontalmente
+        if (move_x != 0)
+        {
+            if (place_free(x + move_x, y))
+            {
+                x = x + move_x;
+            }
+        }
+
+        is_grounded = !place_free(x, y + 1);
+        
+        if (!is_grounded) 
+        {
+            // Só aplica gravidade se NÃO estiver no chão
+            velocity_y += gravity * delta_frame;
+        } else 
+        {
+            // Está no chão - reseta velocidade
+            velocity_y = 0;
+            jump_count = 0;
+        }
+
+        if (key_pressed(KEY_SPACE)) 
+        {
+            if(is_flipped) 
+            {
+                bullet(x-20,y-1, -8);
+            } else 
+            {
+                bullet(x+20,y-1,8);
+            }
+        }
+        
+        
+        if (key_pressed(KEY_UP) && (is_grounded || jump_count < 2)) 
+        {
+            velocity_y = jump_force;
+            jump_count += 1;
+        }
+        
+        // Aplicar velocidade vertical
+        var new_y = y + velocity_y * delta_frame;
+        
+       if (velocity_y != 0) {
+            var new_y = y + velocity_y * delta_frame;
+            
+            if (place_free(x, new_y)) 
+            {
+                y = new_y;
+            } else 
+            {
+                // Bateu em algo - para completamente
+                velocity_y = 0;
+                
+                // Ajustar posição para não ficar preso
+                if (velocity_y > 0) 
+                {
+                    // Estava caindo - ajustar para cima
+                    while (!place_free(x, y + 1)) 
+                    {
+                        y = y - 1;
+                    }
+                }
+            }
+        }
+        
+        // Definir estado da animação
+        if (!is_grounded)
+        {
+            state = "jump";
+            current_frames = frames_jump;
+            anim_speed = 0.1;
+        } elif (move_x != 0)
+        {
+            state = "walk";
+            current_frames = frames_walk;
+            anim_speed = 0.15;
+        } else
+        {
+            state = "idle";
+            current_frames = frames_idle;
+            anim_speed = 0.2;
+        }
+        
+        // Animação
+        anim_timer += delta_frame;
+        if (anim_timer >= anim_speed)
+        {
+            anim_timer -= anim_speed;
+            image = (image + 1) % len(current_frames);
+            graph = current_frames[image];
+        }
+        
+        // Câmera suave
+        var lerp_speed = 8.0;
+        camera_x += (x - camera_x) * lerp_speed * delta_frame;
+        camera_y += (y - camera_y) * lerp_speed * delta_frame;
+
+        // camera_x = x - WINDOW_WIDTH / 2;
+        // camera_y = y - WINDOW_HEIGHT / 2;
+        
+        camera_x = math.max(95, math.min(190, camera_x));
+        camera_y = math.max(-25, math.min(0, camera_y));
+        
+      //  set_scroll(camera_x, camera_y);
+
+        set_color(255,255,255);
+        set_draw_screen(true);
+
+        draw_text(format("State: {} {}" ,camera_x, camera_y), 40, 40, 20);
+
+        set_draw_screen(false);
+        draw_circle(x,y, 10,true);
+        set_screen_scale_mode(2);
+        //set_camera_target(camera_x, camera_y);
+        
+        frame;
+    }
+}
+
+
+
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_design_resolution(30*24,20*24);
+set_screen_scale_mode(2); // 0=fit, 1=stretch, 2=fill, 3=letterbox
+set_virtual_screen_enabled(true);
+
+set_window_title("Bu Game - Ship Example");
+init_collision(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+set_color(0,0,0);
+
+load_atlas("assets/Gunner_Red_Idle.png",5,1);
+load_atlas("assets/Gunner_Red_Run.png",6,1);
+load_atlas("assets/Gunner_Red_Jump.png",2,1);
+load_atlas("assets/Gunner_Red_Crouch.png",3,1);
+var index =load_atlas("assets/props_16x16.png",4,1);
+load_graph("assets/texture.png");
+
+print("Atlas index: " + index);
+ 
+
+
+// set_design_resolution(1280, 720);
+// set_screen_scale_mode("fit");  
+ 
+import_tilemap("assets/shooter.tmx"); 
+set_tile_map_free(0, 6);
+set_tile_map_free(0, 0);
+set_tile_debug(0,false,false);
+set_camera_zoom(1.3);
+set_tile_map_color(0,Color(200,200,200,255));
+
+box(240, 240);
+box(480, 240);
+box(310, 60);
+box(430, 60);
+player();
+
+// var mode = get_screen_scale_mode();
+// print("Current mode: " + mode);
+//  var modes = ["fit", "stretch", "fill", "letterbox"];
+// var current = 0;
+
+// loop
+// {
+//     if (key_pressed(KEY_SPACE))
+//         {
+//             current = (current + 1) % len(modes);
+//             set_screen_scale_mode(modes[current]);
+//             print("Scale mode: " + modes[current]);
+//         }
+//   frame;
+// }

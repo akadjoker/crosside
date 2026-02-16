@@ -1,0 +1,147 @@
+print("Box2D Rope Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_R = 82;
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+var KEY_UP = 265;
+var KEY_DOWN = 264;
+var KEY_Q = 81;
+var KEY_E = 69;
+var KEY_1 = 49;
+var KEY_2 = 50;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D Rope Demo");
+create_world(0, 0);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16);
+
+// Visual anchors (rope is simulated by b2Rope and not drawn by world debug draw).
+var anchor_def = create_bodydef(BODY_STATIC);
+anchor_def.set_position(640, 180);
+var anchor_fx = create_fixture_def();
+anchor_fx.set_box_shape(12, 12);
+var anchor = create_body(anchor_def);
+anchor.add_fixture(anchor_fx);
+
+var target_def = create_bodydef(BODY_STATIC);
+target_def.set_position(640, 180);
+var target_fx = create_fixture_def();
+target_fx.set_box_shape(8, 8);
+var target_marker = create_body(target_def);
+target_marker.add_fixture(target_fx);
+
+var segment_count = 14;
+var anchor_x = 640;
+var anchor_y = 180;
+var iterations = 8;
+
+var rope_def = b2RopeDef(segment_count);
+rope_def.set_position(anchor_x, anchor_y);
+rope_def.set_gravity(0, 9.8);
+rope_def.set_damping(0.05);
+// rope_def.set_stretch_stiffness(1.0);
+// rope_def.set_stretch_hertz(1.0);
+// rope_def.set_stretch_damping(0.1);
+// rope_def.set_bend_stiffness(0.55);
+// rope_def.set_bend_hertz(1.0);
+ rope_def.set_bend_damping(0.1);
+// rope_def.set_isometric(true);
+ rope_def.set_fixed_effective_mass(false);
+ rope_def.set_warm_start(true);
+// rope_def.set_stretching_model(b2_xpbdStretchingModel);
+// rope_def.set_bending_model(b2_pbdAngleBendingModel);
+
+var points = [];
+var masses = [];
+var i = 0;
+loop
+{
+    if (i >= segment_count) break;
+    points.push(i * 24);
+    points.push(0);
+    masses.push(1);
+    i = i + 1;
+}
+masses[0] = 0;
+
+rope_def.set_vertices(points, masses);
+
+var rope = b2Rope();
+rope.create(rope_def);
+
+loop
+{
+    var dt = delta();
+    if (dt > 0.033) { dt = 0.033; }
+
+    if (key_down(KEY_LEFT)) anchor_x = anchor_x - 240 * dt;
+    if (key_down(KEY_RIGHT)) anchor_x = anchor_x + 240 * dt;
+    if (key_down(KEY_UP)) anchor_y = anchor_y - 240 * dt;
+    if (key_down(KEY_DOWN)) anchor_y = anchor_y + 240 * dt;
+
+    if (key_pressed(KEY_Q) && iterations > 1) iterations = iterations - 1;
+    if (key_pressed(KEY_E) && iterations < 40) iterations = iterations + 1;
+
+    if (key_pressed(KEY_1))
+    {
+        rope_def.set_stretching_model(b2_pbdStretchingModel);
+        rope_def.set_bending_model(b2_pbdAngleBendingModel);
+        rope.create(rope_def);
+    }
+    if (key_pressed(KEY_2))
+    {
+        rope_def.set_stretching_model(b2_xpbdStretchingModel);
+        rope_def.set_bending_model(b2_xpbdAngleBendingModel);
+        rope.create(rope_def);
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        rope.reset(anchor_x, anchor_y);
+    }
+
+    target_marker.set_transform(anchor_x, anchor_y, 0);
+
+    rope.step(dt, iterations, anchor_x, anchor_y);
+
+    var rope_count = rope.get_count();
+    if (rope_count > 1)
+    {
+        set_color(235, 205, 120);
+        var (lx, ly) = rope.get_point(0);
+        for (var j = 1; j < rope_count; j = j + 1)
+        {
+            var (nx, ny) = rope.get_point(j);
+            draw_line(lx, ly, nx, ny);
+            lx = nx;
+            ly = ny;
+        }
+    }
+
+    set_color(255, 245, 190);
+    for (var i = 0; i < rope_count; i = i + 1)
+    {
+        var (x,y) = rope.get_point(i);
+        draw_circle(x, y, 2, true);
+    }
+
+    update_world(dt);
+ 
+
+    draw_text("Rope Demo (b2Rope API)", 20, 20, 20);
+    draw_text("Arrows move anchor | R reset rope", 20, 44, 20);
+    draw_text("Q/E iterations: " + str(iterations), 20, 68, 20);
+    draw_text("1 PBD angle | 2 XPBD angle", 20, 92, 20);
+    draw_text("Anchor: " + str(anchor_x) + ", " + str(anchor_y), 20, 116, 20);
+    draw_text("Note: b2Rope is simulated, not rendered by world debug draw.", 20, 140, 20);
+    draw_fps(20, 164);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+    frame;
+}

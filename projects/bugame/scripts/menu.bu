@@ -1,0 +1,108 @@
+print("=== MAIN GAME LOOP (SWITCH) ===");
+import math;
+
+var KEY_1 = 49;
+var KEY_2 = 50;
+var KEY_3 = 51;
+var KEY_ESCAPE = 256;
+var KEY_Q = 81;
+
+var GAME_MENU = 0;
+var GAME_PLAY = 1;
+var GAME_CREDITS = 2;
+var GAME_EXIT = 3;
+
+var game_state = GAME_MENU;
+
+set_window_size(800, 600);
+set_window_title("Game State + Switch");
+
+
+process dummy()
+{
+    x = math.rand(0, 800);
+    y = math.rand(0, 600);
+    loop
+    {
+         draw_circle(x, y, 10,true);
+        frame;
+    }
+}
+
+
+
+ 
+    loop
+    {
+        if (key_pressed(KEY_1) && game_state != GAME_MENU)
+        {
+            game_state = GAME_MENU;
+            signal(-1,SKILL);
+        }
+        if (key_pressed(KEY_2) && game_state != GAME_PLAY)
+        {
+            game_state = GAME_PLAY;
+
+            for (var i = 0; i < 5; i++)
+            {
+                dummy();
+            }
+        
+        }
+        if (key_pressed(KEY_3) && game_state != GAME_CREDITS)
+        {
+            game_state = GAME_CREDITS;
+        }
+        if (key_pressed(KEY_Q) && game_state != GAME_EXIT)
+        {
+            game_state = GAME_EXIT;
+        }
+
+    
+        set_color(255, 255, 255);
+      
+
+        switch (game_state)
+        {
+            case GAME_MENU:
+            {
+                draw_text("STATE: MENU", 20, 20, 28);
+                draw_text("1=MENU 2=GAME 3=CREDITS ESC=EXIT", 20, 55, 20);
+            }
+            case GAME_PLAY:
+            {
+                draw_text("STATE: GAME", 20, 20, 28);
+                draw_text("Aqui entra a logica do jogo", 20, 55, 20);
+               }
+            case GAME_CREDITS:
+            {
+                draw_text("STATE: CREDITS", 20, 20, 28);
+                draw_text("Feito com BuGame", 20, 55, 20);
+            }
+            case GAME_EXIT:
+            {       
+                draw_text("STATE: EXIT", 20, 20, 28);
+                print("A sair...");
+             
+            }
+            default:
+            {
+                draw_text("STATE: UNKNOWN", 20, 20, 28);
+            }
+        }
+
+        if (game_state == GAME_EXIT)
+        {
+            set_color(255, 255, 255);
+            draw_text("Exiting...", 20, 100, 28);
+            start_fade(1.0,2.0);
+            print(get_fade_progress());
+            if(get_fade_progress()>0.99)
+            {
+                close_window();
+            }
+        }
+
+        frame;
+    
+    }

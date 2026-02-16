@@ -1,0 +1,70 @@
+{
+	"module":"zlib",
+	"about":" ",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":[""],
+     "static":true,
+          "priority":0,
+	"system":["linux","android","emscripten","windows"],
+	"src":[
+ "src/adler32.c",
+ "src/compress.c",
+ "src/crc32.c",
+ "src/deflate.c",
+ "src/gzclose.c",
+ "src/gzlib.c",
+ "src/gzread.c",
+ "src/gzwrite.c",
+ "src/infback.c",
+ "src/inffast.c",
+ "src/inflate.c",
+ "src/inftrees.c",
+ "src/ioapi.c",
+ "src/miniunz.c",
+ "src/minizip.c",
+ "src/mztools.c",
+ "src/trees.c",
+ "src/uncompr.c",
+ "src/unzip.c",
+ "src/zip.c",
+ "src/zutil.c"],
+	"include":[""],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":"-DSYSTEM_LINUX -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN",
+ 	   "CC_ARGS":"-fPIC -DSYSTEM_LINUX -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN",
+ 	   "LD_ARGS":"",
+	   "src":[""],
+	   "include":[""]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":"-DSYSTEM_WINDOWS",
+ 	   "CC_ARGS":"-fPIC -DSYSTEM_WINDOWS",
+ 	   "LD_ARGS":"",
+	    "src":["src/iowin32.c"],
+	    "include":[""]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":"-DSYSTEM_LINUX -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN",
+ 	   "CC_ARGS":"-fPIC -DSYSTEM_LINUX -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "emscripten":
+	  {
+	   "template":"",
+ 	   "CPP_ARGS":"-DSYSTEM_LINUX -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN",
+ 	   "CC_ARGS":"-fPIC -DSYSTEM_LINUX -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  }
+      }
+}  
+

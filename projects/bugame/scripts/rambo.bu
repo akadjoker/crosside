@@ -1,0 +1,570 @@
+print("Rambo Survival - Loading...");
+import math;
+
+// ============================================
+// CONSTANTES
+// ============================================
+var KEY_W = 87;
+var KEY_A = 65;
+var KEY_S = 83;
+var KEY_D = 68;
+var KEY_ESCAPE = 256;
+
+var WINDOW_WIDTH = 1024;
+var WINDOW_HEIGHT = 768;
+var WORLD_WIDTH = 2400;
+var WORLD_HEIGHT = 2400;
+
+// Estados
+var camera_x = 0;
+var camera_y = 0;
+var player_x = 1200;
+var player_y = 1200;
+var delta_frame = 0;
+var game_time = 0;
+var score = 0;
+var wave = 1;
+var kills = 0;
+var enemies_alive = 0;
+var GAME_OVER = false;
+
+// ============================================
+// UTILIDADES
+// ============================================
+def lerpf(current, target, speed, dt)
+{
+    var t = speed * dt;
+    if (t < 0) { t = 0; }
+    if (t > 1) { t = 1; }
+    return current + (target - current) * t;
+}
+
+
+process enemy_car(spawn_x, spawn_y)
+{
+    x = spawn_x;
+    y = spawn_y;
+    var speed = 120 + wave * 8;
+    life = 5;
+    var shoot_timer = 0;
+    var shoot_cooldown = 0.8;
+    var current_angle = math.rand(0, 360);
+    var change_dir_timer = 0;
+    var change_dir_interval = 2.5;
+    
+    set_rect_shape(-12, -8, 24, 16);
+    enemies_alive += 1;
+
+ 
+
+    loop
+    {
+        if (GAME_OVER)
+        {
+            enemies_alive -= 1;
+            break;
+        }
+
+        var dist = get_dist(x, y, player_x, player_y);
+        
+        // IA: Move em direção ao player mas com mudanças de direção
+        change_dir_timer += delta_frame;
+        if (change_dir_timer >= change_dir_interval)
+        {
+            change_dir_timer = 0;
+            var player_dir = get_angle(x, y, player_x, player_y);
+            current_angle = player_dir + math.rand(-45, 45);
+        }
+
+        current_angle = lerpf(current_angle, get_angle(x, y, player_x, player_y), 0.5, delta_frame);
+        xadvance(speed * delta_frame, current_angle);
+
+        // Manter dentro do mundo
+        x = math.clamp(x, 50, WORLD_WIDTH - 50);
+        y = math.clamp(y, 50, WORLD_HEIGHT - 50);
+
+      
+        // Atirar
+        shoot_timer += delta_frame;
+        if (shoot_timer >= shoot_cooldown && dist < 500)
+        {
+            shoot_timer = 0;
+            var shoot_dir = get_angle(x, y, player_x, player_y);
+            enemy_bullet(x, y, shoot_dir);
+           
+        }
+
+        // Desenhar carro (retângulo cinzento)
+        set_color(80, 80, 80);
+        draw_rotated_rectangle(x, y, 28, 18, current_angle, true);
+        set_color(60, 60, 60);
+        draw_rotated_rectangle(x, y, 28, 18, current_angle, false);
+        
+        // Rodas
+        set_color(40, 40, 40);
+        var wx1 = x + get_distx(current_angle + 90, 8);
+        var wy1 = y + get_disty(current_angle + 90, 8);
+        var wx2 = x + get_distx(current_angle - 90, 8);
+        var wy2 = y + get_disty(current_angle - 90, 8);
+        draw_circle(wx1, wy1, 4, true);
+        draw_circle(wx2, wy2, 4, true);
+
+        // Barra de HP
+        var bar_w = 30;
+        var bar_h = 4;
+        var bar_x = x - bar_w / 2;
+        var bar_y = y - 25;
+        set_color(40, 40, 40);
+        draw_rectangle(bar_x, bar_y, bar_w, bar_h, true);
+        set_color(200, 50, 50);
+        draw_rectangle(bar_x, bar_y, bar_w, bar_h, false);
+        set_color(80, 200, 80);
+        draw_rectangle(bar_x, bar_y, bar_w * (life / 5.0), bar_h, true);
+
+        if (life <= 0)
+        {
+           
+            enemies_alive -= 1;
+            score += 25;
+            kills += 1;
+            break;
+        }
+
+        frame;
+    }
+    
+}
+
+
+process enemy_bullet(start_x, start_y, fire_angle)
+{
+    x = start_x;
+    y = start_y;
+    var speed = 350;
+    var lifetime = 2.0;
+    var timer = 0;
+    
+    set_circle_shape(4);
+
+    loop
+    {
+        xadvance(speed * delta_frame, fire_angle);
+        timer += delta_frame;
+
+        // Desenhar bala (círculo amarelo)
+        set_color(255, 200, 50);
+        draw_circle(x, y, 4, true);
+
+        if (timer >= lifetime)
+        {
+            break;
+        }
+
+        frame;
+    }
+}
+ 
+process enemy_soldier(spawn_x, spawn_y)
+{
+    x = spawn_x;
+    y = spawn_y;
+    var speed = 80 + wave * 10;
+    life = 2;
+    var shoot_timer = 0;
+    var shoot_cooldown = 1.2 + math.rand() * 0.8;
+    var detection_range = 400;
+    var shoot_range = 350;
+    
+    set_circle_shape(8);
+    enemies_alive += 1;
+ 
+    loop
+    {
+        if (GAME_OVER)
+        {
+            enemies_alive -= 1;
+            break;
+        }
+
+        var dist = get_dist(x, y, player_x, player_y);
+        var dir = get_angle(x, y, player_x, player_y);
+
+        // IA: Perseguir e atirar
+        if (dist < detection_range)
+        {
+            if (dist > 100)
+            {
+                xadvance(speed * delta_frame, dir);
+            }
+            
+            // Atirar no player
+            shoot_timer += delta_frame;
+            if (shoot_timer >= shoot_cooldown && dist < shoot_range)
+            {
+                shoot_timer = 0;
+                enemy_bullet(x, y, dir);
+     
+            }
+        }
+
+    
+
+        // Desenhar soldado (quadrado vermelho)
+        set_draw_screen(false);
+        set_color(200, 50, 50);
+        draw_rectangle(x - 8, y - 8, 16, 16, true);
+        set_color(150, 30, 30);
+        draw_rectangle(x - 8, y - 8, 16, 16, false);
+        
+        // Indicador de direção
+        set_color(255, 100, 100);
+        var dx = get_distx(dir, 12);
+        var dy = get_disty(dir, 12);
+        draw_line(x, y, x + dx, y + dy);
+
+        // Barra de HP
+        if (life < 2)
+        {
+            var bar_w = 20;
+            var bar_h = 3;
+            var bar_x = x - bar_w / 2;
+            var bar_y = y - 18;
+            set_color(40, 40, 40);
+            draw_rectangle(bar_x, bar_y, bar_w, bar_h, true);
+            set_color(80, 200, 80);
+            draw_rectangle(bar_x, bar_y, bar_w * (life / 2.0), bar_h, true);
+        }
+
+        if (life <= 0)
+        {
+          
+            enemies_alive -= 1;
+            score += 10;
+            kills += 1;
+            break;
+        }
+
+        frame;
+    }
+ 
+}
+ 
+
+
+// ============================================
+// AMBIENTE (Árvores como obstáculos)
+// ============================================
+process tree(tx, ty, size_var)
+{
+    x = tx;
+    y = ty;
+    var tree_size = 30 + size_var;
+    set_circle_shape(tree_size);
+    
+    loop
+    {
+        // Desenhar árvore (círculo verde escuro)
+        set_color(34, 85, 34);
+        draw_circle(x, y, tree_size, true);
+        set_color(28, 70, 28);
+        draw_circle(x, y, tree_size, false);
+        
+        // Tronco
+        set_color(101, 67, 33);
+        draw_rectangle(x - 4, y, 8, tree_size + 10, true);
+        
+        frame;
+    }
+}
+ 
+
+// ============================================
+// BALA DO PLAYER
+// ============================================
+process player_bullet(start_x, start_y, fire_angle)
+{
+    x = start_x;
+    y = start_y;
+    var speed = 600;
+    var lifetime = 1.5;
+    var timer = 0;
+    
+    set_circle_shape(5);
+
+ 
+
+    loop
+    {
+        xadvance(speed * delta_frame, fire_angle);
+        timer += delta_frame;
+     
+      //  Hit soldado
+        var hit = collision(type enemy_soldier, x, y);
+        if (hit)
+        {
+            hit.life -= 1;
+            //create_muzzle_flash(x, y, fire_angle + 180);
+            //play_sound(2, 0.6, 1);
+            break;
+        }
+
+        // Hit carro
+        hit = collision(type enemy_car, x, y);
+        if (hit)
+        {
+            hit.life -= 1;
+           // create_muzzle_flash(x, y, fire_angle + 180);
+            //play_sound(2, 0.6, 1);
+            break;
+        }
+
+        set_draw_screen(false);
+        set_alpha(200);
+        set_color(255, 255, 150);
+        draw_circle(x, y, 5, true);
+        set_color(255, 200, 50);
+        draw_circle(x, y, 5, false);
+
+        if (timer >= lifetime || x < 0 || x > WORLD_WIDTH || y < 0 || y > WORLD_HEIGHT)
+        {
+            break;
+        }
+
+        frame;
+    }
+ 
+}
+
+// ============================================
+// PLAYER
+// ============================================
+process player()
+{
+    x = player_x;
+    y = player_y;
+    var max_hp = 10;
+    var hp = 10;
+    var move_speed = 200;
+    var shoot_timer = 0;
+    var shoot_cooldown = 0.15;
+    var invuln_timer = 0;
+    var flash_timer = 0;
+    
+    set_circle_shape(12);
+
+ 
+    loop
+    {
+        if (GAME_OVER)
+        {
+            // Respawn após 3 segundos
+            flash_timer += delta_frame * 10;
+            if (flash_timer > 30)
+            {
+                GAME_OVER = false;
+                hp = max_hp;
+                x = WORLD_WIDTH / 2;
+                y = WORLD_HEIGHT / 2;
+                flash_timer = 0;
+                invuln_timer = 2.0;
+           
+            }
+            frame;
+            continue;
+        }
+
+        // Movimento WASD
+        var move_x = 0;
+        var move_y = 0;
+        var is_moving = false;
+
+        if (key_down(KEY_W)) { move_y = -1; is_moving = true; }
+        if (key_down(KEY_S)) { move_y = 1; is_moving = true; }
+        if (key_down(KEY_A)) { move_x = -1; is_moving = true; }
+        if (key_down(KEY_D)) { move_x = 1; is_moving = true; }
+
+        // Normalizar diagonal
+        if (move_x != 0 && move_y != 0)
+        {
+            move_x *= 0.707;
+            move_y *= 0.707;
+        }
+
+        x += move_x * move_speed * delta_frame;
+        y += move_y * move_speed * delta_frame;
+
+        // Limites do mundo
+        x = math.clamp(x, 20, WORLD_WIDTH - 20);
+        y = math.clamp(y, 20, WORLD_HEIGHT - 20);
+
+        // Publicar posição
+        player_x = x;
+        player_y = y;
+
+        
+
+        // Atirar com rato (auto-fire)
+        var mx = get_mouse_x() + camera_x - WINDOW_WIDTH / 2;
+        var my = get_mouse_y() + camera_y - WINDOW_HEIGHT / 2;
+        var aim_angle = get_angle(x, y, mx, my);
+
+        shoot_timer += delta_frame;
+        if (mouse_down(0) && shoot_timer >= shoot_cooldown)
+        {
+            shoot_timer = 0;
+            player_bullet(x, y, aim_angle);
+      
+           // play_sound(0, 0.15, math.rand(0.95, 1.05));
+        }
+
+        // Invulnerabilidade
+        if (invuln_timer > 0)
+        {
+            invuln_timer -= delta_frame;
+            flash_timer += delta_frame * 12;
+        }
+
+        // Colisão com balas inimigas
+        if (invuln_timer <= 0)
+        {
+            var hit = collision(type enemy_bullet, x, y);
+            if (hit)
+            {
+                hp -= 1;
+                invuln_timer = 0.5;
+                flash_timer = 0;
+                start_camera_shake(3, 3, 10, 5);
+               
+                signal(hit, 0);
+
+                if (hp <= 0)
+                {
+                    GAME_OVER = true;
+                    flash_timer = 0;
+            
+                }
+            }
+        }
+
+        // Desenhar player (círculo verde)
+        if (invuln_timer > 0 && int(flash_timer) % 2 == 0)
+        {
+            set_alpha(100);
+        }
+        else
+        {
+            set_alpha(255);
+        }
+        set_draw_screen(false);
+        set_color(50, 200, 50);
+        draw_circle(x, y, 12, true);
+        set_color(30, 150, 30);
+        draw_circle(x, y, 12, false);
+
+        // Indicador de mira
+        set_color(255, 255, 255);
+        var aim_dx = get_distx(aim_angle, 18);
+        var aim_dy = get_disty(aim_angle, 18);
+        draw_line(x, y, x + aim_dx, y + aim_dy);
+
+        set_alpha(255);
+
+        // Camera segue player
+        camera_x = lerpf(camera_x, x, 6.0, delta_frame);
+        camera_y = lerpf(camera_y, y, 6.0, delta_frame);
+
+        camera_x = math.clamp(camera_x, WINDOW_WIDTH / 2, WORLD_WIDTH - WINDOW_WIDTH / 2);
+        camera_y = math.clamp(camera_y, WINDOW_HEIGHT / 2, WORLD_HEIGHT - WINDOW_HEIGHT / 2);
+
+        set_scroll(camera_x - WINDOW_WIDTH / 2, camera_y - WINDOW_HEIGHT / 2);
+
+        // HUD
+        set_draw_screen(true);
+        
+        // Barra de HP
+        var bar_w = 250;
+        var bar_h = 30;
+        var bar_x = 20;
+        var bar_y = WINDOW_HEIGHT - 50;
+        
+        set_color(30, 30, 30);
+        draw_rectangle(bar_x, bar_y, bar_w, bar_h, true);
+        set_color(200, 50, 50);
+        draw_rectangle(bar_x, bar_y, bar_w, bar_h, false);
+        set_color(50, 200, 50);
+        draw_rectangle(bar_x, bar_y, bar_w * (hp / max_hp), bar_h, true);
+        
+        set_color(255, 255, 255);
+        draw_text(format("HP: {}/{}", hp, max_hp), bar_x + 8, bar_y + 6, 18);
+
+        // Info
+        set_color(255, 255, 255);
+        draw_text(format("Wave: {}  Score: {}  Kills: {}  Enemies: {}", wave, score, kills, enemies_alive), 20, 20, 20);
+
+        if (GAME_OVER)
+        {
+            set_color(255, 50, 50);
+            draw_text("GAME OVER - Respawning...", WINDOW_WIDTH / 2 - 150, WINDOW_HEIGHT / 2, 28);
+        }
+
+        frame;
+    }
+    
+}
+ 
+
+// ============================================
+// SETUP
+// ============================================
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Rambo Survival - Minimalista");
+init_collision(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+// // Criar partícula dummy (círculo branco)
+// var img_data = Image(8, 8);
+// for (var py = 0; py < 8; py += 1)
+// {
+//     for (var px = 0; px < 8; px += 1)
+//     {
+//         var dx = px - 4;
+//         var dy = py - 4;
+//         var dist = math.sqrt(dx * dx + dy * dy);
+//         if (dist < 4)
+//         {
+//             var alpha = int(255 * (1.0 - dist / 4.0));
+//             img_data.set_pixel(px, py, Color(255, 255, 255, alpha));
+//         }
+//     }
+// }
+// load_image(img_data);
+
+
+
+// Background verde (floresta)
+//set_clear_color(34, 70, 34);
+
+//Gerar árvores
+for (var i = 0; i < 80; i += 1)
+{
+    var tx = math.rand(100, WORLD_WIDTH - 100);
+    var ty = math.rand(100, WORLD_HEIGHT - 100);
+    tree(tx, ty, math.rand(0, 20));
+}
+
+player();
+ 
+enemy_soldier(player_x, player_y - 200);
+enemy_car(player_x + 200, player_y);
+
+loop
+{
+    delta_frame = delta();
+    
+    if (key_down(KEY_ESCAPE))
+    {
+        let_me_alone();
+        break;
+    }
+    
+    frame;
+}

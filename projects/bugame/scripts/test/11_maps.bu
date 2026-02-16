@@ -1,0 +1,25 @@
+// Test: Maps
+var m = {name: "test", value: 42};
+if (m.name != "test") { throw "get dot"; }
+if (m.value != 42) { throw "get dot val"; }
+
+// Set (bracket notation - dot SET not supported for maps)
+m["value"] = 100;
+if (m["value"] != 100) { throw "set bracket"; }
+
+// Bracket notation with string keys
+m["newkey"] = "hello";
+if (m["newkey"] != "hello") { throw "set new key"; }
+
+// Has
+if (!m.has("name")) { throw "has"; }
+if (m.has("nonexistent")) { throw "has false"; }
+
+// Keys/values
+var m2 = {a: 1, b: 2, c: 3};
+var keys = m2.keys();
+if (len(keys) != 3) { throw "keys len"; }
+
+// Empty map
+var empty = {};
+if (len(empty) != 0) { throw "empty map"; }

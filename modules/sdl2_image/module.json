@@ -1,0 +1,65 @@
+{
+	"module":"sdl2_image",
+	"about":" ",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":["sdl2","png","jpeg","zlib"],
+        "static":true,
+            "priority":0,
+	"system":["linux","android","emscripten","windows"],
+	"src":["src/IMG.c",           
+"src/IMG_bmp.c",       
+"src/IMG_gif.c",       
+"src/IMG_jpg.c",       
+"src/IMG_lbm.c",       
+"src/IMG_pcx.c",       
+"src/IMG_png.c",       
+"src/IMG_pnm.c",       
+"src/IMG_svg.c",       
+"src/IMG_tga.c",       
+"src/IMG_tif.c",       
+"src/IMG_webp.c",      
+"src/IMG_WIC.c",       
+"src/IMG_xcf.c",       
+"src/IMG_xpm.c", 
+"src/IMG_xv.c",        
+"src/IMG_xxx.c"],
+	"include":[""],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":" ",
+ 	   "CC_ARGS":" -DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG",
+ 	   "LD_ARGS":"-lsdl2 -ljpeg -lpng -lzlib",
+	   "src":[""],
+	   "include":[""]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":" -DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG",
+ 	   "LD_ARGS":"-lsdl2 -ljpeg -lpng -lzlib",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":" -DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG",
+ 	   "LD_ARGS":"-lsdl2 -ljpeg -lpng -lzlib",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "emscripten":
+	  {
+	   "template":"",
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":" -DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG",
+ 	   "LD_ARGS":"-lsdl2 -ljpeg -lpng -lzlib",
+	    "src":[""],
+	    "include":[""]
+	  }
+      }
+}  
+

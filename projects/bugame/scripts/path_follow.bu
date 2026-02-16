@@ -1,0 +1,199 @@
+print("=== Path Find + mapa[] Demo ===");
+
+var KEY_F = 70;
+
+var WINDOW_WIDTH = 800;
+var WINDOW_HEIGHT = 600;
+
+var GRID_W = 14;
+var GRID_H = 10;
+var CELL = 32;
+
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Path Demo (mapa 0/1)");
+
+var nav = Path(GRID_W, GRID_H, CELL);
+
+// mapa flat (14x10): 0 = livre, 1 = bloqueado
+var mapa = [
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,1,1,1,1,1,1,0,0,0,0,
+0,0,0,0,1,0,0,0,0,1,0,0,0,0,
+0,0,0,0,1,0,0,0,0,1,1,1,0,0,
+0,0,1,1,1,1,1,1,1,1,1,1,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,1,1,1,0,0,0,0,0,1,1,1,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0
+];
+
+// Copia o array para o Path mask
+var gy = 0;
+while (gy < GRID_H)
+{
+    var gx = 0;
+    while (gx < GRID_W)
+    {
+        var idx = gy * GRID_W + gx;
+        if (mapa[idx] == 1)
+        {
+            nav.set_occupied(gx, gy);
+        }
+        gx += 1;
+    }
+    gy += 1;
+}
+
+var start_x = 1;
+var start_y = 1;
+var end_x = 10;
+var end_y = 1;
+var result=[];
+
+process follow_path()
+{
+    var idx = 0;
+    var index =0;
+  
+    x=100;
+    y=100;
+    loop
+    {
+
+      
+  
+
+            if(state==1)
+            {
+                state=0;
+                x=start_x * CELL + 16;
+                y=start_y * CELL + 16;
+                index=0;
+            }
+        
+            if (index < len(result))
+            {
+                var target_x = result[index];
+                var target_y = result[index + 1];
+                var dx = target_x - x;
+                var dy = target_y - y;
+                var dist = sqrt(dx * dx + dy * dy);
+                if (dist > 1)
+                {
+                    x += dx / dist * 2; // Move com velocidade constante
+                    y += dy / dist * 2;
+                }
+                else
+                {
+                    x = target_x;
+                    y = target_y;
+                    index += 2; // Próximo ponto do caminho
+                }
+            }
+        
+        draw_circle(x+ 16, y+ 16, 10, true);
+        frame;
+    }
+}
+ 
+
+process path_debug()
+{
+
+  
+   var follow= follow_path();
+   
+    //var follow = get_id("follow_path");
+
+ 
+    
+
+    loop
+    {
+        
+      
+
+  
+        var mx = get_mouse_x();
+        var my = get_mouse_y();
+        
+        if (mouse_down(0))
+        {
+             
+            follow.state=1;
+            start_x = int(mx / CELL);
+            start_y = int(my / CELL);
+            follow.x = start_x + 16;
+            follow.y = start_y + 16;
+            result = nav.find(start_x, start_y, end_x, end_y, 1, PATH_ASTAR, PF_MANHATTAN);
+            
+            
+        }
+        
+        if (mouse_down(1))
+        {
+            end_x = int(mx / CELL);
+            end_y = int(my / CELL);
+            
+        }
+
+        draw_circle(mx, my, 5, true);
+
+        // Desenha grelha + obstaculos do array
+        gy = 0;
+        while (gy < GRID_H)
+        {
+            var dx = 0;
+            while (dx < GRID_W)
+            {
+                var didx = gy * GRID_W + dx;
+                if (mapa[didx] == 1)
+                {
+                    set_color(65, 65, 65);
+                    draw_rectangle(dx * CELL, gy * CELL, CELL, CELL, 1);
+                }
+                set_color(35, 35, 35);
+                draw_rectangle(dx * CELL, gy * CELL, CELL, CELL, 0);
+                dx += 1;
+            }
+            gy += 1;
+        }
+ 
+
+           // Tecla F: recalcula o caminho entre start/end
+        if (key_pressed(KEY_F))
+        {
+           result = nav.find(start_x, start_y, end_x, end_y, 1, PATH_ASTAR, PF_MANHATTAN);
+        }
+
+        if (len(result) > 0)
+        {
+            set_color(255, 255, 0);
+            for (var i = 0; i < len(result); i += 2)
+            {
+                var px = result[i];
+                var py = result[i + 1];
+                draw_circle(px  + 16, py  + 16, 5, true);
+            }
+        }
+   
+      
+
+        // Marcadores start/end
+        set_color(255, 70, 70);
+        draw_circle(start_x * CELL + 16, start_y * CELL + 16, 7, 0);
+        set_color(255, 255, 255);
+        draw_circle(end_x * CELL + 16, end_y * CELL + 16, 7, 0);
+
+        set_color(255, 255, 255);
+        draw_text("mapa[] 0=livre 1=bloqueado", 10, 340, 18);
+        draw_text("Start=(" + start_x + "," + start_y + ") End=(" + end_x + "," + end_y + ")", 10, 365, 18);
+        draw_text("Tecla F = find(start,end)", 10, 390, 18);
+
+        frame;
+    }
+}
+
+
+path_debug();

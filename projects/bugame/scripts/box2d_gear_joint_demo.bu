@@ -1,0 +1,161 @@
+print("Box2D GearJoint Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+var KEY_A = 65;
+var KEY_D = 68;
+var KEY_R = 82;
+var MOUSE_LEFT = 0;
+var MOUSE_RIGHT = 1;
+var MOUSE_MIDDLE = 2;
+var DRAG_JOINT = nil;
+var DRAG_ACTIVE = false;
+var DRAG_ID = -1;
+var DRAG_JOINT = nil;
+var DRAG_ACTIVE = false;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D GearJoint Demo");
+create_world(0, 0);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16);
+
+var floor_def = create_bodydef(BODY_STATIC);
+floor_def.set_position(640, 700);
+var floor_fx = create_fixture_def();
+floor_fx.set_box_shape(640, 20);
+var world_floor = create_body(floor_def);
+world_floor.add_fixture(floor_fx);
+
+var base_def = create_bodydef(BODY_STATIC);
+base_def.set_position(640, 360);
+var base_fx = create_fixture_def();
+base_fx.set_box_shape(10, 10);
+var base = create_body(base_def);
+base.add_fixture(base_fx);
+
+var w1_def = create_bodydef(BODY_DYNAMIC);
+w1_def.set_position(470, 360);
+w1_def.set_angular_damping(0.0);
+var w1_fx = create_fixture_def();
+w1_fx.set_density(1.0);
+w1_fx.set_friction(0.4);
+w1_fx.set_circle_shape(46);
+var wheel_a = create_body(w1_def);
+wheel_a.add_fixture(w1_fx);
+
+var w2_def = create_bodydef(BODY_DYNAMIC);
+w2_def.set_position(810, 360);
+w2_def.set_angular_damping(0.0);
+var w2_fx = create_fixture_def();
+w2_fx.set_density(1.0);
+w2_fx.set_friction(0.4);
+w2_fx.set_circle_shape(80);
+var wheel_b = create_body(w2_def);
+wheel_b.add_fixture(w2_fx);
+
+var r1_def = RevoluteJointDef();
+r1_def.initialize(base, wheel_a, 470, 360);
+r1_def.set_enable_motor(true);
+r1_def.set_max_motor_torque(85000);
+r1_def.set_motor_speed(0);
+r1_def.set_collide_connected(false);
+var rev_a = RevoluteJoint(r1_def);
+
+var r2_def = RevoluteJointDef();
+r2_def.initialize(base, wheel_b, 810, 360);
+r2_def.set_enable_motor(false);
+r2_def.set_max_motor_torque(0);
+r2_def.set_motor_speed(0);
+r2_def.set_collide_connected(false);
+var rev_b = RevoluteJoint(r2_def);
+
+var gear_def = GearJointDef();
+gear_def.set_body_a(wheel_a);
+gear_def.set_body_b(wheel_b);
+gear_def.set_joint1(rev_a);
+gear_def.set_joint2(rev_b);
+gear_def.set_ratio(-0.575);
+gear_def.set_collide_connected(false);
+var gear = GearJoint(gear_def);
+
+loop
+{
+    var dt = delta();
+    if (dt > 0.033) { dt = 0.033; }
+
+    var motor_speed = 0;
+    if (key_down(KEY_LEFT) || key_down(KEY_A)) motor_speed = 180;
+    if (key_down(KEY_RIGHT) || key_down(KEY_D)) motor_speed = -180;
+    rev_a.set_motor_speed(motor_speed);
+
+    if (key_pressed(KEY_R))
+    {
+        wheel_a.set_transform(470, 360, 0);
+        wheel_b.set_transform(810, 360, 0);
+        wheel_a.set_linear_velocity(0, 0);
+        wheel_b.set_linear_velocity(0, 0);
+        wheel_a.set_angular_velocity(0);
+        wheel_b.set_angular_velocity(0);
+    }
+
+      if (!DRAG_ACTIVE && mouse_pressed(MOUSE_LEFT))
+    {
+        var (hit_id, hit_body) = physics_overlap_point(get_mouse_x(), get_mouse_y(), false);
+        if (  hit_body != nil)
+        {
+            
+            
+            
+                var mj = MouseJointDef();
+                mj.set_body_a(world_floor);
+                mj.set_body_b(hit_body);
+                mj.set_target(get_mouse_x(), get_mouse_y());
+                mj.set_max_force(25000);
+                mj.set_stiffness(12);
+                mj.set_damping(1.2);
+                mj.set_collide_connected(false);
+
+                DRAG_JOINT = MouseJoint(mj);
+                DRAG_ID = hit_id;
+                DRAG_ACTIVE = true;
+             
+        }
+    }
+
+    if (DRAG_ACTIVE)
+    {
+        if (!mouse_down(MOUSE_LEFT))
+        {
+            if (DRAG_JOINT != nil)
+            {
+                DRAG_JOINT.destroy();
+            }
+            DRAG_JOINT = nil;
+            DRAG_ID = -1;
+            DRAG_ACTIVE = false;
+        }
+        elif (DRAG_JOINT != nil)
+        {
+            DRAG_JOINT.set_target(get_mouse_x(), get_mouse_y());
+        }
+    }
+ 
+
+    update_world(dt);
+
+    draw_text("GearJoint demo", 20, 20, 20);
+    draw_text("A/D or Arrows drive wheel A | R reset | ESC close", 20, 44, 20);
+    draw_text("Gear ratio: " + str(gear.get_ratio()), 20, 68, 20);
+    draw_text("wA speed: " + str(rev_a.get_joint_speed()), 20, 92, 20);
+    draw_text("wB speed: " + str(rev_b.get_joint_speed()), 20, 116, 20);
+    draw_fps(20, 140);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+    frame;
+}

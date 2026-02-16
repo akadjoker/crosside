@@ -1,0 +1,35 @@
+// Test: All math builtins
+var pi = 3.14159265358979;
+var tol = 0.001;
+
+def near(a, b) {
+    return abs(a - b) < tol;
+}
+
+// Trig
+if (!near(sin(0), 0.0)) { throw "sin(0)"; }
+if (!near(cos(0), 1.0)) { throw "cos(0)"; }
+if (!near(tan(0), 0.0)) { throw "tan(0)"; }
+if (!near(asin(1), pi/2.0)) { throw "asin(1)"; }
+if (!near(acos(1), 0.0)) { throw "acos(1)"; }
+if (!near(atan(1), pi/4.0)) { throw "atan(1)"; }
+if (!near(atan2(1,1), pi/4.0)) { throw "atan2"; }
+
+// Roundtrip: sin(asin(x)) == x
+if (!near(sin(asin(0.5)), 0.5)) { throw "sin(asin)"; }
+if (!near(cos(acos(0.5)), 0.5)) { throw "cos(acos)"; }
+
+// Powers/roots
+if (!near(sqrt(16), 4.0)) { throw "sqrt"; }
+if (!near(pow(2, 10), 1024.0)) { throw "pow"; }
+if (!near(exp(0), 1.0)) { throw "exp(0)"; }
+if (!near(log(1), 0.0)) { throw "log(1)"; }
+
+// Rounding
+if (!near(floor(3.7), 3.0)) { throw "floor"; }
+if (!near(ceil(3.2), 4.0)) { throw "ceil"; }
+if (!near(abs(-5), 5.0)) { throw "abs"; }
+
+// Conversion
+if (!near(deg(pi), 180.0)) { throw "deg"; }
+if (!near(rad(180), pi)) { throw "rad"; }

@@ -1,0 +1,48 @@
+{
+	"module":"stb-image",
+	"about":" ",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":[""],
+        "static":true,
+	"system":["linux","android","emscripten","windows"],
+	"src":["src/stb_image.c","src/stb_image_write.c"],
+	"include":[""],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":" -fPIC ",
+ 	   "CC_ARGS":"  -fPIC ",
+ 	   "LD_ARGS":"",
+	   "src":[""],
+	   "include":[""]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":" -fPIC",
+ 	   "CC_ARGS":" -fPIC",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":" -fPIC",
+ 	   "CC_ARGS":" -fPIC",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "emscripten":
+	  {
+	   "template":"",
+ 	   "CPP_ARGS":" -fPIC",
+ 	   "CC_ARGS":" -fPIC",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  }
+      }
+}  
+

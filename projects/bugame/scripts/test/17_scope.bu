@@ -1,0 +1,29 @@
+// Test: Scoping rules
+var x = "global";
+
+def test_scope() {
+    var x = "local";
+    if (x != "local") { throw "local shadow"; }
+    {
+        var x = "block";
+        if (x != "block") { throw "block shadow"; }
+    }
+    if (x != "local") { throw "after block"; }
+}
+test_scope();
+if (x != "global") { throw "global unchanged"; }
+
+// For loop scope
+for (var i = 0; i < 3; i++) { }
+// i should not leak out of for scope (test by not crashing)
+
+// Nested blocks
+var result = 0;
+{
+    var a = 10;
+    {
+        var b = 20;
+        result = a + b;
+    }
+}
+if (result != 30) { throw "nested blocks"; }

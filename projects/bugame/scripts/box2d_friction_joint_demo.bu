@@ -1,0 +1,81 @@
+print("Box2D FrictionJoint Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_SPACE = 32;
+var KEY_R = 82;
+
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D FrictionJoint Demo");
+create_world(0, 0);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16);
+
+var floor_def = create_bodydef(BODY_STATIC);
+floor_def.set_position(640, 700);
+var floor_fx = create_fixture_def();
+floor_fx.set_box_shape(640, 20);
+var world_floor = create_body(floor_def);
+world_floor.add_fixture(floor_fx);
+
+var anchor_def = create_bodydef(BODY_STATIC);
+anchor_def.set_position(300, 620);
+var anchor_fx = create_fixture_def();
+anchor_fx.set_box_shape(10, 10);
+var anchor = create_body(anchor_def);
+anchor.add_fixture(anchor_fx);
+
+var box_def = create_bodydef(BODY_DYNAMIC);
+box_def.set_position(300, 620);
+box_def.set_linear_damping(0.0);
+box_def.set_angular_damping(0.0);
+var box_fx = create_fixture_def();
+box_fx.set_density(1.2);
+box_fx.set_friction(0.1);
+box_fx.set_box_shape(46, 30);
+var box = create_body(box_def);
+box.add_fixture(box_fx);
+
+var jd = FrictionJointDef();
+jd.initialize(anchor, box, 300, 620);
+jd.set_max_force(3500);
+jd.set_max_torque(2500);
+jd.set_collide_connected(false);
+var friction_joint = FrictionJoint(jd);
+
+box.set_linear_velocity(520, 0);
+
+loop
+{
+    var dt = delta();
+    if (dt > 0.033) { dt = 0.033; }
+
+    if (key_pressed(KEY_SPACE))
+    {
+        box.set_linear_velocity(520, 0);
+        box.set_angular_velocity(40);
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        box.set_transform(300, 620, 0);
+        box.set_linear_velocity(0, 0);
+        box.set_angular_velocity(0);
+    }
+
+    update_world(dt);
+
+    var (bx, by) = box.get_position();
+    draw_text("FrictionJoint demo", 20, 20, 20);
+    draw_text("SPACE launch body | R reset | ESC close", 20, 44, 20);
+    draw_text("Box: " + str(bx) + ", " + str(by), 20, 68, 20);
+    draw_text("MaxForce: " + str(friction_joint.get_max_force()), 20, 92, 20);
+    draw_fps(20, 116);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+    frame;
+}

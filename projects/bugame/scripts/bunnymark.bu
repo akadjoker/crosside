@@ -1,0 +1,82 @@
+import math;
+
+var WIDTH = 800;
+var HEIGHT = 450;
+var GRAVITY = 0.5;
+var FLOOR_Y = 400;
+var SPAWN_BATCH = 500;
+var KEY_ESCAPE = 256;
+
+var BUNNY_COUNT = 0;
+
+set_window_size(WIDTH, HEIGHT);
+set_window_title("Bunnymark Process Demo");
+set_virtual_screen_enabled(true);
+
+var G_BUNNY = load_graph("assets/wabbit_alpha.png");
+
+process bunny(px, py)
+{
+    graph = G_BUNNY;
+    x = px;
+    y = py;
+    velx = (math.rand(0, 199) - 100) / 10.0;
+    vely = (math.rand(0, 199) - 100) / 10.0;
+
+    loop
+    {
+        x += velx;
+        y += vely;
+        vely += GRAVITY;
+
+        if (y > FLOOR_Y)
+        {
+            y = FLOOR_Y;
+            vely *= -0.85;
+        }
+
+        if (x < 0 || x > WIDTH)
+        {
+            velx *= -1.0;
+        }
+
+        frame;
+    }
+}
+
+process bunnymark()
+{
+    loop
+    {
+        if (key_down(KEY_ESCAPE))
+        {
+            close_window();
+            break;
+        }
+
+        if (mouse_down(0))
+        {
+            var mx = get_mouse_x();
+            var my = get_mouse_y();
+            var i = 0;
+            while (i < SPAWN_BATCH)
+            {
+                bunny(mx, my);
+                BUNNY_COUNT += 1;
+                i += 1;
+            }
+        }
+
+        set_draw_screen(true);
+        set_color(255, 255, 255);
+        draw_graph(G_BUNNY, get_mouse_x(), get_mouse_y());
+
+        set_color(200, 200, 200);
+        draw_text(format("count {}", BUNNY_COUNT), 10, 30, 20);
+        draw_fps(10, 10);
+
+        frame;
+    }
+}
+
+bunnymark();

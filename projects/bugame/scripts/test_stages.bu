@@ -1,0 +1,67 @@
+print("=== Stages Test ===");
+import math;
+include "stages.bu";
+
+var KEY_1 = 49;
+var KEY_2 = 50;
+var KEY_3 = 51;
+var KEY_4 = 52;
+var KEY_ESCAPE = 256;
+
+set_window_size(800, 600);
+set_window_title("Stages Test");
+
+var menu = Screen("menu");
+var play = Screen("play");
+var credits = Screen("credits");
+var exit = Screen("exit");
+var stages = Stages(menu, play, credits, exit);
+
+var last_stage = "";
+var blend = 0.0;
+
+stages.start("menu");
+
+loop
+{
+    var dt = delta();
+
+    if (key_pressed(KEY_1)) stages.change_to("menu", 0.30, "sine_in_out");
+    if (key_pressed(KEY_2)) stages.change_to("play", 0.30, "sine_in_out");
+    if (key_pressed(KEY_3)) stages.change_to("credits", 0.40, "sine_in_out");
+    if (key_pressed(KEY_4)) stages.change_to("exit", 0.25, "sine_out");
+
+    if (key_pressed(KEY_ESCAPE))
+    {
+        var c = stages.current_name();
+        if (c == "play")
+        {
+            stages.change_to("menu", 0.30, "sine_in_out");
+        }
+        elif (c == "menu")
+        {
+            stages.change_to("play", 0.30, "sine_in_out");
+        }
+        elif (c == "credits")
+        {
+            stages.change_to("menu", 0.30, "sine_in_out");
+        }
+    }
+
+    blend = stages.update(dt);
+
+    var cur = stages.current_name();
+    if (cur != last_stage)
+    {
+        print("stage: " + cur + " | prev: " + stages.previous_name());
+        last_stage = cur;
+    }
+
+    if (cur == "exit" && !stages.is_transitioning())
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}

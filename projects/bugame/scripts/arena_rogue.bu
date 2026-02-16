@@ -1,0 +1,1113 @@
+// === ARENA ROGUE ===
+// Twin-stick roguelite arena:
+// - WASD move
+// - Mouse aim + shoot
+// - SHIFT dash
+// - Waves + upgrades (1/2/3)
+
+import math;
+
+var VIEW_W = 1280;
+var VIEW_H = 720;
+
+var KEY_W = 87;
+var KEY_A = 65;
+var KEY_S = 83;
+var KEY_D = 68;
+var KEY_UP = 265;
+var KEY_LEFT = 263;
+var KEY_DOWN = 264;
+var KEY_RIGHT = 262;
+var KEY_SHIFT = 340;
+var KEY_R = 82;
+var KEY_ESCAPE = 256;
+var KEY_1 = 49;
+var KEY_2 = 50;
+var KEY_3 = 51;
+
+var STATE_PLAY = 0;
+var STATE_UPGRADE = 1;
+var STATE_GAMEOVER = 2;
+
+var GAME_STATE = STATE_PLAY;
+
+var PLAYER_ID = -1;
+
+var SCORE = 0;
+var KILLS = 0;
+var WAVE = 1;
+var WAVE_TARGET = 0;
+var WAVE_SPAWNED = 0;
+var ENEMIES_ALIVE = 0;
+var REQUEST_NEXT_WAVE = false;
+
+var PLAYER_HP_MAX = 10;
+var PLAYER_HP = 10;
+var PLAYER_DAMAGE = 1;
+var PLAYER_FIRE_DELAY = 0.16;
+var PLAYER_MOVE_SPEED = 290;
+var PLAYER_BULLET_SPEED = 980;
+var PLAYER_BULLET_PIERCE = 0;
+var PLAYER_DASH_COOLDOWN = 1.10;
+var PLAYER_DASH_FORCE = 560;
+var PLAYER_RAPID_TIMER = 0.0;
+var PLAYER_SPAWN_X = 640;
+var PLAYER_SPAWN_Y = 490;
+var PLAYER_SPAWN_COUNT = 6;
+var PLAYER_SPAWN_XS = [120, 200, 1080, 1160, 210, 1050];
+var PLAYER_SPAWN_YS = [120, 600, 120, 600, 360, 360];
+
+var UPG_DMG = 0;
+var UPG_FIRE = 1;
+var UPG_HP = 2;
+var UPG_SPEED = 3;
+var UPG_PIERCE = 4;
+
+var UPG_A = UPG_DMG;
+var UPG_B = UPG_FIRE;
+var UPG_C = UPG_HP;
+
+var SPAWN_COUNT = 16;
+var SPAWN_X = [50, 220, 420, 640, 860, 1080, 1230, 1230, 1230, 1080, 860, 640, 420, 220, 50, 50];
+var SPAWN_Y = [50, 50, 50, 50, 50, 50, 120, 260, 460, 670, 670, 670, 670, 670, 590, 260];
+
+def line_free(x1, y1, x2, y2)
+{
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    var dist = sqrt(dx * dx + dy * dy);
+    var steps = int(dist / 16);
+    if (steps < 2) steps = 2;
+
+    var i = 1;
+    while (i < steps)
+    {
+        var t = i / steps;
+        if (!place_free(x1 + dx * t, y1 + dy * t))
+        {
+            return false;
+        }
+        i += 1;
+    }
+    return true;
+}
+
+process fx_particle(px, py, r, g, b)
+{
+    x = px;
+    y = py;
+    z = 4;
+
+    var a = math.rand(0, 360);
+    var sp = math.rand(80, 300);
+    var vx = get_distx(a, sp);
+    var vy = get_disty(a, sp);
+    var life = math.rand(0.08, 0.30);
+    var max_life = life;
+    var s = math.rand(2, 5);
+
+    loop
+    {
+        var dt = delta();
+        life -= dt;
+        if (life <= 0) break;
+
+        x += vx * dt;
+        y += vy * dt;
+        vy += 700 * dt;
+        vx *= (1.0 - dt * 2.5);
+
+        set_alpha(int(255 * (life / max_life)));
+        set_color(r, g, b);
+        draw_circle(x, y, s * (life / max_life), true);
+        set_alpha(255);
+
+        frame;
+    }
+}
+
+def fx_burst(px, py, n, r, g, b)
+{
+    var i = 0;
+    while (i < n)
+    {
+        fx_particle(px, py, r, g, b);
+        i += 1;
+    }
+}
+
+process world_block(px, py, w, h)
+{
+    x = px;
+    y = py;
+    z = 0;
+
+    set_rect_shape(0, 0, w, h);
+    set_collision_layer(1);
+    set_collision_mask(4);
+
+    loop
+    {
+        set_color(52, 58, 78);
+        draw_rectangle(x - w / 2, y - h / 2, w, h, true);
+        set_color(28, 32, 46);
+        draw_rectangle(x - w / 2 + 2, y - h / 2 + 2, w - 4, h - 4, true);
+        set_color(96, 112, 155);
+        draw_rectangle(x - w / 2, y - h / 2, w, h, false);
+        frame;
+    }
+}
+
+process pickup_orb(px, py, kind)
+{
+    x = px;
+    y = py;
+    z = 3;
+
+    set_circle_shape(10);
+    set_collision_layer(3);
+    set_collision_mask(0);
+
+    var life = 12.0;
+    var phase = math.rand(0, 6.28);
+
+    loop
+    {
+        var dt = delta();
+        life -= dt;
+        if (life <= 0) break;
+
+        var bob = sin(time() * 6 + phase) * 2.0;
+
+        var p = nil;
+        if (PLAYER_ID != -1) p = proc(PLAYER_ID);
+        if (p && get_dist(x, y, p.x, p.y) < 26)
+        {
+            if (kind == 0)
+            {
+                PLAYER_HP += 2;
+                if (PLAYER_HP > PLAYER_HP_MAX) PLAYER_HP = PLAYER_HP_MAX;
+            }
+            else
+            {
+                PLAYER_RAPID_TIMER = 5.0;
+            }
+
+            SCORE += 10;
+            fx_burst(x, y, 8, 210, 255, 190);
+            break;
+        }
+
+        if (kind == 0) set_color(120, 255, 170);
+        else set_color(130, 220, 255);
+        set_alpha(210);
+        draw_circle(x, y + bob, 10, true);
+        set_alpha(255);
+        set_color(20, 30, 40);
+        draw_circle(x, y + bob, 10, false);
+
+        frame;
+    }
+}
+
+process enemy_bullet(px, py, ang, dmg)
+{
+    x = px;
+    y = py;
+    z = 3;
+
+    set_circle_shape(4);
+    set_collision_layer(4);
+    set_collision_mask(0);
+
+    var speed_b = 560;
+    var life = 1.6;
+
+    loop
+    {
+        var dt = delta();
+        if (GAME_STATE == STATE_UPGRADE)
+        {
+            frame;
+            continue;
+        }
+
+        life -= dt;
+        if (life <= 0) break;
+
+        x += get_distx(ang, speed_b) * dt;
+        y += get_disty(ang, speed_b) * dt;
+
+        if (x < -40 || x > VIEW_W + 40 || y < -40 || y > VIEW_H + 40)
+        {
+            break;
+        }
+
+        var w = collision(type world_block, x, y);
+        if (w)
+        {
+            fx_burst(x, y, 3, 255, 170, 140);
+            break;
+        }
+
+        var p = nil;
+        if (PLAYER_ID != -1) p = proc(PLAYER_ID);
+        if (p && get_dist(x, y, p.x, p.y) < 16)
+        {
+            p.state += dmg;
+            fx_burst(x, y, 5, 255, 130, 120);
+            break;
+        }
+
+        set_alpha(180);
+        set_color(255, 130, 110);
+        draw_circle(x, y, 4, true);
+        set_alpha(255);
+        frame;
+    }
+}
+
+process player_bullet(px, py, ang, dmg, pierce)
+{
+    x = px;
+    y = py;
+    z = 3;
+
+    set_circle_shape(4);
+    set_collision_layer(4);
+    set_collision_mask(0);
+
+    var life = 1.3;
+    var hit_cd = 0.0;
+
+    loop
+    {
+        var dt = delta();
+        if (GAME_STATE == STATE_UPGRADE)
+        {
+            frame;
+            continue;
+        }
+
+        if (hit_cd > 0) hit_cd -= dt;
+        life -= dt;
+        if (life <= 0) break;
+
+        x += get_distx(ang, PLAYER_BULLET_SPEED) * dt;
+        y += get_disty(ang, PLAYER_BULLET_SPEED) * dt;
+
+        if (x < -40 || x > VIEW_W + 40 || y < -40 || y > VIEW_H + 40)
+        {
+            break;
+        }
+
+        var w = collision(type world_block, x, y);
+        if (w)
+        {
+            fx_burst(x, y, 3, 255, 220, 160);
+            break;
+        }
+
+        if (hit_cd <= 0)
+        {
+            var e = collision(type enemy_unit, x, y);
+            if (e)
+            {
+                e.state += dmg;
+                fx_burst(x, y, 5, 255, 230, 170);
+                hit_cd = 0.03;
+
+                if (pierce <= 0)
+                {
+                    break;
+                }
+                else
+                {
+                    pierce -= 1;
+                    x += get_distx(ang, 12);
+                    y += get_disty(ang, 12);
+                }
+            }
+        }
+
+        set_alpha(120);
+        set_color(255, 230, 140);
+        draw_circle(x, y, 8, true);
+        set_alpha(255);
+        set_color(255, 248, 200);
+        draw_circle(x, y, 4, true);
+
+        frame;
+    }
+}
+
+process enemy_unit(px, py, kind)
+{
+    x = px;
+    y = py;
+    z = 2;
+
+    set_rect_shape(0, 0, 28, 20);
+    set_collision_layer(2);
+    set_collision_mask(2);
+
+    var hp = 2;
+    var hp_max = 2;
+    var move_spd = 210;
+    var contact_dmg = 1;
+    var fire_cd = math.rand(0.25, 0.9);
+    var touch_cd = 0.0;
+    var hit_flash = 0.0;
+    angle = math.rand(0, 360);
+    velx = 0;
+    vely = 0;
+
+    if (kind == 1)
+    {
+        hp = 3 + int(WAVE * 0.20);
+        move_spd = 170 + WAVE * 2;
+        contact_dmg = 1;
+    }
+    elif (kind == 2)
+    {
+        hp = 7 + int(WAVE * 0.35);
+        move_spd = 135 + WAVE * 2;
+        contact_dmg = 2;
+    }
+    else
+    {
+        hp = 2 + int(WAVE * 0.20);
+        move_spd = 210 + WAVE * 3;
+        contact_dmg = 1;
+    }
+    hp_max = hp;
+
+    loop
+    {
+        var dt = delta();
+        if (touch_cd > 0) touch_cd -= dt;
+        if (fire_cd > 0) fire_cd -= dt;
+        if (hit_flash > 0) hit_flash -= dt;
+
+        if (state > 0)
+        {
+            hp -= state;
+            state = 0;
+            hit_flash = 0.10;
+            fx_burst(x, y, 4, 255, 170, 150);
+            if (hp <= 0)
+            {
+                ENEMIES_ALIVE -= 1;
+                if (ENEMIES_ALIVE < 0) ENEMIES_ALIVE = 0;
+                KILLS += 1;
+                SCORE += 8 + WAVE * 2;
+                fx_burst(x, y, 12, 255, 190, 160);
+
+                if (math.rand(0.0, 1.0) < 0.18)
+                {
+                    pickup_orb(x, y, math.irand(0, 1));
+                }
+                break;
+            }
+        }
+
+        var p = nil;
+        if (PLAYER_ID != -1) p = proc(PLAYER_ID);
+        if (!p)
+        {
+            frame;
+            continue;
+        }
+
+        if (GAME_STATE == STATE_PLAY)
+        {
+            var dist = get_dist(x, y, p.x, p.y);
+            var target_a = get_angle(x, y, p.x, p.y);
+            var d = angle_delta(angle, target_a);
+            angle += math.clamp(d, -220 * dt, 220 * dt);
+
+            var acc = move_spd * 2.0;
+
+            if (kind == 1)
+            {
+                // ranged
+                if (dist > 280)
+                {
+                    velx += get_distx(angle, acc * dt);
+                    vely += get_disty(angle, acc * dt);
+                }
+                elif (dist < 180)
+                {
+                    velx -= get_distx(angle, acc * dt * 0.7);
+                    vely -= get_disty(angle, acc * dt * 0.7);
+                }
+
+                if (fire_cd <= 0 && dist < 520 && line_free(x, y, p.x, p.y))
+                {
+                    var shot_a = get_angle(x, y, p.x, p.y) + math.rand(-8, 8);
+                    enemy_bullet(x + get_distx(shot_a, 18), y + get_disty(shot_a, 18), shot_a, 1);
+                    fx_burst(x + get_distx(shot_a, 16), y + get_disty(shot_a, 16), 3, 255, 160, 140);
+                    fire_cd = 1.20 - WAVE * 0.02;
+                    if (fire_cd < 0.45) fire_cd = 0.45;
+                }
+            }
+            else
+            {
+                // melee / tank
+                velx += get_distx(angle, acc * dt);
+                vely += get_disty(angle, acc * dt);
+            }
+
+            var rx = get_distx(angle + 90, 1);
+            var ry = get_disty(angle + 90, 1);
+            var side = velx * rx + vely * ry;
+            velx -= rx * side * math.min(1.0, dt * 4.0);
+            vely -= ry * side * math.min(1.0, dt * 4.0);
+            velx *= (1.0 - dt * 1.6);
+            vely *= (1.0 - dt * 1.6);
+
+            var mv = sqrt(velx * velx + vely * vely);
+            if (mv > move_spd)
+            {
+                var k = move_spd / mv;
+                velx *= k;
+                vely *= k;
+            }
+
+            var moved_x = false;
+            var moved_y = false;
+
+            var nx = x + velx * dt;
+            if (place_free(nx, y))
+            {
+                x = nx;
+                moved_x = true;
+            }
+            else
+            {
+                velx *= -0.20;
+            }
+
+            var ny = y + vely * dt;
+            if (place_free(x, ny))
+            {
+                y = ny;
+                moved_y = true;
+            }
+            else
+            {
+                vely *= -0.20;
+            }
+
+            if (!moved_x && !moved_y)
+            {
+                // Anti-stuck em quinas/parede: tenta empurrar para uma direção livre.
+                var esc_a = 0;
+                var esc_ok = false;
+                while (esc_a < 360)
+                {
+                    var tx = x + get_distx(esc_a, 3);
+                    var ty = y + get_disty(esc_a, 3);
+                    if (place_free(tx, ty))
+                    {
+                        x = tx;
+                        y = ty;
+                        esc_ok = true;
+                        break;
+                    }
+                    esc_a += 45;
+                }
+
+                if (!esc_ok)
+                {
+                    angle += math.rand(-140, 140) * dt;
+                    velx *= 0.72;
+                    vely *= 0.72;
+                }
+            }
+
+            if (touch_cd <= 0 && dist < 24)
+            {
+                p.state += contact_dmg;
+                touch_cd = 0.55;
+                fx_burst(x, y, 4, 255, 145, 130);
+            }
+        }
+
+        if (hit_flash > 0)
+        {
+            set_color(255, 130, 130);
+        }
+        elif (kind == 1)
+        {
+            set_color(170, 120, 255);
+        }
+        elif (kind == 2)
+        {
+            set_color(255, 165, 95);
+        }
+        else
+        {
+            set_color(255, 100, 140);
+        }
+        draw_rotated_rectangle(x, y, 28, 20, -angle, true);
+
+        set_color(255, 230, 235);
+        draw_rotated_rectangle(x + get_distx(angle, 7), y + get_disty(angle, 7), 8, 6, -angle, true);
+        set_color(34, 20, 24);
+        draw_rotated_rectangle(x, y, 28, 20, -angle, false);
+
+        set_color(18, 15, 15);
+        draw_rectangle(x, y - 14, 18, 3, true);
+        set_color(255, 120, 120);
+        draw_rectangle(x, y - 14, 18 * (hp / hp_max), 3, true);
+
+        frame;
+    }
+}
+
+process player_unit(px, py)
+{
+    x = px;
+    y = py;
+    z = 2;
+
+    set_rect_shape(0, 0, 30, 24);
+    set_collision_layer(2);
+    set_collision_mask(2);
+
+    var fire_cd = 0.0;
+    var dash_cd = 0.0;
+    var dash_t = 0.0;
+    var hurt_cd = 0.0;
+    var dash_vx = 0.0;
+    var dash_vy = 0.0;
+    angle = -90;
+
+    loop
+    {
+        var dt = delta();
+
+        // Se por alguma razao entrar dentro de uma box, tenta sair.
+        if (!place_free(x, y))
+        {
+            var esc_a0 = 0;
+            var esc_ok0 = false;
+            while (esc_a0 < 360)
+            {
+                var tx0 = x + get_distx(esc_a0, 6);
+                var ty0 = y + get_disty(esc_a0, 6);
+                if (place_free(tx0, ty0))
+                {
+                    x = tx0;
+                    y = ty0;
+                    esc_ok0 = true;
+                    break;
+                }
+                esc_a0 += 15;
+            }
+            if (!esc_ok0)
+            {
+                x += 1;
+            }
+        }
+
+        var mx = get_mouse_x();
+        var my = get_mouse_y();
+        var aim = get_angle(x, y, mx, my);
+        angle = aim;
+
+        if (fire_cd > 0) fire_cd -= dt;
+        if (dash_cd > 0) dash_cd -= dt;
+        if (dash_t > 0) dash_t -= dt;
+        if (hurt_cd > 0) hurt_cd -= dt;
+
+        if (GAME_STATE == STATE_PLAY)
+        {
+            var inx = 0.0;
+            var iny = 0.0;
+            if (key_down(KEY_A) || key_down(KEY_LEFT)) inx -= 1;
+            if (key_down(KEY_D) || key_down(KEY_RIGHT)) inx += 1;
+            if (key_down(KEY_W) || key_down(KEY_UP)) iny -= 1;
+            if (key_down(KEY_S) || key_down(KEY_DOWN)) iny += 1;
+
+            if (inx != 0 && iny != 0)
+            {
+                inx *= 0.7071;
+                iny *= 0.7071;
+            }
+
+            if (key_pressed(KEY_SHIFT) && dash_cd <= 0)
+            {
+                var da = aim;
+                if (inx != 0 || iny != 0)
+                {
+                    da = get_angle(0, 0, inx, iny);
+                }
+                dash_vx = get_distx(da, PLAYER_DASH_FORCE);
+                dash_vy = get_disty(da, PLAYER_DASH_FORCE);
+                dash_t = 0.16;
+                dash_cd = PLAYER_DASH_COOLDOWN;
+                fx_burst(x, y, 8, 130, 220, 255);
+            }
+
+            var mvx = 0.0;
+            var mvy = 0.0;
+            if (dash_t > 0)
+            {
+                mvx = dash_vx;
+                mvy = dash_vy;
+            }
+            else
+            {
+                mvx = inx * PLAYER_MOVE_SPEED;
+                mvy = iny * PLAYER_MOVE_SPEED;
+            }
+
+            var nx = x + mvx * dt;
+            if (place_free(nx, y))
+            {
+                x = nx;
+            }
+            else
+            {
+                var sx = math.sign(mvx);
+                var steps = 0;
+                while (sx != 0 && steps < 18 && place_free(x + sx, y))
+                {
+                    x += sx;
+                    steps += 1;
+                }
+            }
+
+            var ny = y + mvy * dt;
+            if (place_free(x, ny))
+            {
+                y = ny;
+            }
+            else
+            {
+                var sy = math.sign(mvy);
+                var steps2 = 0;
+                while (sy != 0 && steps2 < 18 && place_free(x, y + sy))
+                {
+                    y += sy;
+                    steps2 += 1;
+                }
+            }
+
+            var cur_delay = PLAYER_FIRE_DELAY;
+            if (PLAYER_RAPID_TIMER > 0) cur_delay *= 0.55;
+            if (cur_delay < 0.04) cur_delay = 0.04;
+
+            if (mouse_down(0) && fire_cd <= 0)
+            {
+                fire_cd = cur_delay;
+                var muzzle_x = x + get_distx(aim, 18);
+                var muzzle_y = y + get_disty(aim, 18);
+                player_bullet(muzzle_x, muzzle_y, aim, PLAYER_DAMAGE, PLAYER_BULLET_PIERCE);
+                fx_burst(muzzle_x, muzzle_y, 3, 255, 230, 170);
+            }
+        }
+
+        if (state > 0)
+        {
+            if (hurt_cd <= 0 && GAME_STATE == STATE_PLAY)
+            {
+                PLAYER_HP -= state;
+                if (PLAYER_HP < 0) PLAYER_HP = 0;
+                hurt_cd = 0.35;
+                fx_burst(x, y, 10, 255, 130, 120);
+                if (PLAYER_HP <= 0)
+                {
+                    GAME_STATE = STATE_GAMEOVER;
+                }
+            }
+            state = 0;
+        }
+
+        if (hurt_cd > 0) set_color(255, 130, 130);
+        else set_color(120, 205, 255);
+        draw_rotated_rectangle(x, y, 30, 24, -aim, true);
+        set_color(45, 56, 78);
+        draw_rotated_rectangle(x, y, 30, 24, -aim, false);
+
+        // cannon
+        set_color(80, 95, 130);
+        draw_line_ex(x, y, x + get_distx(aim, 20), y + get_disty(aim, 20), 5);
+        set_color(165, 190, 225);
+        draw_line_ex(x, y, x + get_distx(aim, 20), y + get_disty(aim, 20), 2);
+
+        // crosshair
+        set_color(255, 235, 170);
+        draw_circle(mx, my, 8, false);
+        draw_line(mx - 12, my, mx - 4, my);
+        draw_line(mx + 4, my, mx + 12, my);
+        draw_line(mx, my - 12, mx, my - 4);
+        draw_line(mx, my + 4, mx, my + 12);
+
+        frame;
+    }
+}
+
+def upgrade_name(id)
+{
+    if (id == UPG_DMG) return "+1 Damage";
+    if (id == UPG_FIRE) return "Faster Fire Rate";
+    if (id == UPG_HP) return "+2 Max HP + Heal";
+    if (id == UPG_SPEED) return "+Move Speed";
+    if (id == UPG_PIERCE) return "+Bullet Pierce";
+    return "Unknown";
+}
+
+def apply_upgrade(id)
+{
+    if (id == UPG_DMG)
+    {
+        PLAYER_DAMAGE += 1;
+    }
+    elif (id == UPG_FIRE)
+    {
+        PLAYER_FIRE_DELAY *= 0.88;
+        if (PLAYER_FIRE_DELAY < 0.06) PLAYER_FIRE_DELAY = 0.06;
+    }
+    elif (id == UPG_HP)
+    {
+        PLAYER_HP_MAX += 2;
+        PLAYER_HP += 2;
+        if (PLAYER_HP > PLAYER_HP_MAX) PLAYER_HP = PLAYER_HP_MAX;
+    }
+    elif (id == UPG_SPEED)
+    {
+        PLAYER_MOVE_SPEED += 24;
+    }
+    else
+    {
+        PLAYER_BULLET_PIERCE += 1;
+    }
+
+    SCORE += 25;
+}
+
+def roll_upgrades()
+{
+    UPG_A = math.irand(0, 4);
+    UPG_B = math.irand(0, 4);
+    while (UPG_B == UPG_A)
+    {
+        UPG_B = math.irand(0, 4);
+    }
+
+    UPG_C = math.irand(0, 4);
+    while (UPG_C == UPG_A || UPG_C == UPG_B)
+    {
+        UPG_C = math.irand(0, 4);
+    }
+}
+
+def setup_wave(next_wave)
+{
+    WAVE = next_wave;
+    WAVE_TARGET = 6 + (WAVE - 1) * 3;
+    if (WAVE_TARGET > 60) WAVE_TARGET = 60;
+    WAVE_SPAWNED = 0;
+    GAME_STATE = STATE_PLAY;
+}
+
+def spawn_enemy_one()
+{
+    var p = nil;
+    if (PLAYER_ID != -1) p = proc(PLAYER_ID);
+
+    var ex = 60;
+    var ey = 60;
+    var found = false;
+    var tries = 0;
+    while (tries < 20)
+    {
+        var idx = math.irand(0, SPAWN_COUNT - 1);
+        ex = SPAWN_X[idx];
+        ey = SPAWN_Y[idx];
+
+        if (!p || get_dist(ex, ey, p.x, p.y) > 170)
+        {
+            found = true;
+            break;
+        }
+        tries += 1;
+    }
+
+    if (!found)
+    {
+        return false;
+    }
+
+    var kind = 0;
+    var r = math.rand(0.0, 1.0);
+
+    if (WAVE >= 5 && r < 0.22)
+    {
+        kind = 2;
+    }
+    elif (WAVE >= 3 && r < 0.50)
+    {
+        kind = 1;
+    }
+    else
+    {
+        kind = 0;
+    }
+
+    var e = enemy_unit(ex, ey, kind);
+    if (!e)
+    {
+        return false;
+    }
+    return true;
+}
+
+def build_arena()
+{
+    // Borders
+    world_block(VIEW_W * 0.5, 8, VIEW_W, 16);
+    world_block(VIEW_W * 0.5, VIEW_H - 8, VIEW_W, 16);
+    world_block(8, VIEW_H * 0.5, 16, VIEW_H);
+    world_block(VIEW_W - 8, VIEW_H * 0.5, 16, VIEW_H);
+
+    // Interior obstacles
+    world_block(320, 210, 170, 36);
+    world_block(640, 155, 260, 30);
+    world_block(980, 230, 180, 36);
+
+    world_block(240, 500, 190, 34);
+    world_block(640, 560, 300, 34);
+    world_block(1040, 500, 200, 36);
+
+    world_block(640, 360, 90, 180);
+}
+
+process wave_director()
+{
+    var spawn_timer = 0.0;
+
+    loop
+    {
+        var dt = delta();
+
+        if (GAME_STATE == STATE_PLAY)
+        {
+            spawn_timer += dt;
+            var interval = 0.70 - WAVE * 0.015;
+            if (interval < 0.20) interval = 0.20;
+
+            if (WAVE_SPAWNED < WAVE_TARGET && spawn_timer >= interval)
+            {
+                spawn_timer = 0;
+                if (spawn_enemy_one())
+                {
+                    WAVE_SPAWNED += 1;
+                    ENEMIES_ALIVE += 1;
+                }
+            }
+
+            if (WAVE_SPAWNED >= WAVE_TARGET && ENEMIES_ALIVE <= 0)
+            {
+                GAME_STATE = STATE_UPGRADE;
+                roll_upgrades();
+            }
+        }
+        elif (GAME_STATE == STATE_UPGRADE)
+        {
+            if (REQUEST_NEXT_WAVE)
+            {
+                REQUEST_NEXT_WAVE = false;
+                setup_wave(WAVE + 1);
+            }
+        }
+
+        frame;
+    }
+}
+
+process game_gui()
+{
+    z = 5;
+
+    loop
+    {
+        set_draw_screen(true);
+
+        set_alpha(190);
+        set_color(10, 14, 22);
+        draw_rectangle(12, 10, 460, 150, true);
+        set_alpha(255);
+        set_color(88, 116, 168);
+        draw_rectangle(12, 10, 460, 150, false);
+
+        set_color(245, 248, 255);
+        draw_text("ARENA ROGUE", 22, 18, 30);
+        draw_text(format("Score: {}", SCORE), 22, 55, 18);
+        draw_text(format("Kills: {}", KILLS), 22, 76, 18);
+        draw_text(format("Wave: {}", WAVE), 22, 97, 18);
+        draw_text(format("Enemies: {}", ENEMIES_ALIVE), 180, 55, 18);
+        draw_text(format("Spawned: {}/{}", WAVE_SPAWNED, WAVE_TARGET), 180, 76, 18);
+        draw_text("WASD move | Mouse shoot | SHIFT dash", 22, 132, 16);
+
+        var hp_ratio = PLAYER_HP / PLAYER_HP_MAX;
+        set_color(24, 24, 32);
+        draw_rectangle(180, 100, 200, 14, true);
+        set_color(255, 100, 120);
+        draw_rectangle(180, 100, 200 * hp_ratio, 14, true);
+        set_color(255, 188, 196);
+        draw_rectangle(180, 100, 200, 14, false);
+
+        if (PLAYER_RAPID_TIMER > 0)
+        {
+            set_color(140, 220, 255);
+            draw_text(format("Rapid {:.1f}", PLAYER_RAPID_TIMER), 388, 100, 16);
+        }
+
+        if (GAME_STATE == STATE_UPGRADE)
+        {
+            set_alpha(190);
+            set_color(8, 10, 16);
+            draw_rectangle(VIEW_W / 2 - 330, VIEW_H / 2 - 130, 660, 260, true);
+            set_alpha(255);
+            set_color(255, 235, 150);
+            draw_rectangle(VIEW_W / 2 - 330, VIEW_H / 2 - 130, 660, 260, false);
+
+            set_color(255, 240, 180);
+            draw_text("WAVE CLEAR - CHOOSE UPGRADE", VIEW_W / 2 - 260, VIEW_H / 2 - 95, 30);
+
+            set_color(210, 220, 240);
+            draw_text(format("[1] {}", upgrade_name(UPG_A)), VIEW_W / 2 - 280, VIEW_H / 2 - 35, 26);
+            draw_text(format("[2] {}", upgrade_name(UPG_B)), VIEW_W / 2 - 280, VIEW_H / 2 + 10, 26);
+            draw_text(format("[3] {}", upgrade_name(UPG_C)), VIEW_W / 2 - 280, VIEW_H / 2 + 55, 26);
+
+            if (key_pressed(KEY_1))
+            {
+                apply_upgrade(UPG_A);
+                REQUEST_NEXT_WAVE = true;
+            }
+            elif (key_pressed(KEY_2))
+            {
+                apply_upgrade(UPG_B);
+                REQUEST_NEXT_WAVE = true;
+            }
+            elif (key_pressed(KEY_3))
+            {
+                apply_upgrade(UPG_C);
+                REQUEST_NEXT_WAVE = true;
+            }
+        }
+
+        if (GAME_STATE == STATE_GAMEOVER)
+        {
+            set_alpha(180);
+            set_color(8, 10, 16);
+            draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+            set_alpha(255);
+
+            set_color(255, 130, 130);
+            draw_text("GAME OVER", VIEW_W / 2 - 150, VIEW_H / 2 - 40, 52);
+            set_color(255, 220, 220);
+            draw_text("Press R to restart", VIEW_W / 2 - 120, VIEW_H / 2 + 20, 26);
+        }
+
+        set_draw_screen(false);
+        frame;
+    }
+}
+
+def start_run()
+{
+    let_me_alone();
+
+    PLAYER_ID = -1;
+    GAME_STATE = STATE_PLAY;
+    SCORE = 0;
+    KILLS = 0;
+    WAVE = 1;
+    WAVE_TARGET = 0;
+    WAVE_SPAWNED = 0;
+    ENEMIES_ALIVE = 0;
+    REQUEST_NEXT_WAVE = false;
+
+    PLAYER_HP_MAX = 10;
+    PLAYER_HP = 10;
+    PLAYER_DAMAGE = 1;
+    PLAYER_FIRE_DELAY = 0.16;
+    PLAYER_MOVE_SPEED = 290;
+    PLAYER_BULLET_SPEED = 980;
+    PLAYER_BULLET_PIERCE = 0;
+    PLAYER_DASH_COOLDOWN = 1.10;
+    PLAYER_DASH_FORCE = 560;
+    PLAYER_RAPID_TIMER = 0;
+
+    build_arena();
+
+    var sidx = math.irand(0, PLAYER_SPAWN_COUNT - 1);
+    var sx = PLAYER_SPAWN_XS[sidx];
+    var sy = PLAYER_SPAWN_YS[sidx];
+
+    var p = player_unit(sx, sy);
+    if (p) PLAYER_ID = p.id;
+
+    wave_director();
+    game_gui();
+
+    setup_wave(1);
+}
+
+set_window_size(VIEW_W, VIEW_H);
+set_window_title("Arena Rogue");
+set_design_resolution(VIEW_W, VIEW_H);
+set_virtual_screen_enabled(true);
+set_screen_scale_mode(0);
+init_collision(0, 0, VIEW_W, VIEW_H);
+
+start_run();
+
+loop
+{
+    var dt = delta();
+
+    if (PLAYER_RAPID_TIMER > 0) PLAYER_RAPID_TIMER -= dt;
+
+    // Background
+    set_color(14, 18, 30);
+    draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+
+    set_color(26, 32, 50);
+    var gx = 0;
+    while (gx <= VIEW_W)
+    {
+        draw_line(gx, 0, gx, VIEW_H);
+        gx += 64;
+    }
+    var gy = 0;
+    while (gy <= VIEW_H)
+    {
+        draw_line(0, gy, VIEW_W, gy);
+        gy += 64;
+    }
+
+    // Arena ring
+    set_alpha(80);
+    set_color(70, 110, 170);
+    draw_circle(VIEW_W * 0.5, VIEW_H * 0.5, 250 + sin(time() * 0.8) * 8, false);
+    set_alpha(255);
+
+    if (key_pressed(KEY_R))
+    {
+        start_run();
+    }
+
+    if (key_pressed(KEY_ESCAPE))
+    {
+        let_me_alone();
+        break;
+    }
+
+    frame;
+}

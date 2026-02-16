@@ -1,0 +1,18 @@
+// Test: regex module
+
+import regex;
+
+if (!regex.match("^abc$", "abc")) { throw "regex.match true"; }
+if (regex.match("^abc$", "abcc")) { throw "regex.match false"; }
+
+if (!regex.search("[0-9]+", "id=1234")) { throw "regex.search true"; }
+if (regex.search("[0-9]+", "no digits")) { throw "regex.search false"; }
+
+var changed = regex.replace("[0-9]+", "#", "a1 b22 c333");
+if (changed != "a# b# c#") { throw "regex.replace"; }
+
+var hits = regex.findall("[a-z]+", "ab 12 cd EF gh");
+if (len(hits) != 3) { throw "regex.findall len"; }
+if (hits[0] != "ab") { throw "regex.findall 0"; }
+if (hits[1] != "cd") { throw "regex.findall 1"; }
+if (hits[2] != "gh") { throw "regex.findall 2"; }

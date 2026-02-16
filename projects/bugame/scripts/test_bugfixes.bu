@@ -1,0 +1,186 @@
+// ============================================
+// Test 1: asin() and acos() - were not compiling
+// ============================================
+print("=== Test 1: asin/acos ===");
+
+var val = 0.5;
+var a = asin(val);
+var b = acos(val);
+print("asin(0.5) =", a);
+print("acos(0.5) =", b);
+
+var pi = 3.14159265358979;
+if (abs(a - pi/6.0) < 0.001) {
+    print("  asin OK");
+} else {
+    print("  asin FAILED! Got:", a, "expected:", pi/6.0);
+}
+
+if (abs(b - pi/3.0) < 0.001) {
+    print("  acos OK");
+} else {
+    print("  acos FAILED! Got:", b, "expected:", pi/3.0);
+}
+
+print("asin(0) =", asin(0));
+print("asin(1) =", asin(1));
+print("acos(0) =", acos(0));
+print("acos(1) =", acos(1));
+
+// ============================================
+// Test 2: Multi-return with try/finally
+// ============================================
+print("\n=== Test 2: Multi-return + finally ===");
+
+var finally_ran = false;
+
+def multi_return_with_finally() {
+    try {
+        return (10, 20, 30);
+    } finally {
+        finally_ran = true;
+        print("  finally block executed");
+    }
+}
+
+var (x, y, z) = multi_return_with_finally();
+print("  return values:", x, y, z);
+
+if (x == 10 && y == 20 && z == 30 && finally_ran) {
+    print("  Multi-return + finally OK");
+} else {
+    print("  Multi-return + finally FAILED!");
+    print("  x=", x, "y=", y, "z=", z, "finally_ran=", finally_ran);
+}
+
+// ============================================
+// Test 3: Single return with try/finally (regression)
+// ============================================
+print("\n=== Test 3: Single return + finally (regression) ===");
+
+var finally2_ran = false;
+
+def single_return_with_finally() {
+    try {
+        return 42;
+    } finally {
+        finally2_ran = true;
+    }
+}
+
+var result = single_return_with_finally();
+if (result == 42 && finally2_ran) {
+    print("  Single return + finally OK");
+} else {
+    print("  Single return + finally FAILED! result=", result, "finally=", finally2_ran);
+}
+
+// ============================================
+// Test 4: Exception in catch propagates correctly
+// ============================================
+print("\n=== Test 4: Exception in catch propagation ===");
+
+var caught_outer = false;
+var inner_finally_ran = false;
+
+try {
+    try {
+        throw "error1";
+    } catch (e) {
+        print("  Inner catch got:", e);
+        throw "error2";
+    } finally {
+        inner_finally_ran = true;
+        print("  Inner finally ran");
+    }
+} catch (e2) {
+    caught_outer = true;
+    print("  Outer catch got:", e2);
+}
+
+if (caught_outer && inner_finally_ran) {
+    print("  Exception propagation OK");
+} else {
+    print("  Exception propagation FAILED! caught=", caught_outer, "finally=", inner_finally_ran);
+}
+
+// ============================================
+// Test 5: Closures with upvalues
+// ============================================
+print("\n=== Test 5: Closures with upvalues ===");
+
+def make_counter(start) {
+    var count = start;
+    def increment() {
+        count = count + 1;
+        return count;
+    }
+    return increment;
+}
+
+var counter = make_counter(10);
+var v1 = counter();
+var v2 = counter();
+var v3 = counter();
+
+if (v1 == 11 && v2 == 12 && v3 == 13) {
+    print("  Closures OK:", v1, v2, v3);
+} else {
+    print("  Closures FAILED!", v1, v2, v3);
+}
+
+// Closure capturing multiple variables
+def make_pair_adder(a, b) {
+    def adder(x) {
+        return a + b + x;
+    }
+    return adder;
+}
+
+var pair_add = make_pair_adder(100, 5);
+var r1 = pair_add(10);
+
+if (r1 == 115) {
+    print("  Multi-capture closure OK:", r1);
+} else {
+    print("  Multi-capture closure FAILED! Got:", r1, "expected: 115");
+}
+
+// ============================================
+// Test 6: All math functions
+// ============================================
+print("\n=== Test 6: All math functions ===");
+
+var pi2 = 3.14159265358979;
+var ok_count = 0;
+var total_tests = 0;
+
+def check(name, got, expected, tolerance) {
+    total_tests = total_tests + 1;
+    if (abs(got - expected) < tolerance) {
+        ok_count = ok_count + 1;
+    } else {
+        print("  FAIL:", name, "got:", got, "expected:", expected);
+    }
+}
+
+check("sin(0)", sin(0), 0.0, 0.001);
+check("cos(0)", cos(0), 1.0, 0.001);
+check("tan(0)", tan(0), 0.0, 0.001);
+check("asin(1)", asin(1), pi2/2.0, 0.001);
+check("acos(1)", acos(1), 0.0, 0.001);
+check("atan(1)", atan(1), pi2/4.0, 0.001);
+check("sqrt(16)", sqrt(16), 4.0, 0.001);
+check("abs(-5)", abs(-5), 5.0, 0.001);
+check("floor(3.7)", floor(3.7), 3.0, 0.001);
+check("ceil(3.2)", ceil(3.2), 4.0, 0.001);
+check("log(1)", log(1), 0.0, 0.001);
+check("exp(0)", exp(0), 1.0, 0.001);
+check("pow(2,10)", pow(2,10), 1024.0, 0.001);
+check("atan2(1,1)", atan2(1,1), pi2/4.0, 0.001);
+check("deg(pi)", deg(pi2), 180.0, 0.01);
+check("rad(180)", rad(180), pi2, 0.001);
+
+print("  Math:", ok_count, "/", total_tests, "passed");
+
+print("\n=== All tests done ===");

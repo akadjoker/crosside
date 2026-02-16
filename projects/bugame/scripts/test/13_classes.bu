@@ -1,0 +1,35 @@
+// Test: Classes with methods and inheritance
+class Animal {
+    var name;
+    var sound;
+
+    def init(name, sound) {
+        self.name = name;
+        self.sound = sound;
+    }
+
+    def speak() {
+        return self.name + " says " + self.sound;
+    }
+}
+
+var dog = Animal("Dog", "Woof");
+if (dog.speak() != "Dog says Woof") { throw "basic class"; }
+
+// Inheritance
+class Dog : Animal {
+    var breed;
+
+    def init(name, breed) {
+        super.init(name, "Woof");
+        self.breed = breed;
+    }
+
+    def info() {
+        return self.breed + " " + self.name;
+    }
+}
+
+var rex = Dog("Rex", "Labrador");
+if (rex.speak() != "Rex says Woof") { throw "inherited method"; }
+if (rex.info() != "Labrador Rex") { throw "subclass method"; }

@@ -1,0 +1,621 @@
+print("Car Physics System - Loading...");
+import math;
+
+// ============================================
+// CONSTANTES
+// ============================================
+var KEY_W = 87;
+var KEY_A = 65;
+var KEY_S = 83;
+var KEY_D = 68;
+var KEY_ESCAPE = 256;
+
+var WINDOW_WIDTH = 1024;
+var WINDOW_HEIGHT = 768;
+var WORLD_WIDTH = 2000;
+var WORLD_HEIGHT = 2000;
+
+var camera_x = 0;
+var camera_y = 0;
+var delta_frame = 0;
+var player_x = 0;
+var player_y = 0;
+
+// ============================================
+// FÍSICA - FUNÇÕES DE COLISÃO
+// ============================================
+
+def reflect_velocity(vx, vy, nx, ny)
+{
+    // Reflexão: v' = v - 2(v·n)n
+    var dot = vx * nx + vy * ny;
+    var rx = vx - 2 * dot * nx;
+    var ry = vy - 2 * dot * ny;
+    return [rx, ry];
+}
+
+def apply_collision_response(car1, car2, collision_normal, restitution)
+{
+    // Calcula velocidade relativa
+    var rel_vx = car1.velocity_x - car2.velocity_x;
+    var rel_vy = car1.velocity_y - car2.velocity_y;
+    
+    // Velocidade ao longo da normal
+    var vel_along_normal = rel_vx * collision_normal[0] + rel_vy * collision_normal[1];
+    
+    // Não colidir se estão se afastando
+    if (vel_along_normal > 0)
+    {
+        return;
+    }
+    
+    // Calcular impulso
+    var e = restitution; // Coeficiente de restituição (bounce)
+    var mass1 = car1.mass;
+    var mass2 = car2.mass;
+    
+    var j = -(1 + e) * vel_along_normal;
+    j = j / (1 / mass1 + 1 / mass2);
+    
+    // Aplicar impulso
+    var impulse_x = j * collision_normal[0];
+    var impulse_y = j * collision_normal[1];
+    
+    car1.velocity_x += impulse_x / mass1;
+    car1.velocity_y += impulse_y / mass1;
+    
+    car2.velocity_x -= impulse_x / mass2;
+    car2.velocity_y -= impulse_y / mass2;
+    
+    // Separar carros para evitar overlap
+    var overlap = 0.5;
+    car1.x += collision_normal[0] * overlap;
+    car1.y += collision_normal[1] * overlap;
+    car2.x -= collision_normal[0] * overlap;
+    car2.y -= collision_normal[1] * overlap;
+}
+
+def create_collision_effect(cx, cy, intensity)
+{
+    // Partículas de impacto
+    var sparks = create_emitter(false, 0, int(20 * intensity));
+    sparks.set_position(cx, cy);
+    sparks.set_spread(6.28);
+    sparks.set_speed_range(50, 150 * intensity);
+    sparks.set_life(0.4);
+    sparks.set_size_curve(8, 2);
+    sparks.set_color_curve(Color(255, 200, 100, 255), Color(255, 100, 0, 0));
+    sparks.set_drag(0.88);
+    sparks.set_emission_rate(1000);
+    sparks.set_lifetime(0.04);
+    
+    start_camera_shake(2 * intensity, 2 * intensity, 10, 4 * intensity);
+}
+
+// ============================================
+// CARRO AI
+// ============================================
+process ai_car(spawn_x, spawn_y, car_color)
+{
+    x = spawn_x;
+    y = spawn_y;
+    var width = 40;
+    var height = 24;
+    var angle = math.rand(0, 360);
+    
+    // Física
+    var velocity_x = 0;
+    var velocity_y = 0;
+    var acceleration = 180;
+    var max_speed = 250;
+    var drag = 0.96;
+    var turn_speed = 140;
+    var mass = 1.2;
+    
+    // IA
+    var state = "wander"; // wander, chase, flee
+    var target_angle = angle;
+    var wander_timer = 0;
+    var wander_interval = 2.0;
+    
+    set_rect_shape(-width/2, -height/2, width, height);
+    
+    // Trail de fumo
+    var trail = create_emitter(true, 0, 15);
+    trail.set_spread(2.0);
+    trail.set_speed_range(10, 30);
+    trail.set_life(0.8);
+    trail.set_size_curve(10, 20);
+    trail.set_color_curve(Color(80, 80, 80, 100), Color(60, 60, 60, 0));
+    trail.set_drag(0.9);
+    trail.set_emission_rate(12);
+    
+    loop
+    {
+        var dt = delta_frame;
+        
+        // IA - Decidir comportamento
+        var dist_to_player = get_dist(x, y, player_x, player_y);
+        
+        if (dist_to_player < 300)
+        {
+            state = "chase";
+            target_angle = get_angle(x, y, player_x, player_y);
+        }
+        else
+        {
+            state = "wander";
+            wander_timer += dt;
+            if (wander_timer >= wander_interval)
+            {
+                wander_timer = 0;
+                target_angle = math.rand(0, 360);
+            }
+        }
+        
+        // Virar suavemente em direção ao target
+        var angle_diff = target_angle - angle;
+        while (angle_diff > 180) { angle_diff -= 360; }
+        while (angle_diff < -180) { angle_diff += 360; }
+        
+        var turn_amount = math.clamp(angle_diff, -turn_speed * dt, turn_speed * dt);
+        angle += turn_amount;
+        
+        // Acelerar na direção que está virado
+        var speed = sqrt(velocity_x * velocity_x + velocity_y * velocity_y);
+        
+        if (state == "chase" || state == "wander")
+        {
+            var accel_x = get_distx(angle, acceleration * dt);
+            var accel_y = get_disty(angle, acceleration * dt);
+            velocity_x += accel_x;
+            velocity_y += accel_y;
+        }
+        
+        // Limitar velocidade máxima
+        if (speed > max_speed)
+        {
+            var ratio = max_speed / speed;
+            velocity_x *= ratio;
+            velocity_y *= ratio;
+        }
+        
+        // Aplicar drag
+        velocity_x *= drag;
+        velocity_y *= drag;
+        
+        // Movimento
+        x += velocity_x * dt;
+        y += velocity_y * dt;
+        
+        // Manter no mundo
+        if (x < 50)
+        {
+            x = 50;
+            velocity_x = abs(velocity_x);
+        }
+        if (x > WORLD_WIDTH - 50)
+        {
+            x = WORLD_WIDTH - 50;
+            velocity_x = -abs(velocity_x);
+        }
+        if (y < 50)
+        {
+            y = 50;
+            velocity_y = abs(velocity_y);
+        }
+        if (y > WORLD_HEIGHT - 50)
+        {
+            y = WORLD_HEIGHT - 50;
+            velocity_y = -abs(velocity_y);
+        }
+        
+        // Trail atrás do carro
+        var trail_x = x - get_distx(angle, height/2);
+        var trail_y = y - get_disty(angle, height/2);
+        trail.set_position(trail_x, trail_y);
+        
+        // Colisão com player
+        var hit_player = collision(type player_car, x, y);
+        if (hit_player)
+        {
+            // Calcular normal de colisão
+            var dx = x - hit_player.x;
+            var dy = y - hit_player.y;
+            var dist = sqrt(dx * dx + dy * dy);
+            if (dist < 0.1) { dist = 0.1; }
+            
+            var normal = [dx / dist, dy / dist];
+            
+            // Aplicar bounce com restituição 0.6
+            apply_collision_response(proc(id), hit_player, normal, 0.6);
+            
+            // Efeito visual
+            var collision_x = (x + hit_player.x) / 2;
+            var collision_y = (y + hit_player.y) / 2;
+            create_collision_effect(collision_x, collision_y, 1.2);
+        }
+        
+        // Colisão carro vs carro
+        var other_cars = get_processes(type ai_car);
+        for (var i = 0; i < len(other_cars); i += 1)
+        {
+            var other = other_cars[i];
+            if (other.id == id)
+            {
+                continue; // Não colidir consigo mesmo
+            }
+            
+            var hit = collision_id(other.id, x, y);
+            if (hit)
+            {
+                // Normal de colisão
+                var dx = x - other.x;
+                var dy = y - other.y;
+                var dist = sqrt(dx * dx + dy * dy);
+                if (dist < 0.1) { dist = 0.1; }
+                
+                var normal = [dx / dist, dy / dist];
+                
+                // Bounce carro vs carro (mais suave)
+                apply_collision_response(self, other, normal, 0.5);
+                
+                // Efeito
+                var cx = (x + other.x) / 2;
+                var cy = (y + other.y) / 2;
+                create_collision_effect(cx, cy, 0.8);
+            }
+        }
+        
+        // Desenhar carro
+        set_color(car_color.r, car_color.g, car_color.b);
+        draw_rotated_rectangle(x, y, width, height, angle, true);
+        set_color(255, 255, 255);
+        draw_rotated_rectangle(x, y, width, height, angle, false);
+        
+        // Rodas
+        set_color(40, 40, 40);
+        var wheel_offset = 10;
+        var w1x = x + get_distx(angle + 90, wheel_offset);
+        var w1y = y + get_disty(angle + 90, wheel_offset);
+        var w2x = x + get_distx(angle - 90, wheel_offset);
+        var w2y = y + get_disty(angle - 90, wheel_offset);
+        draw_circle(w1x, w1y, 4, true);
+        draw_circle(w2x, w2y, 4, true);
+        
+        // Indicador de direção
+        set_color(255, 200, 100);
+        var front_x = x + get_distx(angle, height/2 + 8);
+        var front_y = y + get_disty(angle, height/2 + 8);
+        draw_line(x, y, front_x, front_y, 2);
+        
+        // Debug velocidade
+        if (false) // Ativar para debug
+        {
+            set_color(255, 255, 255);
+            draw_text(format("V:{:.0f}", speed), x - 15, y - 30, 10);
+        }
+
+        
+        
+        frame;
+    }
+    
+    trail.stop();
+}
+
+// ============================================
+// PLAYER CAR
+// ============================================
+process player_car()
+{
+    x = WORLD_WIDTH / 2;
+    y = WORLD_HEIGHT / 2;
+    var width = 44;
+    var height = 26;
+    var angle = 0;
+    
+    // Física
+    var velocity_x = 0;
+    var velocity_y = 0;
+    var acceleration = 300;
+    var max_speed = 380;
+    var brake_force = 0.85;
+    var drag = 0.97;
+    var turn_speed = 180;
+    var mass = 1.0;
+    
+    set_rect_shape(-width/2, -height/2, width, height);
+    
+    // Trails
+    var trail_left = create_emitter(true, 0, 20);
+    trail_left.set_spread(1.5);
+    trail_left.set_speed_range(5, 20);
+    trail_left.set_life(0.6);
+    trail_left.set_size_curve(8, 15);
+    trail_left.set_color_curve(Color(100, 100, 100, 120), Color(60, 60, 60, 0));
+    trail_left.set_drag(0.92);
+    trail_left.set_emission_rate(0);
+    
+    var trail_right = create_emitter(true, 0, 20);
+    trail_right.set_spread(1.5);
+    trail_right.set_speed_range(5, 20);
+    trail_right.set_life(0.6);
+    trail_right.set_size_curve(8, 15);
+    trail_right.set_color_curve(Color(100, 100, 100, 120), Color(60, 60, 60, 0));
+    trail_right.set_drag(0.92);
+    trail_right.set_emission_rate(0);
+    
+    loop
+    {
+        var dt = delta_frame;
+        
+        // Controles
+        var input_accel = 0;
+        var input_turn = 0;
+        var is_braking = false;
+        
+        if (key_down(KEY_W))
+        {
+            input_accel = 1;
+        }
+        if (key_down(KEY_S))
+        {
+            is_braking = true;
+        }
+        if (key_down(KEY_A))
+        {
+            input_turn = -1;
+        }
+        if (key_down(KEY_D))
+        {
+            input_turn = 1;
+        }
+        
+        // Física de direção (só vira se estiver movendo)
+        var speed = math.sqrt(velocity_x * velocity_x + velocity_y * velocity_y);
+        
+        if (speed > 20)
+        {
+            angle += input_turn * turn_speed * dt * (speed / max_speed);
+        }
+        
+        // Aceleração
+        if (input_accel > 0)
+        {
+            var accel_x = get_distx(angle, acceleration * dt);
+            var accel_y = get_disty(angle, acceleration * dt);
+            velocity_x += accel_x;
+            velocity_y += accel_y;
+        }
+        
+        // Freio
+        if (is_braking)
+        {
+            velocity_x *= brake_force;
+            velocity_y *= brake_force;
+        }
+        
+        // Limitar velocidade
+        if (speed > max_speed)
+        {
+            var ratio = max_speed / speed;
+            velocity_x *= ratio;
+            velocity_y *= ratio;
+        }
+        
+        // Drag
+        velocity_x *= drag;
+        velocity_y *= drag;
+        
+        // Movimento
+        x += velocity_x * dt;
+        y += velocity_y * dt;
+        
+        // Publicar posição para IA
+        player_x = x;
+        player_y = y;
+        
+        // Limites do mundo
+        x = math.clamp(x, 30, WORLD_WIDTH - 30);
+        y = math.clamp(y, 30, WORLD_HEIGHT - 30);
+        
+        // Trails das rodas
+        var wheel_offset = 11;
+        var trail_offset = -height/2 - 4;
+        
+        var left_x = x + get_distx(angle + 90, wheel_offset) + get_distx(angle, trail_offset);
+        var left_y = y + get_disty(angle + 90, wheel_offset) + get_disty(angle, trail_offset);
+        var right_x = x + get_distx(angle - 90, wheel_offset) + get_distx(angle, trail_offset);
+        var right_y = y + get_disty(angle - 90, wheel_offset) + get_disty(angle, trail_offset);
+        
+        trail_left.set_position(left_x, left_y);
+        trail_right.set_position(right_x, right_y);
+        
+        if (speed > 80)
+        {
+            trail_left.set_emission_rate(25);
+            trail_right.set_emission_rate(25);
+        }
+        else
+        {
+            trail_left.set_emission_rate(0);
+            trail_right.set_emission_rate(0);
+        }
+        
+        // Camera
+        camera_x += (x - camera_x) * 8.0 * dt;
+        camera_y += (y - camera_y) * 8.0 * dt;
+        
+        camera_x = math.clamp(camera_x, WINDOW_WIDTH/2, WORLD_WIDTH - WINDOW_WIDTH/2);
+        camera_y = math.clamp(camera_y, WINDOW_HEIGHT/2, WORLD_HEIGHT - WINDOW_HEIGHT/2);
+        
+        set_scroll(camera_x - WINDOW_WIDTH/2, camera_y - WINDOW_HEIGHT/2);
+        
+        // Desenhar carro do player (azul)
+        set_color(50, 150, 255);
+        draw_rotated_rectangle(x, y, width, height, angle, true);
+        set_color(255, 255, 255);
+        draw_rotated_rectangle(x, y, width, height, angle, false);
+        
+        // Rodas
+        set_color(30, 30, 30);
+        var w1x = x + get_distx(angle + 90, wheel_offset);
+        var w1y = y + get_disty(angle + 90, wheel_offset);
+        var w2x = x + get_distx(angle - 90, wheel_offset);
+        var w2y = y + get_disty(angle - 90, wheel_offset);
+        draw_circle(w1x, w1y, 5, true);
+        draw_circle(w2x, w2y, 5, true);
+        
+        // Faróis
+        set_color(255, 255, 200);
+        var headlight_x = x + get_distx(angle, height/2 + 4);
+        var headlight_y = y + get_disty(angle, height/2 + 4);
+        var hl1x = headlight_x + get_distx(angle + 90, 6);
+        var hl1y = headlight_y + get_disty(angle + 90, 6);
+        var hl2x = headlight_x + get_distx(angle - 90, 6);
+        var hl2y = headlight_y + get_disty(angle - 90, 6);
+        draw_circle(hl1x, hl1y, 3, true);
+        draw_circle(hl2x, hl2y, 3, true);
+        
+        // HUD
+        set_draw_screen(true);
+        set_color(255, 255, 255);
+        draw_text(format("Speed: {:.0f} km/h", speed * 0.5), 20, 20, 20);
+        draw_text("WASD = Drive | ESC = Exit", 20, WINDOW_HEIGHT - 40, 16);
+        
+        // Velocímetro circular
+        var hud_x = WINDOW_WIDTH - 100;
+        var hud_y = WINDOW_HEIGHT - 100;
+        var hud_radius = 60;
+        
+        set_color(40, 40, 40);
+        draw_circle(hud_x, hud_y, hud_radius, true);
+        set_color(255, 255, 255);
+        draw_circle(hud_x, hud_y, hud_radius, false);
+        
+        // Agulha do velocímetro
+        var speed_ratio = math.clamp(speed / max_speed, 0, 1);
+        var needle_angle = -135 + speed_ratio * 270;
+        var needle_x = hud_x + get_distx(needle_angle, hud_radius - 10);
+        var needle_y = hud_y + get_disty(needle_angle, hud_radius - 10);
+        
+        set_color(255, 100, 100);
+        draw_line(hud_x, hud_y, needle_x, needle_y, 3);
+        
+        frame;
+    }
+    
+    trail_left.stop();
+    trail_right.stop();
+}
+
+// ============================================
+// SPAWNER DE AI CARS
+// ============================================
+process ai_spawner()
+{
+    var spawn_timer = 0;
+    var max_cars = 8;
+    
+    var colors = [
+        Color(200, 50, 50),   // Vermelho
+        Color(50, 200, 50),   // Verde
+        Color(200, 200, 50),  // Amarelo
+        Color(200, 100, 200), // Magenta
+        Color(100, 200, 200), // Ciano
+    ];
+    
+    loop
+    {
+        spawn_timer += delta_frame;
+        
+        var car_count = len(get_processes(type ai_car));
+        
+        if (spawn_timer > 3.0 && car_count < max_cars)
+        {
+            spawn_timer = 0;
+            
+            var sx = math.rand(200, WORLD_WIDTH - 200);
+            var sy = math.rand(200, WORLD_HEIGHT - 200);
+            
+            var color = colors[math.irand(0, len(colors) - 1)];
+            ai_car(sx, sy, color);
+        }
+        
+        frame;
+    }
+}
+
+// ============================================
+// BACKGROUND
+// ============================================
+process background()
+{
+    loop
+    {
+        // Grid de fundo
+        set_color(30, 60, 30);
+        draw_rectangle(0, 0, WORLD_WIDTH, WORLD_HEIGHT, true);
+        
+        // Linhas de grid
+        set_color(40, 70, 40);
+        var grid_size = 100;
+        
+        for (var gx = 0; gx < WORLD_WIDTH; gx += grid_size)
+        {
+            draw_line(gx, 0, gx, WORLD_HEIGHT, 1);
+        }
+        for (var gy = 0; gy < WORLD_HEIGHT; gy += grid_size)
+        {
+            draw_line(0, gy, WORLD_WIDTH, gy, 1);
+        }
+        
+        frame;
+    }
+}
+
+// ============================================
+// SETUP
+// ============================================
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Car Physics - Bounce System");
+init_collision(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+// Criar partícula
+var img_data = Image(8, 8);
+for (var py = 0; py < 8; py += 1)
+{
+    for (var px = 0; px < 8; px += 1)
+    {
+        var dx = px - 4;
+        var dy = py - 4;
+        var dist = math.sqrt(dx * dx + dy * dy);
+        if (dist < 4)
+        {
+            var alpha = int(255 * (1.0 - dist / 4.0));
+            img_data.set_pixel(px, py, Color(255, 255, 255, alpha));
+        }
+    }
+}
+load_image(img_data);
+
+background();
+player_car();
+ai_spawner();
+
+print("Car physics system initialized!");
+print("Try bumping into AI cars!");
+
+loop
+{
+    delta_frame = delta();
+    
+    if (key_down(KEY_ESCAPE))
+    {
+        let_me_alone();
+        break;
+    }
+    
+    frame;
+}

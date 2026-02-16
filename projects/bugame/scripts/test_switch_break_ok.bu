@@ -1,0 +1,81 @@
+print("=== test_switch_break_ok ===");
+
+var KEY_ESCAPE = 256;
+var TEST_DONE = false;
+
+process test_switch_ok()
+{
+    var i = 0;
+    var sum = 0;
+    var inner_breaks = 0;
+
+    loop
+    {
+        i += 1;
+
+        switch (i)
+        {
+            case 1:
+                sum += 10;
+
+            case 2:
+                sum += 20;
+
+            case 3:
+            {
+                var k = 0;
+                loop
+                {
+                    k += 1;
+
+                    if (k >= 2)
+                    {
+                        // Allowed: breaks only the inner loop.
+                        break;
+                    }
+
+                    frame;
+                }
+
+                inner_breaks += 1;
+            }
+
+            default:
+                sum += 1000;
+        }
+
+        if (i >= 3)
+        {
+            if (sum == 30 && inner_breaks == 1)
+            {
+                print("PASS: switch auto-exit + break only in inner loop");
+            }
+            else
+            {
+                print(format("FAIL: sum={} inner_breaks={}", sum, inner_breaks));
+            }
+
+            TEST_DONE = true;
+            break;
+        }
+
+        frame;
+    }
+}
+
+test_switch_ok();
+
+loop
+{
+    if (TEST_DONE)
+    {
+        break;
+    }
+
+    if (key_down(KEY_ESCAPE))
+    {
+        break;
+    }
+
+    frame;
+}

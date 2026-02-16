@@ -1,0 +1,21 @@
+// Test: Comparison and logical operators
+if (!(1 < 2)) { throw "<"; }
+if (!(2 > 1)) { throw ">"; }
+if (!(2 <= 2)) { throw "<="; }
+if (!(3 >= 3)) { throw ">="; }
+if (!(5 == 5)) { throw "=="; }
+if (!(5 != 6)) { throw "!="; }
+
+// Logical
+if (!(true && true)) { throw "and true"; }
+if (true && false) { throw "and false"; }
+if (!true || !false) { } else { throw "or"; }
+if (!!true != true) { throw "not not"; }
+
+// Short circuit
+var x = 0;
+if (false && (x = 1) == 1) { }
+if (x != 0) { throw "short circuit &&"; }
+
+if (true || (x = 1) == 1) { }
+if (x != 0) { throw "short circuit ||"; }

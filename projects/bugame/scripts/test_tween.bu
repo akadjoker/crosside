@@ -1,0 +1,189 @@
+print("=== Tween Test ===");
+import math;
+include "tween.bu";
+
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+var KEY_SPACE = 32;
+var KEY_RETURN = 257;
+var KEY_ESCAPE = 256;
+
+var WINDOW_WIDTH = 960;
+var WINDOW_HEIGHT = 640;
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Bu Tween Test");
+
+var EASES = [
+    "linear",
+    "sine_in", "sine_out", "sine_in_out",
+    "quad_in", "quad_out", "quad_in_out",
+    "cubic_in", "cubic_out", "cubic_in_out",
+    "expo_in", "expo_out", "expo_in_out",
+    "circ_in", "circ_out", "circ_in_out",
+    "back_in", "back_out", "back_in_out",
+    "elastic_in", "elastic_out", "elastic_in_out",
+    "bounce_in", "bounce_out", "bounce_in_out"
+];
+
+var ease_index = 0;
+var duration = 1.2;
+var x_start = 120;
+var x_end = 840;
+var y_lane = 130;
+var auto_pingpong = true;
+var forward = true;
+
+var tw = Tween(x_start, x_end, duration, EASES[ease_index]);
+
+loop
+{
+   
+    var dt = delta();
+
+    if (key_pressed(KEY_LEFT))
+    {
+        ease_index -= 1;
+        if (ease_index < 0)
+        {
+            ease_index = len(EASES) - 1;
+        }
+
+        if (forward)
+        {
+            tw.start(x_start, x_end, duration, EASES[ease_index]);
+        }
+        else
+        {
+            tw.start(x_end, x_start, duration, EASES[ease_index]);
+        }
+    }
+
+    if (key_pressed(KEY_RIGHT))
+    {
+        ease_index += 1;
+        if (ease_index >= len(EASES))
+        {
+            ease_index = 0;
+        }
+
+        if (forward)
+        {
+            tw.start(x_start, x_end, duration, EASES[ease_index]);
+        }
+        else
+        {
+            tw.start(x_end, x_start, duration, EASES[ease_index]);
+        }
+    }
+
+    if (key_pressed(KEY_SPACE))
+    {
+        tw.restart();
+    }
+
+    if (key_pressed(KEY_RETURN))
+    {
+        auto_pingpong = !auto_pingpong;
+    }
+
+    if (key_pressed(KEY_ESCAPE))
+    {
+        close_window();
+    }
+
+    var x_ball = tw.update(dt);
+
+    if (tw.done() && auto_pingpong)
+    {
+        forward = !forward;
+        if (forward)
+        {
+            tw.start(x_start, x_end, duration, EASES[ease_index]);
+        }
+        else
+        {
+            tw.start(x_end, x_start, duration, EASES[ease_index]);
+        }
+    }
+
+    set_color(18, 22, 28);
+    draw_rectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, true);
+
+    // Motion lane
+    set_color(70, 80, 95);
+    draw_line(x_start, y_lane, x_end, y_lane);
+    draw_line(x_start, y_lane - 10, x_start, y_lane + 10);
+    draw_line(x_end, y_lane - 10, x_end, y_lane + 10);
+
+    set_color(130, 220, 130);
+    draw_circle(x_start, y_lane, 8, true);
+    set_color(220, 130, 130);
+    draw_circle(x_end, y_lane, 8, true);
+
+    set_color(255, 220, 80);
+    draw_circle(x_ball, y_lane, 15, true);
+
+    // Easing graph
+    var gx = 90;
+    var gy = 220;
+    var gw = 780;
+    var gh = 320;
+
+    set_color(35, 42, 52);
+    draw_rectangle(gx, gy, gw, gh, true);
+    set_color(90, 100, 115);
+    draw_rectangle(gx, gy, gw, gh, false);
+
+    set_color(55, 65, 78);
+    draw_line(gx, gy + gh, gx + gw, gy + gh);
+    draw_line(gx, gy, gx, gy + gh);
+
+    var i = 1;
+    var prev_t = 0.0;
+    var prev_e = tw._ease(0.0);
+    while (i <= 120)
+    {
+        var t = i / 120.0;
+        var e = tw._ease(t);
+
+        var x1 = gx + prev_t * gw;
+        var y1 = gy + gh - prev_e * gh;
+        var x2 = gx + t * gw;
+        var y2 = gy + gh - e * gh;
+
+        set_color(120, 210, 255);
+        draw_line(x1, y1, x2, y2);
+
+        prev_t = t;
+        prev_e = e;
+        i += 1;
+    }
+
+    var progress = tw.elapsed / tw.duration;
+    if (progress < 0) progress = 0;
+    if (progress > 1) progress = 1;
+
+    var pxe = gx + progress * gw;
+    var pye = gy + gh - tw._ease(progress) * gh;
+    set_color(255, 200, 70);
+    draw_circle(pxe, pye, 6, true);
+
+    set_color(235, 235, 235);
+    draw_text("Tween Test", 20, 18, 30);
+    draw_text("Ease: " + EASES[ease_index], 20, 52, 24);
+    draw_text("Progress: " + progress, 20, 82, 20);
+
+    if (auto_pingpong)
+    {
+        draw_text("Auto ping-pong: ON", 20, 108, 18);
+    }
+    else
+    {
+        draw_text("Auto ping-pong: OFF", 20, 108, 18);
+    }
+
+    draw_text("LEFT/RIGHT = change ease", 20, 570, 18);
+    draw_text("SPACE = restart   ENTER = auto   ESC = exit", 20, 596, 18);
+
+    frame;
+}

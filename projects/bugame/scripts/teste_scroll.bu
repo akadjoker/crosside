@@ -1,0 +1,197 @@
+print("=== Teste Scroll com Layers ===");
+
+var KEY_RIGHT = 262;
+var KEY_LEFT  = 263;
+var KEY_DOWN  = 264;
+var KEY_UP    = 265;
+
+var WINDOW_WIDTH  = 800;
+var WINDOW_HEIGHT = 600;
+
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Teste Scroll - Layers Parallax");
+init_collision(0, 0, 3000, 3000);
+
+// Carregar graficos
+var g_ball    = load_graph("assets/ball.png");
+var g_ship    = load_graph("assets/ship.png");
+var g_orb     = load_graph("assets/Orb.png");
+var g_texture = load_graph("assets/texture.png");
+
+print("ball=" + g_ball + " ship=" + g_ship + " orb=" + g_orb);
+
+// Definir tamanho do mundo para todas as layers (-1 = todas)
+set_layer_size(-1, 0, 0, 3000, 3000);
+
+// Layer 0: fundo lento (parallax 0.3)
+set_layer_scroll_factor(0, 0.3, 0.3);
+
+// Layer 1: meio (parallax 0.6)
+set_layer_scroll_factor(1, 0.6, 0.6);
+
+// Layer 2: frente (scroll normal 1.0, onde vive o player)
+set_layer_scroll_factor(2, 1.0, 1.0);
+
+// Processo para objectos de fundo (layer 0 - scroll lento)
+process bg_star(start_x, start_y)
+{
+    x = start_x;
+    y = start_y;
+    z = 0;
+    graph = g_orb;
+    size = 50;
+    red = 100;
+    green = 100;
+    blue = 200;
+
+    loop
+    {
+        angle += 1;
+        frame;
+    }
+}
+
+// Processo para objectos no meio (layer 1 - scroll medio)
+process mid_object(start_x, start_y)
+{
+    x = start_x;
+    y = start_y;
+    z = 1;
+    graph = g_texture;
+    size = 80;
+    red = 200;
+    green = 200;
+    blue = 100;
+
+    loop
+    {
+        angle -= 1;
+        frame;
+    }
+}
+
+// Processo para objectos na frente (layer 2 - scroll normal, com colisao)
+process front_object(start_x, start_y)
+{
+    x = start_x;
+    y = start_y;
+    z = 2;
+    graph = g_ball;
+    size = 100;
+
+    set_circle_shape(20);
+    enable_collision();
+
+    var hit = false;
+
+    loop
+    {
+        var col = collision("player", x, y);
+        if (col != -1)
+        {
+            red = 255;
+            green = 0;
+            blue = 0;
+            hit = true;
+        }
+        elif (hit)
+        {
+            red = 255;
+            green = 255;
+            blue = 255;
+            hit = false;
+        }
+        frame;
+    }
+}
+
+// Player - controla o scroll
+process player()
+{
+    x = 400;
+    y = 300;
+    z = 2;
+    graph = g_ship;
+    size = 100;
+
+    set_circle_shape(25);
+    enable_collision();
+
+    var scroll_x = 0;
+    var scroll_y = 0;
+    var move_speed = 200;
+    var collisions = 0;
+
+    loop
+    {
+        var dt = delta();
+
+        if (key_down(KEY_LEFT))
+        {
+            x -= move_speed * dt;
+        }
+        if (key_down(KEY_RIGHT))
+        {
+            x += move_speed * dt;
+        }
+        if (key_down(KEY_UP))
+        {
+            y -= move_speed * dt;
+        }
+        if (key_down(KEY_DOWN))
+        {
+            y += move_speed * dt;
+        }
+
+        // Testar colisao do player
+        var hit = collision("front_object", x, y);
+        if (hit != -1)
+        {
+            collisions += 1;
+        }
+
+        // Scroll segue o player
+        scroll_x = x - WINDOW_WIDTH / 2;
+        scroll_y = y - WINDOW_HEIGHT / 2;
+        set_scroll(scroll_x, scroll_y);
+
+        // Debug HUD
+        set_color(255, 255, 255);
+   
+        draw_text("Scroll: " + int(scroll_x) + ", " + int(scroll_y), 10, 10, 16);
+        draw_text("Player: " + int(x) + ", " + int(y), 10, 30, 16);
+        draw_text("Collisions: " + collisions, 10, 50, 16);
+        draw_text("Layer 0: factor 0.3 | Layer 1: factor 0.6 | Layer 2: factor 1.0", 10, 80, 14);
+        draw_text("Setas para mover - Toca nas bolas para testar colisao", 10, 100, 14);
+
+        frame;
+    }
+}
+
+// Criar objectos no fundo (layer 0) - espalhados
+var i = 0;
+while (i < 15)
+{
+    bg_star(i * 150 - 200, 100 + (i % 3) * 200);
+    i += 1;
+}
+
+// Criar objectos no meio (layer 1) - espalhados
+i = 0;
+while (i < 10)
+{
+    mid_object(i * 200 - 100, 150 + (i % 2) * 300);
+    i += 1;
+}
+
+// Criar objectos na frente (layer 2) - espalhados
+i = 0;
+while (i < 8)
+{
+    front_object(i * 250, 200 + (i % 3) * 150);
+    i += 1;
+}
+
+// Criar o player
+player();
+

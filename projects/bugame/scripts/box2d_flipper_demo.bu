@@ -1,0 +1,143 @@
+print("Box2D Flipper Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_Z = 90;
+var KEY_X = 88;
+var KEY_SPACE = 32;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D Flipper Demo");
+create_world(0, 14.0);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16);
+
+// Static arena
+var base_def = create_bodydef(BODY_STATIC);
+base_def.set_position(640, 700);
+var base_fx = create_fixture_def();
+base_fx.set_box_shape(640, 20);
+var base = create_body(base_def);
+base.add_fixture(base_fx);
+
+var wall_l_def = create_bodydef(BODY_STATIC);
+wall_l_def.set_position(18, 360);
+var wall_l_fx = create_fixture_def();
+wall_l_fx.set_box_shape(18, 360);
+var wall_l = create_body(wall_l_def);
+wall_l.add_fixture(wall_l_fx);
+
+var wall_r_def = create_bodydef(BODY_STATIC);
+wall_r_def.set_position(1262, 360);
+var wall_r_fx = create_fixture_def();
+wall_r_fx.set_box_shape(18, 360);
+var wall_r = create_body(wall_r_def);
+wall_r.add_fixture(wall_r_fx);
+
+var ramp_def = create_bodydef(BODY_STATIC);
+ramp_def.set_position(0, 0);
+var ramps = create_body(ramp_def);
+ramps.add_edge(40, 640, 260, 500);
+ramps.add_edge(1240, 640, 1020, 500);
+
+// Left flipper
+var left_flipper_def = create_bodydef(BODY_DYNAMIC);
+left_flipper_def.set_position(470, 620);
+left_flipper_def.set_angle(-18);
+left_flipper_def.set_angular_damping(0.6);
+var left_flipper_fx = create_fixture_def();
+left_flipper_fx.set_density(1.5);
+left_flipper_fx.set_friction(0.5);
+left_flipper_fx.set_restitution(0.1);
+left_flipper_fx.set_box_shape(62, 10);
+var left_flipper = create_body(left_flipper_def);
+left_flipper.add_fixture(left_flipper_fx);
+
+var left_hinge_def = RevoluteJointDef();
+left_hinge_def.initialize(base, left_flipper, 410, 620);
+left_hinge_def.set_enable_limit(true);
+left_hinge_def.set_limits(-28, 24);
+left_hinge_def.set_enable_motor(true);
+left_hinge_def.set_max_motor_torque(160000);
+left_hinge_def.set_motor_speed(-260);
+left_hinge_def.set_collide_connected(false);
+var left_hinge = RevoluteJoint(left_hinge_def);
+
+// Right flipper
+var right_flipper_def = create_bodydef(BODY_DYNAMIC);
+right_flipper_def.set_position(810, 620);
+right_flipper_def.set_angle(18);
+right_flipper_def.set_angular_damping(0.6);
+var right_flipper_fx = create_fixture_def();
+right_flipper_fx.set_density(1.5);
+right_flipper_fx.set_friction(0.5);
+right_flipper_fx.set_restitution(0.1);
+right_flipper_fx.set_box_shape(62, 10);
+var right_flipper = create_body(right_flipper_def);
+right_flipper.add_fixture(right_flipper_fx);
+
+var right_hinge_def = RevoluteJointDef();
+right_hinge_def.initialize(base, right_flipper, 870, 620);
+right_hinge_def.set_enable_limit(true);
+right_hinge_def.set_limits(-24, 28);
+right_hinge_def.set_enable_motor(true);
+right_hinge_def.set_max_motor_torque(160000);
+right_hinge_def.set_motor_speed(260);
+right_hinge_def.set_collide_connected(false);
+var right_hinge = RevoluteJoint(right_hinge_def);
+
+var ball_counter = 0;
+
+loop
+{
+    var dt = delta();
+
+    if (key_down(KEY_Z))
+    {
+        left_hinge.set_motor_speed(920);
+    }
+    else
+    {
+        left_hinge.set_motor_speed(-260);
+    }
+
+    if (key_down(KEY_X))
+    {
+        right_hinge.set_motor_speed(-920);
+    }
+    else
+    {
+        right_hinge.set_motor_speed(260);
+    }
+
+    if (key_pressed(KEY_SPACE))
+    {
+        var ball_def = create_bodydef(BODY_DYNAMIC);
+        ball_def.set_position(640, 120);
+        ball_def.set_linear_damping(0.03);
+        ball_def.set_angular_damping(0.03);
+
+        var ball_fx = create_fixture_def();
+        ball_fx.set_density(0.85);
+        ball_fx.set_friction(0.22);
+        ball_fx.set_restitution(0.35);
+        ball_fx.set_circle_shape(14);
+
+        var b = create_body(ball_def);
+        b.add_fixture(ball_fx);
+        ball_counter += 1;
+    }
+
+    update_world(dt);
+
+    draw_text("Flipper Demo: Z left | X right | SPACE spawn ball", 20, 20, 20);
+    draw_text("Bodies: " + str(get_body_count()) + " | Balls spawned: " + str(ball_counter), 20, 44, 20);
+    draw_fps(20, 68);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}

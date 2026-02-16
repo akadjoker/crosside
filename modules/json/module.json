@@ -1,0 +1,58 @@
+{
+	"module":"json",
+	"about":" ",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":[""],
+    "static":true,
+    "priority":0,
+	"system":["linux","android","emscripten","windows"],
+	"src":[ "src/dump.c",
+ "src/error.c",
+ "src/hashtable.c",
+ "src/load.c",
+ "src/memory.c",
+ "src/pack_unpack.c",
+ "src/strbuffer.c",
+ "src/strconv.c",
+ "src/utf.c",
+ "src/value.c"],
+	"include":[""],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":" ",
+ 	   "CC_ARGS":"  ",
+ 	   "LD_ARGS":"",
+	   "src":[""],
+	   "include":[""]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "emscripten":
+	  {
+	   "template":"",
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  }
+      }
+}  
+

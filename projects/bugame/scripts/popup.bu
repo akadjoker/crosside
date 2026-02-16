@@ -1,0 +1,268 @@
+var POPUP_EVENT_NONE = 0;
+var POPUP_EVENT_CONFIRM = 1;
+var POPUP_EVENT_CANCEL = 2;
+
+def popup_point_in_rect(px, py, rx, ry, rw, rh)
+{
+    return (px >= rx && px <= rx + rw && py >= ry && py <= ry + rh);
+}
+
+class PopupDefinition
+{
+    var name;
+    var action;
+    var title;
+    var message;
+    var yes_text;
+    var no_text;
+
+    def init(_name, _action, _title, _message, _yes_text, _no_text)
+    {
+        self.name = _name;
+        self.action = _action;
+        self.title = _title;
+        self.message = _message;
+        self.yes_text = _yes_text;
+        self.no_text = _no_text;
+    }
+}
+
+class PopupManager
+{
+    var defs;
+    var open;
+    var just_opened;
+    var anim;
+    var tween;
+    var action;
+    var title;
+    var message;
+    var yes_text;
+    var no_text;
+    var last_event_type;
+    var last_event_action;
+
+    def init()
+    {
+        self.defs = [];
+        self.open = false;
+        self.just_opened = false;
+        self.anim = 0.0;
+        self.tween = Tween(0, 0, 0.001, "linear");
+        self.action = 0;
+        self.title = "";
+        self.message = "";
+        self.yes_text = "YES";
+        self.no_text = "CANCEL";
+        self.last_event_type = POPUP_EVENT_NONE;
+        self.last_event_action = 0;
+    }
+
+    def register_popup(_name, _action, _title, _message, _yes_text, _no_text)
+    {
+        self.defs.push(PopupDefinition(_name, _action, _title, _message, _yes_text, _no_text));
+    }
+
+    def _find_popup_index(_name)
+    {
+        for (var i = 0; i < len(self.defs); i += 1)
+        {
+            if (self.defs[i].name == _name)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    def open_custom(_action, _title, _message, _yes_text, _no_text)
+    {
+        self.action = _action;
+        self.title = _title;
+        self.message = _message;
+        self.yes_text = _yes_text;
+        self.no_text = _no_text;
+        self.open = true;
+        self.just_opened = true;
+        self.last_event_type = POPUP_EVENT_NONE;
+        self.tween.start(self.anim, 1.0, 0.22, "back_out");
+    }
+
+    def open_popup(_name)
+    {
+        var idx = self._find_popup_index(_name);
+        if (idx < 0)
+        {
+            return false;
+        }
+
+        var p = self.defs[idx];
+        self.open_custom(p.action, p.title, p.message, p.yes_text, p.no_text);
+        return true;
+    }
+
+    def close_popup()
+    {
+        self.open = false;
+        self.just_opened = false;
+        self.tween.start(self.anim, 0.0, 0.16, "sine_in");
+    }
+
+    def step(_dt)
+    {
+        self.anim = self.tween.update(_dt);
+
+        if (!self.open && self.anim < 0.001 && self.action != 0)
+        {
+            self.action = 0;
+            self.title = "";
+            self.message = "";
+        }
+    }
+
+    def is_blocking()
+    {
+        return (self.open || self.anim > 0.001);
+    }
+
+    def _compute_layout(_screen_w, _screen_h)
+    {
+        var box_w = 430;
+        var box_h = 165;
+        var box_x = _screen_w / 2 - box_w / 2;
+        var box_y = _screen_h / 2 - box_h / 2 + (1 - self.anim) * 80;
+        var yes_x = box_x + 24;
+        var no_x = box_x + box_w - 174;
+        var btn_y = box_y + box_h - 54;
+        var btn_w = 150;
+        var btn_h = 34;
+
+        return [box_x, box_y, box_w, box_h, yes_x, no_x, btn_y, btn_w, btn_h];
+    }
+
+    def draw(_screen_w, _screen_h, _mx, _my)
+    {
+        if (self.anim <= 0.001)
+        {
+            return;
+        }
+
+        var layout = self._compute_layout(_screen_w, _screen_h);
+        var box_x = layout[0];
+        var box_y = layout[1];
+        var box_w = layout[2];
+        var box_h = layout[3];
+        var yes_x = layout[4];
+        var no_x = layout[5];
+        var btn_y = layout[6];
+        var btn_w = layout[7];
+        var btn_h = layout[8];
+
+        set_color(0, 0, 0);
+        set_alpha(int(170 * self.anim));
+        draw_rectangle(0, 0, _screen_w, _screen_h, true);
+        set_alpha(255);
+
+        set_color(34, 36, 44);
+        draw_rectangle(box_x, box_y, box_w, box_h, true);
+        set_color(220, 220, 225);
+        draw_rectangle(box_x, box_y, box_w, box_h, false);
+
+        set_color(255, 255, 255);
+        draw_text(self.title, box_x + 20, box_y + 20, 28);
+        draw_text(self.message, box_x + 20, box_y + 64, 20);
+
+        var over_yes = popup_point_in_rect(_mx, _my, yes_x, btn_y, btn_w, btn_h);
+        var over_no = popup_point_in_rect(_mx, _my, no_x, btn_y, btn_w, btn_h);
+
+        if (over_yes)
+        {
+            set_color(76, 120, 84);
+        }
+        else
+        {
+            set_color(56, 88, 64);
+        }
+        draw_rectangle(yes_x, btn_y, btn_w, btn_h, true);
+
+        if (over_no)
+        {
+            set_color(132, 78, 78);
+        }
+        else
+        {
+            set_color(96, 58, 58);
+        }
+        draw_rectangle(no_x, btn_y, btn_w, btn_h, true);
+
+        set_color(230, 230, 235);
+        draw_rectangle(yes_x, btn_y, btn_w, btn_h, false);
+        draw_rectangle(no_x, btn_y, btn_w, btn_h, false);
+        draw_text(self.yes_text, yes_x + 52, btn_y + 8, 20);
+        draw_text(self.no_text, no_x + 34, btn_y + 8, 20);
+    }
+
+    def process_input(_screen_w, _screen_h, _mx, _my, _key_return, _key_escape)
+    {
+        if (!(self.open && self.anim > 0.95))
+        {
+            return;
+        }
+
+        if (self.just_opened)
+        {
+            self.just_opened = false;
+            return;
+        }
+
+        var layout = self._compute_layout(_screen_w, _screen_h);
+        var yes_x = layout[4];
+        var no_x = layout[5];
+        var btn_y = layout[6];
+        var btn_w = layout[7];
+        var btn_h = layout[8];
+
+        var over_yes = popup_point_in_rect(_mx, _my, yes_x, btn_y, btn_w, btn_h);
+        var over_no = popup_point_in_rect(_mx, _my, no_x, btn_y, btn_w, btn_h);
+
+        var confirm = false;
+        var cancel = false;
+
+        if (key_pressed(_key_return))
+        {
+            confirm = true;
+        }
+        if (key_pressed(_key_escape))
+        {
+            cancel = true;
+        }
+        if (mouse_pressed(0) && over_yes)
+        {
+            confirm = true;
+        }
+        if (mouse_pressed(0) && over_no)
+        {
+            cancel = true;
+        }
+
+        if (confirm)
+        {
+            self.last_event_type = POPUP_EVENT_CONFIRM;
+            self.last_event_action = self.action;
+            self.close_popup();
+        }
+        elif (cancel)
+        {
+            self.last_event_type = POPUP_EVENT_CANCEL;
+            self.last_event_action = self.action;
+            self.close_popup();
+        }
+    }
+
+    def consume_event()
+    {
+        var event_type = self.last_event_type;
+        self.last_event_type = POPUP_EVENT_NONE;
+        return event_type;
+    }
+}

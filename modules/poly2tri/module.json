@@ -1,0 +1,49 @@
+{
+	"module":"poly2tri",
+	"about":" ",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":[""],
+        "static":true,
+            "priority":0,
+	"system":["linux","android","emscripten","windows"],
+	"src":["src/sweep/advancing_front.cc","src/sweep/cdt.cc","src/sweep/sweep.cc","src/sweep/sweep_context.cc","src/common/shapes.cc"],
+	"include":["include/shapes","include/common"],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":"-fexceptions",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	   "src":[""],
+	   "include":[""]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":"-fexceptions",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":"-fexceptions",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "emscripten":
+	  {
+	   "template":"",
+ 	   "CPP_ARGS":"-fexceptions",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  }
+      }
+}  
+

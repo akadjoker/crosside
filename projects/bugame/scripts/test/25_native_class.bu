@@ -1,0 +1,62 @@
+// Test: Native classes (C++ class exposed to script)
+// Accumulator(startValue) - native class with methods and properties
+
+// Constructor + property read
+var a = Accumulator(0);
+if (abs(a.value - 0.0) > 0.01) { throw "ctor value"; }
+if (a.count != 0) { throw "ctor count"; }
+
+// Method calls with return value
+var r = a.add(10);
+if (abs(r - 10.0) > 0.01) { throw "add return"; }
+if (abs(a.value - 10.0) > 0.01) { throw "add property"; }
+if (a.count != 1) { throw "add count"; }
+
+// Multiple operations
+a.add(5);
+a.sub(3);
+if (abs(a.value - 12.0) > 0.01) { throw "multi ops"; }
+if (a.count != 3) { throw "multi count"; }
+
+// Property write (value has a setter)
+a.value = 100.0;
+if (abs(a.value - 100.0) > 0.01) { throw "set value"; }
+
+// Reset method (no return)
+a.reset();
+if (abs(a.value - 0.0) > 0.01) { throw "reset value"; }
+if (a.count != 0) { throw "reset count"; }
+
+// Multi-return method: get_stats() returns (value, min, max)
+a.add(10);
+a.add(20);
+a.sub(5);
+var (val, mn, mx) = a.get_stats();
+if (abs(val - 25.0) > 0.01) { throw "stats val"; }
+if (abs(mn - 0.0) > 0.01) { throw "stats min"; }
+if (abs(mx - 30.0) > 0.01) { throw "stats max"; }
+
+// Multiple instances are independent
+var a1 = Accumulator(100);
+var a2 = Accumulator(200);
+a1.add(1);
+a2.add(2);
+if (abs(a1.value - 101.0) > 0.01) { throw "instance 1"; }
+if (abs(a2.value - 202.0) > 0.01) { throw "instance 2"; }
+
+// Use native class in control flow
+var acc = Accumulator(0);
+for (var i = 1; i <= 10; i++) {
+    acc.add(i);
+}
+if (abs(acc.value - 55.0) > 0.01) { throw "loop add"; }
+if (acc.count != 10) { throw "loop count"; }
+
+// Store in array
+var items = [Accumulator(1), Accumulator(2), Accumulator(3)];
+items[0].add(10);
+items[1].add(20);
+items[2].add(30);
+if (abs(items[0].value - 11.0) > 0.01) { throw "array elem 0"; }
+if (abs(items[1].value - 22.0) > 0.01) { throw "array elem 1"; }
+if (abs(items[2].value - 33.0) > 0.01) { throw "array elem 2"; }

@@ -1,0 +1,354 @@
+include "app_core.bu";
+include "survive.bu";
+
+var STAGE_MENU = 10;
+var STAGE_GAME = 20;
+var STAGE_CREDITS = 30;
+
+class DemoMenuScreen : Screen
+{
+    var app;
+    var intro;
+    var leaving;
+    var next_stage;
+    var menu_index;
+    var menu_hover;
+    var items_t;
+
+    def init(_app)
+    {
+        super.init("Menu");
+        self.app = _app;
+        self.set_stage(STAGE_MENU);
+        self.intro = Tween(0, 1, 0.001, "linear");
+        self.leaving = false;
+        self.next_stage = -1;
+        self.menu_index = 0;
+        self.menu_hover = -1;
+        self.items_t = 0.0;
+    }
+
+    def enter()
+    {
+        self.leaving = false;
+        self.next_stage = -1;
+        self.intro.start(0, 1, 0.65, "sine_out");
+        self.items_t = 0.0;
+    }
+
+    def start_leave(_stage)
+    {
+        if (self.leaving)
+        {
+            return;
+        }
+
+        self.leaving = true;
+        self.next_stage = _stage;
+        self.intro.start(self.items_t, 0, 0.32, "sine_in");
+    }
+
+    def _draw_item(_index, _x, _y, _w, _h)
+    {
+        if (self.menu_index == _index)
+        {
+            set_color(88, 120, 170);
+        }
+        else
+        {
+            set_color(52, 62, 84);
+        }
+        draw_rectangle(_x, _y, _w, _h, true);
+
+        set_color(220, 225, 235);
+        draw_rectangle(_x, _y, _w, _h, false);
+
+        if (_index == 0)
+        {
+            draw_text("PLAY", _x + 86, _y + 10, 24);
+        }
+        if (_index == 1)
+        {
+            draw_text("CREDITS", _x + 62, _y + 10, 24);
+        }
+        if (_index == 2)
+        {
+            draw_text("EXIT", _x + 90, _y + 10, 24);
+        }
+    }
+
+    def update(_dt)
+    {
+       
+        var t = self.intro.update(_dt);
+        self.items_t = t;
+
+        set_color(24, 27, 36);
+        draw_rectangle(0, 0, self.app.width, self.app.height, true);
+
+        set_color(255, 235, 120);
+        draw_text("BU GAME", 44, 40 + (1 - t) * 24, 46);
+
+        set_color(210, 215, 225);
+        draw_text("Menu demo com Stages + Popup", 46, 94 + (1 - t) * 16, 22);
+
+        var version_t = t - 0.24;
+        if (version_t < 0)
+        {
+            version_t = 0;
+        }
+        if (version_t > 1)
+        {
+            version_t = 1;
+        }
+
+        var by_t = t - 0.36;
+        if (by_t < 0)
+        {
+            by_t = 0;
+        }
+        if (by_t > 1)
+        {
+            by_t = 1;
+        }
+
+        set_alpha(int(255 * version_t));
+        set_color(170, 178, 196);
+        var version_text = "Version 0.1.0";
+        var version_size = 16;
+        var version_w = get_text_width(version_text, version_size);
+        var version_x = self.app.width - 20 - version_w + (1 - version_t) * 38;
+        draw_text(version_text, version_x, self.app.height - 28 + (1 - version_t) * 14, version_size);
+
+        set_alpha(int(255 * by_t));
+        set_color(200, 210, 228);
+        var by_text = "by Luis Santos AKA djoker";
+        var by_size = 16;
+        draw_text(by_text, 20 - (1 - by_t) * 38, self.app.height - 28 + (1 - by_t) * 14, by_size);
+        set_alpha(255);
+
+        var btn_x = self.app.width / 2 - 120;
+        var btn_w = 240;
+        var btn_h = 42;
+        var base_y = 240;
+        var gap = 54;
+
+        var menu_t = self.items_t;
+        if (menu_t < 0)
+        {
+            menu_t = 0;
+        }
+        if (menu_t > 1)
+        {
+            menu_t = 1;
+        }
+
+        self.menu_hover = -1;
+        for (var i = 0; i < 3; i += 1)
+        {
+            var item_t = menu_t - i * 0.16;
+            if (item_t < 0)
+            {
+                item_t = 0;
+            }
+            if (item_t > 1)
+            {
+                item_t = 1;
+            }
+
+            var by = base_y + i * gap + (1 - item_t) * 36;
+            if (item_t > 0.6 && app_point_in_rect(self.app.mx, self.app.my, btn_x, by, btn_w, btn_h))
+            {
+                self.menu_hover = i;
+            }
+        }
+
+        if (self.menu_hover != -1)
+        {
+            self.menu_index = self.menu_hover;
+        }
+
+        for (var j = 0; j < 3; j += 1)
+        {
+            var draw_t = menu_t - j * 0.16;
+            if (draw_t < 0)
+            {
+                draw_t = 0;
+            }
+            if (draw_t > 1)
+            {
+                draw_t = 1;
+            }
+
+            if (draw_t > 0.01)
+            {
+                var y = base_y + j * gap + (1 - draw_t) * 36;
+                set_alpha(int(255 * draw_t));
+                self._draw_item(j, btn_x, y, btn_w, btn_h);
+            }
+        }
+        set_alpha(255);
+
+        if (self.leaving && self.intro.done())
+        {
+            self.leaving = false;
+            self.goto_stage(self.next_stage);
+            return;
+        }
+
+        if (!self.app.can_receive_input())
+        {
+            return;
+        }
+
+        if (key_pressed(APP_KEY_UP))
+        {
+            self.menu_index -= 1;
+            if (self.menu_index < 0)
+            {
+                self.menu_index = 2;
+            }
+        }
+        if (key_pressed(APP_KEY_DOWN))
+        {
+            self.menu_index += 1;
+            if (self.menu_index > 2)
+            {
+                self.menu_index = 0;
+            }
+        }
+
+        var menu_ready = (menu_t > 0.85);
+        var activate = false;
+        if (menu_ready && key_pressed(APP_KEY_RETURN))
+        {
+            activate = true;
+        }
+        if (menu_ready && mouse_pressed(0) && self.menu_hover != -1)
+        {
+            self.menu_index = self.menu_hover;
+            activate = true;
+        }
+
+        if (activate)
+        {
+            if (self.menu_index == 0)
+            {
+                self.start_leave(STAGE_GAME);
+            }
+            elif (self.menu_index == 1)
+            {
+                self.start_leave(STAGE_CREDITS);
+            }
+            else
+            {
+                self.app.open_exit_popup();
+            }
+        }
+    }
+}
+
+class DemoGameScreen : Screen
+{
+    var app;
+    var intro;
+    var timer;
+
+    def init(_app)
+    {
+        super.init("Game");
+        self.app = _app;
+        self.set_stage(STAGE_GAME);
+        self.intro = Tween(0, 1, 0.001, "linear");
+        self.timer = 0.0;
+    }
+
+    def enter()
+    {
+        self.timer = 0.0;
+        self.intro.start(0, 1, 0.28, "sine_out");
+        survive_start(self.app.width, self.app.height);
+    }
+
+    def leave()
+    {
+        survive_stop();
+    }
+
+    def update(_dt)
+    {
+        
+        self.timer += _dt;
+        self.intro.update(_dt);
+
+        if (self.app.can_receive_input() && key_pressed(APP_KEY_ESCAPE))
+        {
+            self.app.open_back_popup();
+        }
+    }
+}
+
+class DemoCreditsScreen : Screen
+{
+    var app;
+    var intro;
+
+    def init(_app)
+    {
+        super.init("Credits");
+        self.app = _app;
+        self.set_stage(STAGE_CREDITS);
+        self.intro = Tween(0, 1, 0.001, "linear");
+    }
+
+    def enter()
+    {
+        self.intro.start(0, 1, 0.35, "sine_out");
+    }
+
+    def update(_dt)
+    {
+      
+        var t = self.intro.update(_dt);
+
+        set_color(18, 22, 34);
+        draw_rectangle(0, 0, self.app.width, self.app.height, true);
+
+        set_color(255, 230, 120);
+        draw_text("CREDITS", 44, 42 + (1 - t) * 18, 38);
+
+        set_color(220, 225, 235);
+        draw_text("Bu Language Demo", 46, 100 + (1 - t) * 12, 24);
+        draw_text("Engine + Script flow", 46, 132 + (1 - t) * 12, 20);
+        draw_text("CLICK ou ESC para voltar", 46, 166 + (1 - t) * 12, 18);
+
+        var back_x = 44;
+        var back_y = self.app.height - 78;
+        var back_w = 220;
+        var back_h = 40;
+        var over_back = app_point_in_rect(self.app.mx, self.app.my, back_x, back_y, back_w, back_h);
+
+        if (over_back)
+        {
+            set_color(95, 110, 160);
+        }
+        else
+        {
+            set_color(62, 70, 105);
+        }
+        draw_rectangle(back_x, back_y, back_w, back_h, true);
+        set_color(220, 225, 235);
+        draw_rectangle(back_x, back_y, back_w, back_h, false);
+        draw_text("BACK TO MENU", back_x + 28, back_y + 10, 20);
+
+        if (!self.app.can_receive_input())
+        {
+            return;
+        }
+
+        if (mouse_pressed(0) || key_pressed(APP_KEY_ESCAPE))
+        {
+            self.goto_stage(STAGE_MENU);
+        }
+    }
+}

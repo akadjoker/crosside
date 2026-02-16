@@ -1,0 +1,7 @@
+// Test: Bitwise operators
+if ((0xFF & 0x0F) != 0x0F) { throw "AND"; }
+if ((0xF0 | 0x0F) != 0xFF) { throw "OR"; }
+if ((0xFF ^ 0x0F) != 0xF0) { throw "XOR"; }
+if ((1 << 4) != 16) { throw "SHL"; }
+if ((16 >> 4) != 1) { throw "SHR"; }
+if (~0 != -1) { throw "NOT"; }

@@ -1,0 +1,64 @@
+print("Box2D Debug Drop Demo");
+
+var KEY_ESCAPE = 256;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D Debug: Ground + Falling Ball");
+create_world(0, 9.8);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16); // shape + joint + center of mass
+
+process physics_drop_demo()
+{
+    // World units: 1.0 ~= 30 pixels in debug draw.
+
+    // Static ground
+    var ground_def = create_bodydef(BODY_STATIC);
+    ground_def.set_position(21.0, 22.0);
+
+    var ground_fx = create_fixture_def();
+    ground_fx.set_friction(0.8);
+    ground_fx.set_restitution(0.0);
+    ground_fx.set_box_shape(20.0, 0.5);
+
+    var ground = create_body(ground_def);
+    ground.add_fixture(ground_fx);
+
+    // Dynamic ball
+    var ball_def = create_bodydef(BODY_DYNAMIC);
+    ball_def.set_position(21.0, 3.0);
+    ball_def.set_linear_damping(0.05);
+    ball_def.set_angular_damping(0.05);
+
+    var ball_fx = create_fixture_def();
+    ball_fx.set_density(1.0);
+    ball_fx.set_friction(0.2);
+    ball_fx.set_restitution(0.45);
+
+    ball_fx.set_circle_shape(0.6);
+
+    var ball = create_body(ball_def);
+    ball.add_fixture(ball_fx);
+
+    loop
+    {
+        var dt = delta();
+        if (dt > 0.033) { dt = 0.033; }
+
+        update_world(dt);
+
+        draw_text("ESC to close", 20, 20, 20);
+        draw_text("Static ground + dynamic ball", 20, 44, 20);
+        draw_fps(20, 68);
+
+        if (key_down(KEY_ESCAPE))
+        {
+            close_window();
+            break;
+        }
+
+        frame;
+    }
+}
+
+physics_drop_demo();

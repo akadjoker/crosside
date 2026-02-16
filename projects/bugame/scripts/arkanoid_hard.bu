@@ -1,0 +1,691 @@
+// === ARKANOID HARD - powerups + multiball ===
+
+import math;
+
+var WINDOW_WIDTH = 800;
+var WINDOW_HEIGHT = 600;
+
+var BALL_RADIUS = 8;
+var BALL_BASE_SPEED = 350;
+var BALL_MAX_SPEED = 700;
+var BALL_MIN_SPEED = 200;
+
+var PADDLE_WIDTH = 100;
+var PADDLE_HEIGHT = 16;
+var PADDLE_SPEED = 470;
+
+var BRICK_WIDTH = 60;
+var BRICK_HEIGHT = 24;
+var BRICK_COLS = 12;
+var BRICK_ROWS_BASE = 6;
+var BRICK_ROWS_ACTIVE = 6;
+
+var SCORE = 0;
+var LIVES = 3;
+var LEVEL = 1;
+
+var BALLS_ALIVE = 0;
+var MAX_BALLS = 4;
+var PADDLE_ID = -1;
+
+var POWERUP_DROP_CHANCE = 0.22;
+var POWERUP_SIZE = 14;
+var POWERUP_FALL_SPEED = 150;
+
+var PADDLE_POWER_EXPAND_TIMER = 0.0;
+var BALL_SLOW_TIMER = 0.0;
+
+var KEY_A = 65;
+var KEY_D = 68;
+var KEY_ESCAPE = 256;
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+var KEY_R = 82;
+var KEY_RETURN = 257;
+var KEY_SPACE = 32;
+
+var SERVE_MODE = false;
+
+// ============================================
+// EFFECTS
+// ============================================
+def create_wall_impact(wx, wy, vx, vy)
+{
+    var angle = atan2(-vy, -vx);
+    for (var i = 0; i < 5; i += 1)
+    {
+        var spread = angle + math.rand(-0.5, 0.5);
+        particle_spark(wx, wy, spread);
+    }
+}
+
+def create_paddle_impact(px, py, offset)
+{
+    var count = 3 + int(abs(offset) * 4);
+    for (var i = 0; i < count; i += 1)
+    {
+        var angle = -90 + math.rand(-60, 60);
+        particle_spark(px, py, angle);
+    }
+}
+
+def create_brick_hit(bx, by)
+{
+    for (var i = 0; i < 10; i += 1)
+    {
+        var angle = math.rand(0, 360);
+        particle_chunk(bx, by, angle);
+    }
+}
+
+def maybe_spawn_powerup(bx, by)
+{
+    if (math.rand(0.0, 1.0) <= POWERUP_DROP_CHANCE)
+    {
+        // 0=expand, 1=multiball, 2=life, 3=slowmo
+        var ptype = math.irand(0, 3);
+        powerup(bx, by, ptype);
+    }
+}
+
+// ============================================
+// LEVEL SETUP
+// ============================================
+def create_bricks()
+{
+    var start_x = (WINDOW_WIDTH - BRICK_COLS * BRICK_WIDTH) / 2 + BRICK_WIDTH / 2;
+    var start_y = 80;
+
+    for (var row = 0; row < BRICK_ROWS_ACTIVE; row += 1)
+    {
+        for (var col = 0; col < BRICK_COLS; col += 1)
+        {
+            var bx = start_x + col * BRICK_WIDTH;
+            var by = start_y + row * (BRICK_HEIGHT + 4);
+            brick(bx, by, row);
+        }
+    }
+}
+
+def spawn_player_ball()
+{
+    SERVE_MODE = true;
+}
+
+def start_level()
+{
+    BALLS_ALIVE = 0;
+    PADDLE_ID = -1;
+    PADDLE_POWER_EXPAND_TIMER = 0.0;
+    BALL_SLOW_TIMER = 0.0;
+
+    create_bricks();
+    var p = paddle();
+    if (p)
+    {
+        PADDLE_ID = p.id;
+    }
+    spawn_player_ball();
+}
+
+def reset_full_game()
+{
+    SCORE = 0;
+    LIVES = 3;
+    LEVEL = 1;
+    BRICK_ROWS_ACTIVE = BRICK_ROWS_BASE;
+
+    let_me_alone();
+    start_level();
+}
+
+def next_level()
+{
+    LEVEL += 1;
+    BRICK_ROWS_ACTIVE = math.min(9, BRICK_ROWS_BASE + LEVEL - 1);
+
+    let_me_alone();
+    start_level();
+}
+
+// ============================================
+// PADDLE
+// ============================================
+process paddle()
+{
+    x = WINDOW_WIDTH / 2;
+    y = WINDOW_HEIGHT - 60;
+
+    var base_w = PADDLE_WIDTH;
+    var h = PADDLE_HEIGHT;
+
+    loop
+    {
+        var dt = delta();
+        var prev_x = x;
+        var prev_y = y;
+        var mx = get_mouse_x();
+
+        var w = base_w;
+        if (PADDLE_POWER_EXPAND_TIMER > 0)
+        {
+            w = base_w + 44;
+        }
+
+        set_rect_shape(0, 0, w, h);
+
+        // Mouse follow (suave) + teclado como ajuste/fallback.
+        if (mx >= 0 && mx <= WINDOW_WIDTH)
+        {
+            x += (mx - x) * math.min(1.0, dt * 20.0);
+        }
+
+        if (key_down(KEY_LEFT) || key_down(KEY_A))
+        {
+            x -= PADDLE_SPEED * dt;
+        }
+        if (key_down(KEY_RIGHT) || key_down(KEY_D))
+        {
+            x += PADDLE_SPEED * dt;
+        }
+
+        x = math.clamp(x, w / 2, WINDOW_WIDTH - w / 2);
+        xold = prev_x;
+        yold = prev_y;
+
+        set_alpha(255);
+        set_color(55, 58, 80);
+        draw_rectangle(x - w / 2, y - h / 2, w, h, true);
+        set_color(95, 155, 225);
+        draw_rectangle(x - w / 2 + 2, y - h / 2 + 2, w - 4, h - 8, true);
+
+        if (PADDLE_POWER_EXPAND_TIMER > 0)
+        {
+            set_color(220, 220, 255);
+            draw_text("WIDE", x - 26, y - 30, 14);
+        }
+
+        frame;
+    }
+}
+
+// ============================================
+// BALL
+// ============================================
+process ball(start_x, start_y, start_angle)
+{
+    x = start_x;
+    y = start_y;
+    var radius = BALL_RADIUS;
+
+    speed = BALL_BASE_SPEED;
+    velx = get_distx(start_angle, speed);
+    vely = get_disty(start_angle, speed);
+
+    var trail_x = [x, x, x, x, x];
+    var trail_y = [y, y, y, y, y];
+    var trail_idx = 0;
+    var brick_hit_cooldown = 0.0;
+
+    BALLS_ALIVE += 1;
+    set_circle_shape(radius);
+
+    loop
+    {
+        var dt = delta();
+        var prev_x = x;
+        var prev_y = y;
+
+        if (brick_hit_cooldown > 0)
+        {
+            brick_hit_cooldown -= dt;
+        }
+
+        trail_x[trail_idx] = x;
+        trail_y[trail_idx] = y;
+        trail_idx = (trail_idx + 1) % 5;
+
+        var slow_mul = 1.0;
+        if (BALL_SLOW_TIMER > 0)
+        {
+            slow_mul = 0.75;
+        }
+
+        x += velx * dt * slow_mul;
+        y += vely * dt * slow_mul;
+
+        speed = sqrt(velx * velx + vely * vely);
+
+        if (x - radius < 0)
+        {
+            x = radius;
+            velx = abs(velx);
+            create_wall_impact(x, y, velx, vely);
+        }
+        elif (x + radius > WINDOW_WIDTH)
+        {
+            x = WINDOW_WIDTH - radius;
+            velx = -abs(velx);
+            create_wall_impact(x, y, velx, vely);
+        }
+
+        if (y - radius < 0)
+        {
+            y = radius;
+            vely = abs(vely);
+            create_wall_impact(x, y, velx, vely);
+        }
+
+        if (y > WINDOW_HEIGHT + 20)
+        {
+            BALLS_ALIVE -= 1;
+            if (BALLS_ALIVE <= 0)
+            {
+                LIVES -= 1;
+                if (LIVES > 0)
+                {
+                    spawn_player_ball();
+                }
+            }
+            break;
+        }
+
+        var paddle_hit = collision(type paddle, x, y);
+        if (paddle_hit && vely > 0)
+        {
+            var current_paddle_w = PADDLE_WIDTH;
+            if (PADDLE_POWER_EXPAND_TIMER > 0)
+            {
+                current_paddle_w += 44;
+            }
+
+            var hit_offset = (x - paddle_hit.x) / (current_paddle_w / 2);
+            hit_offset = math.clamp(hit_offset, -0.95, 0.95);
+
+            var bounce_angle = -90 + hit_offset * 60;
+            var paddle_vel = (paddle_hit.x - paddle_hit.xold) / dt;
+            var english = paddle_vel * 0.3;
+
+            var new_speed = math.min(speed + 16, BALL_MAX_SPEED);
+            velx = get_distx(bounce_angle, new_speed) + english;
+            vely = get_disty(bounce_angle, new_speed);
+            vely = -abs(vely);
+
+            y = paddle_hit.y - PADDLE_HEIGHT / 2 - radius - 1;
+            create_paddle_impact(x, y, hit_offset);
+        }
+
+        if (brick_hit_cooldown <= 0)
+        {
+            var brick_hit = collision(type brick, x, y);
+
+            if (!brick_hit)
+            {
+                var mid_x = prev_x + (x - prev_x) * 0.5;
+                var mid_y = prev_y + (y - prev_y) * 0.5;
+                brick_hit = collision(type brick, mid_x, mid_y);
+                if (brick_hit)
+                {
+                    x = mid_x;
+                    y = mid_y;
+                }
+            }
+
+            if (brick_hit)
+            {
+                brick_hit.hp -= 1;
+                SCORE += 10;
+
+                var dx = x - brick_hit.x;
+                var dy = y - brick_hit.y;
+                var overlap_x = (BRICK_WIDTH * 0.5 + radius) - abs(dx);
+                var overlap_y = (BRICK_HEIGHT * 0.5 + radius) - abs(dy);
+
+                if (overlap_x < overlap_y)
+                {
+                    velx = -velx;
+                    if (dx < 0) x = brick_hit.x - BRICK_WIDTH / 2 - radius - 1;
+                    else x = brick_hit.x + BRICK_WIDTH / 2 + radius + 1;
+                }
+                else
+                {
+                    vely = -vely;
+                    if (dy < 0) y = brick_hit.y - BRICK_HEIGHT / 2 - radius - 1;
+                    else y = brick_hit.y + BRICK_HEIGHT / 2 + radius + 1;
+                }
+
+                brick_hit_cooldown = 0.03;
+
+                speed = sqrt(velx * velx + vely * vely);
+                if (speed < BALL_MIN_SPEED)
+                {
+                    var a = atan2(vely, velx);
+                    velx = get_distx(a, BALL_MIN_SPEED);
+                    vely = get_disty(a, BALL_MIN_SPEED);
+                }
+
+                create_brick_hit(brick_hit.x, brick_hit.y);
+            }
+        }
+
+        for (var t = 0; t < 5; t += 1)
+        {
+            var alpha = 50 - t * 10;
+            var size = radius - t * 1;
+            set_color(255, 255, 150);
+            set_alpha(alpha);
+            draw_circle(trail_x[t], trail_y[t], size, true);
+        }
+
+        set_alpha(255);
+        set_color(255, 255, 200);
+        draw_circle(x, y, radius, true);
+        set_color(255, 255, 255);
+        draw_circle(x - 2, y - 2, radius / 3, true);
+
+        frame;
+    }
+}
+
+// ============================================
+// BRICK
+// ============================================
+process brick(bx, by, row)
+{
+    x = bx;
+    y = by;
+
+    hp = 1 + int(row / 2) + int((LEVEL - 1) / 2);
+    if (hp > 4) hp = 4;
+    var max_hp = hp;
+
+    var w = BRICK_WIDTH;
+    var h = BRICK_HEIGHT;
+
+    var colors = [
+        [220, 80, 80],
+        [220, 150, 80],
+        [220, 220, 80],
+        [80, 220, 120],
+        [80, 150, 220],
+        [180, 80, 220],
+        [210, 120, 210],
+        [120, 210, 210],
+        [210, 210, 120]
+    ];
+
+    var col = colors[row % len(colors)];
+    set_rect_shape(0, 0, w, h);
+
+    loop
+    {
+        if (hp <= 0)
+        {
+            maybe_spawn_powerup(x, y);
+            break;
+        }
+
+        set_alpha(255);
+        set_color(col[0] * 0.45, col[1] * 0.45, col[2] * 0.45);
+        draw_rectangle(x - w / 2, y - h / 2, w, h, true);
+
+        var boost = int((hp - 1) * 18);
+        set_color(col[0] + boost, col[1] + boost, col[2] + boost);
+        draw_rectangle(x - w / 2 + 2, y - h / 2 + 2, w - 4, h - 4, true);
+
+        if (max_hp > 1)
+        {
+            set_color(20, 20, 20);
+            draw_rectangle(x - w / 2 + 4, y + h / 2 - 7, w - 8, 4, true);
+            set_color(230, 240, 255);
+            draw_rectangle(x - w / 2 + 4, y + h / 2 - 7, (w - 8) * (hp / max_hp), 4, true);
+        }
+
+        frame;
+    }
+}
+
+// ============================================
+// POWERUP
+// ============================================
+process powerup(px, py, ptype)
+{
+    x = px;
+    y = py;
+
+    var s = POWERUP_SIZE;
+    set_rect_shape(0, 0, s, s);
+
+    loop
+    {
+        var dt = delta();
+        y += POWERUP_FALL_SPEED * dt;
+
+        var p = collision(type paddle, x, y);
+        if (p)
+        {
+            if (ptype == 0)
+            {
+                PADDLE_POWER_EXPAND_TIMER = 12.0;
+            }
+            elif (ptype == 1)
+            {
+                var free_slots = MAX_BALLS - BALLS_ALIVE;
+                if (free_slots > 0)
+                {
+                    ball(p.x - 24, p.y - 26, -115);
+                }
+                if (free_slots > 1)
+                {
+                    ball(p.x + 24, p.y - 26, -65);
+                }
+            }
+            elif (ptype == 2)
+            {
+                LIVES += 1;
+            }
+            else
+            {
+                BALL_SLOW_TIMER = 8.0;
+            }
+
+            break;
+        }
+
+        if (y > WINDOW_HEIGHT + 20)
+        {
+            break;
+        }
+
+        if (ptype == 0) set_color(100, 210, 255);
+        elif (ptype == 1) set_color(255, 210, 90);
+        elif (ptype == 2) set_color(120, 245, 140);
+        else set_color(220, 180, 255);
+        draw_rectangle(x - s / 2, y - s / 2, s, s, true);
+
+        set_color(20, 20, 20);
+        if (ptype == 0) draw_text("W", x - 5, y - 7, 14);
+        elif (ptype == 1) draw_text("M", x - 6, y - 7, 14);
+        elif (ptype == 2) draw_text("1", x - 3, y - 7, 14);
+        else draw_text("S", x - 4, y - 7, 14);
+
+        frame;
+    }
+}
+
+// ============================================
+// PARTICLES
+// ============================================
+process particle_spark(sx, sy, angle)
+{
+    x = sx;
+    y = sy;
+    speed = math.rand(100, 200);
+    velx = get_distx(angle, speed);
+    vely = get_disty(angle, speed);
+    hp = 0.3;
+    size = 4;
+
+    loop
+    {
+        var dt = delta();
+        hp -= dt;
+        if (hp <= 0) break;
+
+        x += velx * dt;
+        y += vely * dt;
+        vely += 500 * dt;
+        size = 4 * (hp / 0.3);
+
+        set_color(255, 255, 150);
+        set_alpha(int(255 * hp / 0.3));
+        draw_circle(x, y, size, true);
+        frame;
+    }
+}
+
+process particle_chunk(cx, cy, angle)
+{
+    x = cx;
+    y = cy;
+    speed = math.rand(80, 180);
+    velx = get_distx(angle, speed);
+    vely = get_disty(angle, speed);
+    hp = 0.45;
+    var rot = math.rand(0, 360);
+    var rot_speed = math.rand(-400, 400);
+    size = math.rand(4, 8);
+
+    loop
+    {
+        var dt = delta();
+        hp -= dt;
+        if (hp <= 0) break;
+
+        x += velx * dt;
+        y += vely * dt;
+        vely += 400 * dt;
+        rot += rot_speed * dt;
+        velx *= 0.98;
+
+        set_color(220, 220, 220);
+        set_alpha(int(255 * hp / 0.45));
+
+        var s = size * (hp / 0.45);
+        var c = cos(rot);
+        var sn = sin(rot);
+
+        draw_line(x + c*s - sn*s, y + sn*s + c*s, x - c*s - sn*s, y - sn*s + c*s);
+        draw_line(x - c*s - sn*s, y - sn*s + c*s, x - c*s + sn*s, y - sn*s - c*s);
+        draw_line(x - c*s + sn*s, y - sn*s - c*s, x + c*s + sn*s, y + sn*s - c*s);
+        draw_line(x + c*s + sn*s, y + sn*s - c*s, x + c*s - sn*s, y + sn*s + c*s);
+        set_alpha(255);
+
+        frame;
+    }
+}
+
+// ============================================
+// MAIN
+// ============================================
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Bu Arkanoid HARD");
+
+set_design_resolution(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_screen_scale_mode(0);
+set_virtual_screen_enabled(true);
+init_collision(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+hide_cursor();
+
+
+reset_full_game();
+
+loop
+{
+    var dt = delta();
+
+    if (PADDLE_POWER_EXPAND_TIMER > 0) PADDLE_POWER_EXPAND_TIMER -= dt;
+    if (BALL_SLOW_TIMER > 0) BALL_SLOW_TIMER -= dt;
+
+    set_alpha(255);
+    set_color(200, 200, 200);
+    draw_text(format("Score: {}", SCORE), 20, 20, 18);
+    draw_text(format("Lives: {}", LIVES), WINDOW_WIDTH - 120, 20, 18);
+    draw_text(format("Level: {}", LEVEL), WINDOW_WIDTH / 2 - 45, 20, 18);
+
+    if (BALL_SLOW_TIMER > 0)
+    {
+        set_color(170, 200, 255);
+        draw_text("SLOWMO", WINDOW_WIDTH / 2 - 45, 44, 16);
+    }
+
+    if (SERVE_MODE && LIVES > 0)
+    {
+        var p = nil;
+        if (PADDLE_ID != -1)
+        {
+            p = proc(PADDLE_ID);
+        }
+        if (!p)
+        {
+            PADDLE_ID = get_id(type paddle);
+            if (PADDLE_ID != -1)
+            {
+                p = proc(PADDLE_ID);
+            }
+        }
+        if (p)
+        {
+            var serve_x = p.x;
+            var serve_y = p.y - PADDLE_HEIGHT / 2 - BALL_RADIUS - 2;
+
+            set_alpha(255);
+            set_color(255, 255, 210);
+            draw_circle(serve_x, serve_y, BALL_RADIUS, true);
+            set_color(255, 255, 255);
+            draw_circle(serve_x - 2, serve_y - 2, BALL_RADIUS / 3, true);
+
+            set_color(230, 230, 240);
+            draw_text("SPACE to launch", WINDOW_WIDTH / 2 - 78, WINDOW_HEIGHT - 30, 18);
+
+            if (key_pressed(KEY_SPACE))
+            {
+                SERVE_MODE = false;
+                ball(serve_x, serve_y, -90);
+            }
+        } else 
+        {
+            print("Error: No paddle found for serve mode!");
+        }
+    }
+
+    if (count_processes(type brick) == 0)
+    {
+        set_color(255, 245, 120);
+        draw_text("LEVEL CLEAR! ENTER para continuar", 185, 300, 24);
+        if (key_pressed(KEY_RETURN))
+        {
+            next_level();
+        }
+    }
+
+    if (LIVES <= 0)
+    {
+        SERVE_MODE = false;
+        set_color(255, 110, 110);
+        draw_text("GAME OVER! Press R", 275, 330, 24);
+        if (key_pressed(KEY_R))
+        {
+            reset_full_game();
+        }
+    }
+
+    if (key_down(KEY_ESCAPE))
+    {
+        let_me_alone();
+        break;
+    }
+
+    frame;
+}

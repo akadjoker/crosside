@@ -1,0 +1,58 @@
+var KEY_SPACE           = 32;
+var KEY_ESCAPE          = 256;
+
+process player()
+{
+     send(type filho, 0,"ola");
+    loop
+    {
+        if (key_down(KEY_SPACE))
+        {
+           
+           
+            send(type filho, 0,"ola");
+        }
+   
+        frame;
+    }
+}
+
+
+process filho()
+{
+
+    loop
+    {
+        if (count_messages() > 0) 
+        {
+            var (dados, remetente) = pop_ex_message();
+            print("Recebi " , dados , " de " , remetente.id);
+        }
+        if (has_message(0))
+        {
+            var msg = pop_message();
+            print("Message received in filho:", msg);
+            
+        }
+        frame;
+    }
+}
+
+filho();
+filho();
+filho();
+filho();
+player();
+
+
+
+loop
+{
+     
+    if(key_down(256))
+    {
+        let_me_alone();
+        break;
+    }
+    frame;
+}

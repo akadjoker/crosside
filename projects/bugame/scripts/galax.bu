@@ -1,0 +1,623 @@
+import math;
+
+var KEY_RIGHT           = 262;
+var KEY_LEFT            = 263;
+var KEY_DOWN            = 264;
+var KEY_UP              = 265;
+var KEY_SPACE           = 32;
+var KEY_ESCAPE          = 256;
+var KEY_W              = 87;
+var KEY_A              = 65;
+var KEY_S              = 83;
+var KEY_D              = 68; 
+
+var WINDOW_WIDTH = 1024;
+var WINDOW_HEIGHT = 768;
+var WORLD_WIDTH = 3840;
+var WORLD_HEIGHT = 2160;
+
+var LAYER_MODE_TILEX = 1;
+var LAYER_MODE_TILEY = 2;
+var LAYER_MODE_STRETCHX = 4;
+var LAYER_MODE_STRETCHY = 8;
+var LAYER_MODE_FLIPX = 16;
+var LAYER_MODE_FLIPY = 32;
+
+var camera_x = 0;
+var camera_y = 0;
+var delta_frame = 0;
+
+// Estado do jogo
+var player_x = 200;
+var player_y = 200;
+var score = 0;
+var game_time = 0;
+var wave = 1;
+var enemies_alive = 0;
+var GAME_OVER = false;
+
+def lerpf(_current, _target, _speed, _dt)
+{
+    var t = _speed * _dt;
+    if (t < 0)
+    {
+        t = 0;
+    }
+    if (t > 1)
+    {
+        t = 1;
+    }
+    return _current + (_target - _current) * t;
+}
+
+
+// ============================================
+// EXPLOSÕES
+// ============================================
+
+def big_explosion(ex, ey, r, g, b, intensity)
+{
+    play_sound(1,1,1);
+    // Core - bola de fogo central
+    var core = create_emitter(false, 3, int(30 * intensity));
+    core.set_position(ex, ey);
+    core.set_spread(6.28);
+    core.set_speed_range(20, 80 * intensity);
+    core.set_life(0.4);
+    core.set_size_curve(50 * intensity, 3);
+    core.set_color_curve(Color(255, 255, 200, 255), Color(r, g, b, 0));
+    core.set_drag(0.85);
+    core.set_emission_rate(1000);
+    core.set_lifetime(0.05);
+
+    // Sparks - faíscas rápidas
+    var sparks = create_emitter(false, 3, int(20 * intensity));
+    sparks.set_position(ex, ey);
+    sparks.set_spread(6.28);
+    sparks.set_speed_range(100, 250 * intensity);
+    sparks.set_life(0.5);
+    sparks.set_size_curve(8, 2);
+    sparks.set_color_curve(Color(255, 255, 150, 255), Color(r, g, b, 0));
+    sparks.set_drag(0.92);
+    sparks.set_emission_rate(1000);
+    sparks.set_lifetime(0.05);
+
+    // Smoke - fumo que fica
+    var smoke = create_emitter(false, 3, int(15 * intensity));
+    smoke.set_position(ex, ey);
+    smoke.set_spread(6.28);
+    smoke.set_speed_range(10, 40);
+    smoke.set_life(0.8);
+    smoke.set_size_curve(30 * intensity, 60 * intensity);
+    smoke.set_color_curve(Color(100, 100, 100, 80), Color(50, 50, 50, 0));
+    smoke.set_drag(0.95);
+    smoke.set_emission_rate(1000);
+    smoke.set_lifetime(0.05);
+
+
+
+    // Camera shake
+    start_camera_shake(3 * intensity, 3 * intensity, 15, 8 * intensity);
+}
+
+// ============================================
+// INIMIGOS
+// ============================================
+
+// Orange: rápido, fraco (1 hit)
+process enemy_orange(spawn_x, spawn_y)
+{
+    graph = 5;
+    x = spawn_x;
+    y = spawn_y;
+    size = 60;
+    enemies_alive += 1;
+
+    var speed = 120 + wave * 15;
+    life=1;
+    // Trail laranja
+    var trail = create_emitter(true, 3, 20);
+    trail.set_spread(3.14);
+    trail.set_speed_range(5, 15);
+    trail.set_life(0.9);
+    trail.set_size_curve(12, 50);
+    trail.set_color_curve(Color(255, 150, 0, 150), Color(255, 50, 0, 0));
+    trail.set_drag(0.9);
+    trail.set_emission_rate(20);
+    set_circle_shape(15);
+
+    loop
+    {
+        var dir = get_angle(x, y, player_x, player_y);
+        xadvance(speed * delta_frame, dir);
+        angle = dir;
+        trail.set_position(x, y);
+        if (life<=0 || GAME_OVER)
+        {
+            big_explosion(x, y, 255, 100, 0, 1.0);
+            enemies_alive -= 1;
+            break;
+        }
+        
+        frame;
+    }
+    trail.stop();
+}
+
+// Magenta: resistente (3 hits), recua e carrega
+process enemy_magenta(spawn_x, spawn_y)
+{
+    graph = 4;
+    x = spawn_x;
+    y = spawn_y;
+    size = 80;
+    enemies_alive += 1;
+
+    var base_speed = 70 + wave * 8;
+    var wobble = 0;
+
+    // Trail magenta pulsante
+    var trail = create_emitter(true, 3, 30);
+    trail.set_spread(6.28);
+    trail.set_speed_range(3, 10);
+    trail.set_life(1.5);
+    trail.set_size_curve(1.0, 20.5);
+    trail.set_color_curve(Color(255, 0, 255, 120), Color(150, 0, 200, 0));
+    trail.set_drag(0.85);
+    trail.set_emission_rate(25);
+    set_circle_shape(20);
+    life = 3;
+
+    // Estados: 0=approach, 1=retreat, 2=charge
+    var state = 0;
+    var retreat_timer = 0;
+    var charge_speed = 0;
+    var charge_angle = 0;
+    var retreat_dist = 40 + wave * 10;
+    var charge_mult = 4.0 + wave * 0.3;
+
+    loop
+    {
+        wobble += delta_frame * 2;
+        var dir = get_angle(x, y, player_x, player_y);
+        var dist = get_dist(x, y, player_x, player_y);
+
+        if (state == 0)
+        {
+            // Approach: move em direcao ao player com wobble
+            var wobble_offset = sin(wobble) * 15;
+            xadvance(base_speed * delta_frame, dir + wobble_offset);
+            angle += wobble_offset * 0.1;
+            trail.set_color_curve(Color(255, 0, 255, 120), Color(150, 0, 200, 0));
+            trail.set_emission_rate(25);
+
+            // Perto do player? Recua!
+            if (dist < retreat_dist)
+            {
+                state = 1;
+                retreat_timer = 0.6 + math.rand() * 0.4;
+            }
+        }
+        elif (state == 1)
+        {
+            // Retreat: foge do player
+            xadvance(base_speed * 1.5 * delta_frame, dir + 180);
+            angle = dir;
+            trail.set_color_curve(Color(200, 100, 255, 180), Color(100, 0, 200, 0));
+            trail.set_emission_rate(40);
+
+            retreat_timer -= delta_frame;
+            if (retreat_timer <= 0)
+            {
+                // Prepara charge: fixa angulo de ataque
+                state = 2;
+                charge_angle = get_angle(x, y, player_x, player_y);
+                charge_speed = base_speed * charge_mult;
+                trail.set_color_curve(Color(255, 50, 100, 255), Color(255, 0, 255, 0));
+                trail.set_emission_rate(60);
+                trail.set_speed_range(10, 30);
+            }
+        }
+        elif (state == 2)
+        {
+            // Charge: avanca rapido em linha recta
+            xadvance(charge_speed * delta_frame, charge_angle);
+            angle = charge_angle;
+
+            // Desacelera ao longo do tempo
+            charge_speed = lerpf(charge_speed, 0, 2.0, delta_frame);
+
+            // Perdeu velocidade? Volta ao approach
+            if (charge_speed < base_speed * 0.5)
+            {
+                state = 0;
+                trail.set_speed_range(3, 10);
+            }
+        }
+
+        trail.set_position(x, y);
+
+        if (life <= 0 || GAME_OVER)
+        {
+            big_explosion(x, y, 255, 0, 255, 1.5);
+            score += 5;
+            enemies_alive -= 1;
+            break;
+        }
+
+        frame;
+    }
+    trail.stop();
+}
+
+// ============================================
+// SPAWNER
+// ============================================
+
+process spawner()
+{
+    var spawn_timer = 0;
+    var spawn_interval = 2.5;
+    var max_enemies = 8;
+
+    loop
+    {
+        game_time += delta_frame;
+        spawn_timer += delta_frame;
+
+        // Dificuldade progressiva
+        wave = 1 + int(game_time / 20);
+        spawn_interval = math.max(0.4, 2.5 - wave * 0.25);
+        max_enemies = 8 + wave * 3;
+
+
+
+        if (spawn_timer >= spawn_interval && enemies_alive < max_enemies && !GAME_OVER)
+        {
+            spawn_timer = 0;
+
+            // Spawn num círculo à volta do jogador, fora do ecrã
+            var spawn_angle = math.rand(0, 360);
+            var spawn_dist = 600 + math.rand(0, 200);
+            var sx = player_x + get_distx(spawn_angle, spawn_dist);
+            var sy = player_y + get_disty(spawn_angle, spawn_dist);
+
+            // Clamp ao mundo
+            sx = math.clamp(sx, 80, WORLD_WIDTH - 80);
+            sy = math.clamp(sy, 80, WORLD_HEIGHT - 80);
+
+            // Tipo: 60% orange, 40% magenta (mais magenta em waves altas)
+            var magenta_chance = 0.3 + wave * 0.05;
+            if (magenta_chance > 0.6) { magenta_chance = 0.6; }
+
+            if (math.rand() < magenta_chance)
+            {
+                enemy_magenta(sx, sy);
+                
+            }
+            else
+            {
+                enemy_orange(sx, sy);
+               
+                
+                       
+            }
+        }
+
+        frame;
+    }
+}
+
+// ============================================
+// BULLET
+// ============================================
+
+process bullet(start_x, start_y, fire_angle)
+{
+    graph = 3;
+    x = start_x;
+    y = start_y;
+    size = 40;
+
+    // Trail do projétil
+    var trail = create_emitter(true, 3, 50);
+    trail.set_spread(3.14);
+    trail.set_speed_range(10, 30);
+    trail.set_life(0.2);
+    trail.set_size_curve(15, 1);
+    trail.set_color_curve(Color(255, 200, 100, 200), Color(255, 100, 0, 0));
+    trail.set_drag(0.95);
+    trail.set_emission_rate(60);
+
+    var timer = 0;
+    var lifetime = 0.89;
+    var speed = 800;
+    set_circle_shape(12);
+
+    loop
+    {
+        xadvance(speed * delta_frame, fire_angle);
+        trail.set_position(x, y);
+        timer += delta_frame;
+
+        var hit = collision(type enemy_orange,x,y);
+        if (hit)        
+        {
+            hit.life = 0;
+            score += 2;
+            play_sound(2,1,1);
+            break;
+            
+        } 
+        hit = collision(type enemy_magenta,x,y);
+        if (hit)        
+        {
+            hit.life -= 1;
+            score += 1;
+            play_sound(2,1,1);
+            break;
+           
+         } 
+
+        if (timer >= lifetime)
+        {
+            
+            break;
+        }
+        frame;
+    }
+    
+    trail.stop();
+}
+
+process ship()
+{
+    graph=1;
+    set_rect_shape(0,0, 40, 40);
+    size=100;
+    x=200;
+    y=200;
+    life=5;
+    var max_hp = 5;
+        var BAR_H = 28;
+        var BAR_W = 200;
+        var bar_x = (WINDOW_WIDTH/2 +200) - BAR_W / 2;
+        var bar_y = 8;
+    var rot_speed = 0.0;
+    var move_speed = 0.0;
+    var rot_max = 220.0;
+    var move_max = 360.0;
+    var bounce_vx = 0;
+    var bounce_vy = 0;
+    var invuln_timer = 0;
+    var flash_timer = 0;
+    var bounce_force = 400;
+    var trail = create_emitter(true, 3, 400);
+ 
+    trail.set_spread(6.28);           // 360 graus
+    trail.set_speed_range(5, 20);
+    trail.set_life(0.8);
+    trail.set_size_curve(46, 2);
+    trail.set_color_curve(Color(200,200,200,128), Color(128,128,128,0));
+    trail.set_drag(0.9);
+    trail.set_emission_rate(0);
+
+    loop
+    {
+        var rot_target = 0.0;
+
+        if (GAME_OVER)
+        {
+            flash_timer += delta_frame * 15;
+            if (flash_timer > 8)
+            {
+                flash_timer = 0;
+                GAME_OVER = false;
+                x = math.rand(200, 3800);
+                y = math.rand(200, 2000);
+                life = max_hp;
+                play_sound(3,0.9,1);
+            }
+            
+        }
+
+        if(key_down(KEY_D))
+        {
+            rot_target -= rot_max;
+        }
+        if(key_down(KEY_A))
+        {
+            rot_target += rot_max;
+        }
+
+        var (px,py)= get_local_point(28,0);
+        trail.set_position(px, py);
+
+        rot_speed = lerpf(rot_speed, rot_target, 6.0, delta_frame);
+        angle = normalize_angle(angle + rot_speed * delta_frame);
+
+        var move_target = 0.0;
+        if (key_down(KEY_W))
+        {
+            move_target = move_max;
+        }
+        elif (key_down(KEY_S))
+        {
+            move_target *= 0.99;
+        }
+
+        if (move_target == 0)
+        {
+            move_speed = lerpf(move_speed, move_target, 1.2, delta_frame);
+        }
+        else
+        {
+            move_speed = lerpf(move_speed, move_target, 2.2, delta_frame);
+        }
+
+        if (abs(move_speed) < 0.01)
+        {
+            move_speed = 0;
+        }
+
+        xadvance(move_speed * delta_frame, angle - 90);
+
+        // Aplicar bounce
+        x += bounce_vx * delta_frame;
+        y += bounce_vy * delta_frame;
+        bounce_vx = lerpf(bounce_vx, 0, 5.0, delta_frame);
+        bounce_vy = lerpf(bounce_vy, 0, 5.0, delta_frame);
+
+        // Publicar posicao para inimigos/spawner
+        player_x = x;
+        player_y = y;
+
+        // Invulnerabilidade + flash
+        if (invuln_timer > 0)
+        {
+            invuln_timer -= delta_frame;
+            flash_timer += delta_frame * 15;
+            if (int(flash_timer) % 2 == 0)
+            {
+                alpha = 80;
+            }
+            else
+            {
+                alpha = 255;
+            } 
+        }
+        else
+        {
+            alpha = 255;
+        
+        }
+
+        if (abs(move_speed) > 15)
+        {
+            trail.set_emission_rate(30);
+        }
+        else
+        {
+            trail.set_emission_rate(0);
+        }
+
+        // Disparar com rato
+        if (mouse_pressed(0))
+        {
+            bullet(x, y, angle-90);
+            play_sound(0,0.1,1);
+        }
+
+        // Colisao com inimigos
+        if (invuln_timer <= 0)
+        {
+            var hit = collision(type enemy_orange, x, y);
+            if (!hit)
+            {
+                hit = collision(type enemy_magenta, x, y);
+            }
+            if (hit)
+            {
+                // Bounce: empurra para longe do inimigo
+                var hit_angle = get_angle(hit.x, hit.y, x, y);
+                bounce_vx = get_distx(hit_angle, bounce_force);
+                bounce_vy = get_disty(hit_angle, bounce_force);
+                play_sound(2,1,1);
+
+                // Dano
+                life -= 1;
+                hit.life -= 1;
+                invuln_timer = 1.0;
+                flash_timer = 0;
+
+                // Efeito visual
+                start_camera_shake(4, 4, 12, 6);
+                big_explosion(x, y, 255, 255, 255, 0.5);
+
+                if (life <= 0)
+                {
+                   big_explosion(x, y, 255, 200, 50, 2.0);
+                   GAME_OVER = true;
+                   flash_timer = 0;
+                }
+            }
+        }
+
+        var lerp_speed = 8.0;
+        camera_x += (x - camera_x) * lerp_speed * delta_frame;
+        camera_y += (y - camera_y) * lerp_speed * delta_frame;
+
+        camera_x = math.max(385, math.min(3200, camera_x));
+        camera_y = math.max(400, math.min(1815, camera_y));
+
+        set_scroll(camera_x - WINDOW_WIDTH / 2, camera_y - WINDOW_HEIGHT / 2);
+
+        set_draw_screen(false);
+
+     
+
+        set_draw_screen(true);
+        set_color(255,255,255);
+        draw_text(format("Wave: {}  Score: {}  Enemies: {}", wave, score, enemies_alive), 140, 20, 22);
+        
+        
+         
+
+        var hp_ratio = life / max_hp;
+        if (hp_ratio < 0) { hp_ratio = 0; }
+
+         
+            set_color(24, 24, 24);
+            draw_rectangle(bar_x, bar_y, BAR_W  , BAR_H, true);
+            set_color(220, 60, 60);
+            draw_rectangle(bar_x, bar_y, BAR_W, BAR_H, false);
+            set_color(60, 220, 80);
+            draw_rectangle(bar_x, bar_y, BAR_W * hp_ratio, BAR_H, true);
+         
+        
+        
+
+        frame;
+    }
+    trail.stop();
+}
+
+
+
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Bu Game - Ship Example");
+init_collision(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+set_layer_size(-1, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+load_graph("assets/shooter/Player.png");//1
+load_graph("assets/shooter/space.png");//2
+load_graph("assets/shooter/particle.png");//3
+load_graph("assets/shooter/Magenta.png");//4
+load_graph("assets/shooter/Orange.png");//5
+
+set_layer_back_graph(0, 2);
+
+set_layer_mode(-1, LAYER_MODE_TILEX  | LAYER_MODE_TILEY); // 0=normal, 1=parallax, 2=repeat
+
+print(get_graph_width(2));
+print(get_graph_height(2));
+
+load_sound("assets/shooter/Fire.wav");
+load_sound("assets/shooter/Explode.wav");
+load_sound("assets/shooter/Hitwall.wav");
+load_sound("assets/shooter/Start.wav");
+
+ship();
+spawner();
+
+loop
+{
+    delta_frame = delta();
+     
+    if(key_down(256))
+    {
+        let_me_alone();
+        break;
+    }
+    frame;
+}

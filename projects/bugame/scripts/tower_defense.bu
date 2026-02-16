@@ -1,0 +1,818 @@
+// === TOWER DEFENSE ===
+// Simple lane/path tower defense
+// - Left click: place tower
+// - 1/2/3 select tower (during play)
+// - 1/2/3 choose upgrade (between waves)
+// - R restart
+
+import math;
+
+var VIEW_W = 1280;
+var VIEW_H = 720;
+
+var KEY_1 = 49;
+var KEY_2 = 50;
+var KEY_3 = 51;
+var KEY_R = 82;
+var KEY_ESCAPE = 256;
+
+var STATE_PLAY = 0;
+var STATE_UPGRADE = 1;
+var STATE_GAMEOVER = 2;
+var GAME_STATE = STATE_PLAY;
+
+var WAVE = 0;
+var WAVE_ACTIVE = false;
+var WAVE_SPAWN_LEFT = 0;
+var WAVE_SPAWNED = 0;
+var WAVE_KILLED = 0;
+var WAVE_TIMER = 0.0;
+var PENDING_NEXT_WAVE = false;
+
+var ENEMIES_ALIVE = 0;
+var GOLD = 180;
+var SCORE = 0;
+var BASE_HP_MAX = 20;
+var BASE_HP = 20;
+
+var SELECTED_TOWER = 0;
+var GRID = 64;
+
+var TOWER_DMG_BONUS = 0;
+var TOWER_RANGE_BONUS = 0;
+var TOWER_FIRE_MULT = 1.0;
+var TOWER_CRIT_CHANCE = 0.0;
+var BONUS_WAVE_GOLD = 0;
+
+var UPG_DMG = 0;
+var UPG_FIRE = 1;
+var UPG_RANGE = 2;
+var UPG_ECON = 3;
+var UPG_CRIT = 4;
+
+var UPG_A = UPG_DMG;
+var UPG_B = UPG_FIRE;
+var UPG_C = UPG_RANGE;
+
+var PATH_COUNT = 9;
+var PATH_X = [20, 220, 220, 520, 520, 900, 900, 1180, 1260];
+var PATH_Y = [360, 360, 140, 140, 560, 560, 250, 250, 250];
+
+def tower_cost(t)
+{
+    if (t == 0) return 80;   // cannon
+    if (t == 1) return 120;  // sniper
+    return 95;               // rapid
+}
+
+def tower_name(t)
+{
+    if (t == 0) return "CANNON";
+    if (t == 1) return "SNIPER";
+    return "RAPID";
+}
+
+def point_seg_dist(px, py, x1, y1, x2, y2)
+{
+    var vx = x2 - x1;
+    var vy = y2 - y1;
+    var len2 = vx * vx + vy * vy;
+    if (len2 < 0.001)
+    {
+        return get_dist(px, py, x1, y1);
+    }
+
+    var t = ((px - x1) * vx + (py - y1) * vy) / len2;
+    t = math.clamp(t, 0, 1);
+
+    var qx = x1 + vx * t;
+    var qy = y1 + vy * t;
+    return get_dist(px, py, qx, qy);
+}
+
+def is_on_path(px, py, margin)
+{
+    var i = 0;
+    while (i < PATH_COUNT - 1)
+    {
+        var d = point_seg_dist(px, py, PATH_X[i], PATH_Y[i], PATH_X[i + 1], PATH_Y[i + 1]);
+        if (d <= margin)
+        {
+            return true;
+        }
+        i += 1;
+    }
+    return false;
+}
+
+def upgrade_name(id)
+{
+    if (id == UPG_DMG) return "+1 Tower Damage";
+    if (id == UPG_FIRE) return "Faster Fire Rate";
+    if (id == UPG_RANGE) return "+Tower Range";
+    if (id == UPG_ECON) return "+Gold Economy";
+    if (id == UPG_CRIT) return "+Crit Chance";
+    return "Unknown";
+}
+
+def roll_upgrades()
+{
+    UPG_A = math.irand(0, 4);
+    UPG_B = math.irand(0, 4);
+    while (UPG_B == UPG_A)
+    {
+        UPG_B = math.irand(0, 4);
+    }
+    UPG_C = math.irand(0, 4);
+    while (UPG_C == UPG_A || UPG_C == UPG_B)
+    {
+        UPG_C = math.irand(0, 4);
+    }
+}
+
+def apply_upgrade(id)
+{
+    if (id == UPG_DMG)
+    {
+        TOWER_DMG_BONUS += 1;
+    }
+    elif (id == UPG_FIRE)
+    {
+        TOWER_FIRE_MULT += 0.18;
+        if (TOWER_FIRE_MULT > 2.8) TOWER_FIRE_MULT = 2.8;
+    }
+    elif (id == UPG_RANGE)
+    {
+        TOWER_RANGE_BONUS += 22;
+    }
+    elif (id == UPG_ECON)
+    {
+        GOLD += 70;
+        BONUS_WAVE_GOLD += 8;
+    }
+    else
+    {
+        TOWER_CRIT_CHANCE += 0.08;
+        if (TOWER_CRIT_CHANCE > 0.45) TOWER_CRIT_CHANCE = 0.45;
+    }
+
+    SCORE += 35;
+}
+
+def begin_wave(next_wave)
+{
+    WAVE = next_wave;
+    WAVE_ACTIVE = true;
+    WAVE_SPAWNED = 0;
+    WAVE_KILLED = 0;
+    WAVE_SPAWN_LEFT = 6 + WAVE * 4;
+    if (WAVE_SPAWN_LEFT > 90) WAVE_SPAWN_LEFT = 90;
+    WAVE_TIMER = 0;
+}
+
+process fx_particle(px, py, r, g, b)
+{
+    x = px;
+    y = py;
+    z = 5;
+
+    var a = math.rand(0, 360);
+    var sp = math.rand(70, 280);
+    var vx = get_distx(a, sp);
+    var vy = get_disty(a, sp);
+    var life = math.rand(0.08, 0.30);
+    var max_life = life;
+    var s = math.rand(2, 5);
+
+    loop
+    {
+        var dt = delta();
+        life -= dt;
+        if (life <= 0) break;
+
+        x += vx * dt;
+        y += vy * dt;
+        vy += 620 * dt;
+        vx *= (1.0 - dt * 2.2);
+
+        set_alpha(int(255 * (life / max_life)));
+        set_color(r, g, b);
+        draw_circle(x, y, s * (life / max_life), true);
+        set_alpha(255);
+
+        frame;
+    }
+}
+
+def fx_burst(px, py, n, r, g, b)
+{
+    var i = 0;
+    while (i < n)
+    {
+        fx_particle(px, py, r, g, b);
+        i += 1;
+    }
+}
+
+process arena_renderer()
+{
+    z = 0;
+
+    loop
+    {
+        // background
+        set_color(14, 18, 30);
+        draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+
+        set_color(26, 32, 50);
+        var gx = 0;
+        while (gx <= VIEW_W)
+        {
+            draw_line(gx, 0, gx, VIEW_H);
+            gx += GRID;
+        }
+        var gy = 0;
+        while (gy <= VIEW_H)
+        {
+            draw_line(0, gy, VIEW_W, gy);
+            gy += GRID;
+        }
+
+        // path
+        var i = 0;
+        while (i < PATH_COUNT - 1)
+        {
+            set_color(64, 54, 44);
+            draw_line_ex(PATH_X[i], PATH_Y[i], PATH_X[i + 1], PATH_Y[i + 1], 62);
+            set_color(92, 80, 65);
+            draw_line_ex(PATH_X[i], PATH_Y[i], PATH_X[i + 1], PATH_Y[i + 1], 54);
+
+            var a = get_angle(PATH_X[i], PATH_Y[i], PATH_X[i + 1], PATH_Y[i + 1]);
+            var d = 0;
+            var seg_len = get_dist(PATH_X[i], PATH_Y[i], PATH_X[i + 1], PATH_Y[i + 1]);
+            while (d < seg_len)
+            {
+                var sx = PATH_X[i] + get_distx(a, d);
+                var sy = PATH_Y[i] + get_disty(a, d);
+                set_color(120, 108, 90);
+                draw_circle(sx, sy, 3, true);
+                d += 28;
+            }
+            i += 1;
+        }
+
+        // start/end
+        set_color(120, 255, 170);
+        draw_circle(PATH_X[0], PATH_Y[0], 14, true);
+        set_color(255, 120, 120);
+        draw_circle(PATH_X[PATH_COUNT - 1], PATH_Y[PATH_COUNT - 1], 16, true);
+        set_color(20, 26, 34);
+        draw_circle(PATH_X[0], PATH_Y[0], 14, false);
+        draw_circle(PATH_X[PATH_COUNT - 1], PATH_Y[PATH_COUNT - 1], 16, false);
+
+        frame;
+    }
+}
+
+process tower_bullet(px, py, ang, dmg, speed_b)
+{
+    x = px;
+    y = py;
+    z = 4;
+
+    set_circle_shape(4);
+    set_collision_layer(4);
+    set_collision_mask(0);
+
+    var life = 1.4;
+
+    loop
+    {
+        var dt = delta();
+        if (GAME_STATE == STATE_UPGRADE)
+        {
+            frame;
+            continue;
+        }
+        if (GAME_STATE == STATE_GAMEOVER) break;
+
+        life -= dt;
+        if (life <= 0) break;
+
+        x += get_distx(ang, speed_b) * dt;
+        y += get_disty(ang, speed_b) * dt;
+
+        if (x < -40 || x > VIEW_W + 40 || y < -40 || y > VIEW_H + 40)
+        {
+            break;
+        }
+
+        var hit = collision(type creep, x, y);
+        if (hit)
+        {
+            hit.state += dmg;
+            fx_burst(x, y, 4, 255, 235, 170);
+            break;
+        }
+
+        set_alpha(110);
+        set_color(255, 220, 130);
+        draw_circle(x, y, 8, true);
+        set_alpha(255);
+        set_color(255, 246, 200);
+        draw_circle(x, y, 4, true);
+
+        frame;
+    }
+}
+
+process creep(kind)
+{
+    x = PATH_X[0];
+    y = PATH_Y[0];
+    z = 3;
+
+    var wp = 1;
+    var hp = 10;
+    var hp_max = 10;
+    var move_spd = 80;
+    var reward = 8;
+    var leak = 1;
+    var face = 0;
+
+    if (kind == 1)
+    {
+        hp = 7 + WAVE;
+        move_spd = 130 + WAVE * 2;
+        reward = 10 + int(WAVE * 0.3);
+        leak = 1;
+    }
+    elif (kind == 2)
+    {
+        hp = 28 + WAVE * 4;
+        move_spd = 56 + WAVE;
+        reward = 18 + int(WAVE * 0.6);
+        leak = 2;
+    }
+    else
+    {
+        hp = 10 + WAVE * 2;
+        move_spd = 82 + WAVE * 2;
+        reward = 8 + int(WAVE * 0.4);
+        leak = 1;
+    }
+    hp_max = hp;
+
+    set_rect_shape(0, 0, 20, 16);
+    set_collision_layer(2);
+    set_collision_mask(0);
+
+    loop
+    {
+        var dt = delta();
+        if (GAME_STATE == STATE_GAMEOVER) break;
+
+        if (state > 0)
+        {
+            hp -= state;
+            state = 0;
+            if (hp <= 0)
+            {
+                ENEMIES_ALIVE -= 1;
+                if (ENEMIES_ALIVE < 0) ENEMIES_ALIVE = 0;
+                WAVE_KILLED += 1;
+                GOLD += reward;
+                SCORE += reward * 2;
+                fx_burst(x, y, 8, 255, 170, 150);
+                break;
+            }
+        }
+
+        if (GAME_STATE == STATE_PLAY)
+        {
+            if (wp >= PATH_COUNT)
+            {
+                ENEMIES_ALIVE -= 1;
+                if (ENEMIES_ALIVE < 0) ENEMIES_ALIVE = 0;
+                BASE_HP -= leak;
+                if (BASE_HP < 0) BASE_HP = 0;
+                fx_burst(x, y, 10, 255, 130, 120);
+                if (BASE_HP <= 0)
+                {
+                    GAME_STATE = STATE_GAMEOVER;
+                }
+                break;
+            }
+
+            var tx = PATH_X[wp];
+            var ty = PATH_Y[wp];
+            var dx = tx - x;
+            var dy = ty - y;
+            var dist = sqrt(dx * dx + dy * dy);
+            if (dist < 0.001)
+            {
+                wp += 1;
+            }
+            else
+            {
+                face = get_angle(x, y, tx, ty);
+                var step = move_spd * dt;
+                if (step >= dist)
+                {
+                    x = tx;
+                    y = ty;
+                    wp += 1;
+                }
+                else
+                {
+                    x += dx / dist * step;
+                    y += dy / dist * step;
+                }
+            }
+        }
+
+        // draw
+        if (kind == 1) set_color(170, 130, 255);
+        elif (kind == 2) set_color(255, 170, 100);
+        else set_color(255, 110, 140);
+        draw_rotated_rectangle(x, y, 20, 16, -face, true);
+        set_color(30, 20, 24);
+        draw_rotated_rectangle(x, y, 20, 16, -face, false);
+
+        set_color(20, 14, 14);
+        draw_rectangle(x, y - 12, 18, 3, true);
+        set_color(255, 120, 120);
+        draw_rectangle(x, y - 12, 18 * (hp / hp_max), 3, true);
+
+        frame;
+    }
+}
+
+process tower(px, py, tower_type)
+{
+    x = px;
+    y = py;
+    z = 2;
+    state = tower_type;
+
+    set_rect_shape(0, 0, 34, 34);
+    set_collision_layer(6);
+    set_collision_mask(0);
+
+    var base_range = 170;
+    var base_delay = 0.45;
+    var base_dmg = 4;
+    var bullet_speed = 690;
+    var body_r = 110;
+    var body_g = 190;
+    var body_b = 255;
+
+    if (tower_type == 1)
+    {
+        base_range = 290;
+        base_delay = 1.08;
+        base_dmg = 12;
+        bullet_speed = 930;
+        body_r = 210;
+        body_g = 180;
+        body_b = 95;
+    }
+    elif (tower_type == 2)
+    {
+        base_range = 150;
+        base_delay = 0.16;
+        base_dmg = 2;
+        bullet_speed = 770;
+        body_r = 120;
+        body_g = 240;
+        body_b = 170;
+    }
+
+    var fire_cd = 0.0;
+    var barrel_a = 0.0;
+
+    loop
+    {
+        var dt = delta();
+        if (fire_cd > 0) fire_cd -= dt;
+
+        var range_now = base_range + TOWER_RANGE_BONUS;
+        var delay_now = base_delay / TOWER_FIRE_MULT;
+        if (delay_now < 0.05) delay_now = 0.05;
+        var dmg_now = base_dmg + TOWER_DMG_BONUS;
+
+        if (GAME_STATE == STATE_PLAY)
+        {
+            var target = get_nearest(type creep);
+
+            if (target)
+            {
+                var d = get_dist(x, y, target.x, target.y);
+                if (d <= range_now)
+                {
+                    barrel_a = get_angle(x, y, target.x, target.y);
+                    if (fire_cd <= 0)
+                    {
+                        fire_cd = delay_now;
+                        var shot_dmg = dmg_now;
+                        if (math.rand(0.0, 1.0) < TOWER_CRIT_CHANCE)
+                        {
+                            shot_dmg = shot_dmg * 2;
+                            fx_burst(x, y, 3, 255, 250, 170);
+                        }
+
+                        var mx = x + get_distx(barrel_a, 18);
+                        var my = y + get_disty(barrel_a, 18);
+                        tower_bullet(mx, my, barrel_a, shot_dmg, bullet_speed);
+                    }
+                }
+            }
+        }
+
+        // draw tower
+        set_color(body_r, body_g, body_b);
+        draw_rotated_rectangle(x, y, 34, 34, 0, true);
+        set_color(24, 32, 46);
+        draw_rotated_rectangle(x, y, 34, 34, 0, false);
+
+        set_color(70, 80, 110);
+        draw_line_ex(x, y, x + get_distx(barrel_a, 18), y + get_disty(barrel_a, 18), 7);
+        set_color(180, 200, 225);
+        draw_line_ex(x, y, x + get_distx(barrel_a, 18), y + get_disty(barrel_a, 18), 3);
+        set_color(52, 62, 90);
+        draw_circle(x, y, 6, true);
+
+        frame;
+    }
+}
+
+process wave_director()
+{
+    var spawn_cd = 0.0;
+
+    loop
+    {
+        var dt = delta();
+
+        if (GAME_STATE == STATE_PLAY)
+        {
+            if (PENDING_NEXT_WAVE)
+            {
+                PENDING_NEXT_WAVE = false;
+                begin_wave(WAVE + 1);
+                spawn_cd = 0;
+            }
+
+            if (WAVE_ACTIVE)
+            {
+                WAVE_TIMER += dt;
+                spawn_cd -= dt;
+                if (spawn_cd <= 0 && WAVE_SPAWN_LEFT > 0)
+                {
+                    var kind = 0;
+                    var r = math.rand(0.0, 1.0);
+                    if (WAVE >= 7 && r < 0.18) kind = 2;
+                    elif (WAVE >= 3 && r < 0.50) kind = 1;
+                    else kind = 0;
+
+                    creep(kind);
+                    ENEMIES_ALIVE += 1;
+                    WAVE_SPAWN_LEFT -= 1;
+                    WAVE_SPAWNED += 1;
+
+                    var interval = 0.85 - WAVE * 0.02;
+                    if (interval < 0.20) interval = 0.20;
+                    spawn_cd = interval;
+                }
+
+                if (WAVE_SPAWN_LEFT <= 0 && ENEMIES_ALIVE <= 0)
+                {
+                    WAVE_ACTIVE = false;
+                    GAME_STATE = STATE_UPGRADE;
+                    roll_upgrades();
+                    GOLD += 26 + WAVE * 5 + BONUS_WAVE_GOLD;
+                    SCORE += 40 + WAVE * 8;
+                }
+            }
+        }
+
+        frame;
+    }
+}
+
+process placement_controller()
+{
+    z = 4;
+
+    loop
+    {
+        var mx = get_mouse_x();
+        var my = get_mouse_y();
+
+        if (GAME_STATE == STATE_PLAY)
+        {
+            if (key_pressed(KEY_1)) SELECTED_TOWER = 0;
+            if (key_pressed(KEY_2)) SELECTED_TOWER = 1;
+            if (key_pressed(KEY_3)) SELECTED_TOWER = 2;
+        }
+
+        var gx = int(mx / GRID) * GRID + GRID * 0.5;
+        var gy = int(my / GRID) * GRID + GRID * 0.5;
+        var cost = tower_cost(SELECTED_TOWER);
+        var can_place = true;
+
+        if (GAME_STATE != STATE_PLAY) can_place = false;
+        if (gx < 40 || gx > VIEW_W - 40 || gy < 40 || gy > VIEW_H - 40) can_place = false;
+        if (is_on_path(gx, gy, 42)) can_place = false;
+        if (GOLD < cost) can_place = false;
+        var t = collision(type tower, gx, gy);
+        if (t) can_place = false;
+
+        if (GAME_STATE == STATE_PLAY)
+        {
+            if (can_place)
+            {
+                set_alpha(120);
+                set_color(120, 255, 170);
+            }
+            else
+            {
+                set_alpha(120);
+                set_color(255, 130, 130);
+            }
+            draw_rectangle(gx - 17, gy - 17, 34, 34, true);
+            set_alpha(255);
+            set_color(36, 46, 62);
+            draw_rectangle(gx - 17, gy - 17, 34, 34, false);
+
+            if (mouse_pressed(0) && can_place)
+            {
+                tower(gx, gy, SELECTED_TOWER);
+                GOLD -= cost;
+            }
+        }
+
+        frame;
+    }
+}
+
+process td_gui()
+{
+    z = 6;
+
+    loop
+    {
+        set_draw_screen(true);
+
+        set_alpha(190);
+        set_color(10, 14, 22);
+        draw_rectangle(12, 10, 520, 178, true);
+        set_alpha(255);
+        set_color(90, 120, 175);
+        draw_rectangle(12, 10, 520, 178, false);
+
+        set_color(245, 248, 255);
+        draw_text("TOWER DEFENSE", 22, 18, 30);
+        draw_text(format("Wave: {}", WAVE), 22, 56, 18);
+        draw_text(format("Enemies: {}", ENEMIES_ALIVE), 22, 76, 18);
+        draw_text(format("Spawned: {}", WAVE_SPAWNED), 22, 96, 18);
+        draw_text(format("Gold: {}", GOLD), 180, 56, 18);
+        draw_text(format("Score: {}", SCORE), 180, 76, 18);
+        draw_text(format("Base HP: {}", BASE_HP), 180, 96, 18);
+
+        var hp_ratio = BASE_HP / BASE_HP_MAX;
+        set_color(24, 24, 30);
+        draw_rectangle(180, 118, 220, 12, true);
+        set_color(255, 105, 120);
+        draw_rectangle(180, 118, 220 * hp_ratio, 12, true);
+        set_color(255, 190, 200);
+        draw_rectangle(180, 118, 220, 12, false);
+
+        var cname = tower_name(SELECTED_TOWER);
+        var ccost = tower_cost(SELECTED_TOWER);
+        draw_text(format("Tower: {} {}", cname, ccost), 22, 138, 17);
+        draw_text("1/2/3 select tower | Left click build", 22, 158, 15);
+
+        if (!WAVE_ACTIVE && GAME_STATE == STATE_PLAY)
+        {
+            set_color(255, 235, 150);
+            draw_text("Preparing wave...", VIEW_W - 250, 20, 22);
+        }
+        elif (WAVE_ACTIVE && GAME_STATE == STATE_PLAY)
+        {
+            set_color(180, 220, 255);
+            draw_text(format("Wave Timer {}", WAVE_TIMER), VIEW_W - 230, 20, 20);
+        }
+
+        if (GAME_STATE == STATE_UPGRADE)
+        {
+            set_alpha(190);
+            set_color(8, 10, 16);
+            draw_rectangle(VIEW_W / 2 - 350, VIEW_H / 2 - 135, 700, 270, true);
+            set_alpha(255);
+            set_color(255, 235, 150);
+            draw_rectangle(VIEW_W / 2 - 350, VIEW_H / 2 - 135, 700, 270, false);
+
+            set_color(255, 242, 190);
+            draw_text("WAVE CLEAR - CHOOSE UPGRADE", VIEW_W / 2 - 280, VIEW_H / 2 - 95, 30);
+            set_color(215, 225, 245);
+            draw_text(format("[1] {}", upgrade_name(UPG_A)), VIEW_W / 2 - 300, VIEW_H / 2 - 35, 26);
+            draw_text(format("[2] {}", upgrade_name(UPG_B)), VIEW_W / 2 - 300, VIEW_H / 2 + 10, 26);
+            draw_text(format("[3] {}", upgrade_name(UPG_C)), VIEW_W / 2 - 300, VIEW_H / 2 + 55, 26);
+
+            if (key_pressed(KEY_1))
+            {
+                apply_upgrade(UPG_A);
+                GAME_STATE = STATE_PLAY;
+                PENDING_NEXT_WAVE = true;
+            }
+            elif (key_pressed(KEY_2))
+            {
+                apply_upgrade(UPG_B);
+                GAME_STATE = STATE_PLAY;
+                PENDING_NEXT_WAVE = true;
+            }
+            elif (key_pressed(KEY_3))
+            {
+                apply_upgrade(UPG_C);
+                GAME_STATE = STATE_PLAY;
+                PENDING_NEXT_WAVE = true;
+            }
+        }
+
+        if (GAME_STATE == STATE_GAMEOVER)
+        {
+            set_alpha(180);
+            set_color(8, 10, 16);
+            draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+            set_alpha(255);
+
+            set_color(255, 130, 130);
+            draw_text("BASE DESTROYED", VIEW_W / 2 - 220, VIEW_H / 2 - 44, 52);
+            set_color(255, 220, 220);
+            draw_text("Press R to restart", VIEW_W / 2 - 120, VIEW_H / 2 + 20, 26);
+        }
+
+        set_draw_screen(false);
+        frame;
+    }
+}
+
+def start_game()
+{
+    let_me_alone();
+
+    GAME_STATE = STATE_PLAY;
+    WAVE = 0;
+    WAVE_ACTIVE = false;
+    WAVE_SPAWN_LEFT = 0;
+    WAVE_SPAWNED = 0;
+    WAVE_KILLED = 0;
+    WAVE_TIMER = 0;
+    PENDING_NEXT_WAVE = false;
+    ENEMIES_ALIVE = 0;
+
+    GOLD = 180;
+    SCORE = 0;
+    BASE_HP = BASE_HP_MAX;
+
+    SELECTED_TOWER = 0;
+
+    TOWER_DMG_BONUS = 0;
+    TOWER_RANGE_BONUS = 0;
+    TOWER_FIRE_MULT = 1.0;
+    TOWER_CRIT_CHANCE = 0.0;
+    BONUS_WAVE_GOLD = 0;
+
+    arena_renderer();
+    wave_director();
+    placement_controller();
+    td_gui();
+
+    begin_wave(1);
+}
+
+set_window_size(VIEW_W, VIEW_H);
+set_window_title("Tower Defense");
+set_design_resolution(VIEW_W, VIEW_H);
+set_virtual_screen_enabled(true);
+set_screen_scale_mode(0);
+init_collision(0, 0, VIEW_W, VIEW_H);
+
+start_game();
+
+loop
+{
+    if (key_pressed(KEY_R))
+    {
+        start_game();
+    }
+
+    if (key_pressed(KEY_ESCAPE))
+    {
+        let_me_alone();
+        break;
+    }
+
+    frame;
+}

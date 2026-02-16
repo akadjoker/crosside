@@ -1,0 +1,726 @@
+
+
+// Teclas
+var KEY_ESCAPE = 256;
+var KEY_R = 82;
+var KEY_SPACE = 32;
+var KEY_T = 84;
+
+// Configuração
+var SCREEN_W = 1280;
+var SCREEN_H = 720;
+var PPM = 30.0;
+var LAUNCH_POWER = 0.39; // world units per pulled pixel
+var SLEEP_SPEED = 1.5;   // world units/s
+
+set_window_size(SCREEN_W, SCREEN_H);
+set_window_title("Angry Birds - Bulang");
+create_world(0, 9.8); // Gravidade para baixo
+set_physics_debug(false); // Vamos desenhar manualmente
+
+// Estado do jogo
+var game_state = "ready"; // ready, aiming, flying, waiting
+var score = 0;
+var birds_left = 5;
+var pigs_total = 0;
+var pigs_alive = 0;
+
+// fisga
+var slingshot_x = 200;
+var slingshot_y = 500;
+var slingshot_height = 100;
+
+// Pássaro atual
+var current_bird = nil;
+var bird_grabbed = false;
+var grab_start_x = 0;
+var grab_start_y = 0;
+var pull_x = 0;
+var pull_y = 0;
+var max_pull = 120;
+
+// Listas de objetos
+var all_birds = [];
+var all_blocks = [];
+var all_block_w = [];
+var all_block_h = [];
+var all_block_kind = [];
+var all_pigs = [];
+
+// Corda do fisga (b2Rope)
+var rope_left = nil;
+var rope_right = nil;
+var rope_segments = 8;
+
+// Criar chão
+var ground_def = create_bodydef(BODY_STATIC);
+ground_def.set_position(SCREEN_W / 2, SCREEN_H - 20);
+var ground_fx = create_fixture_def();
+ground_fx.set_box_shape(SCREEN_W / 2, 20);
+ground_fx.set_friction(0.8);
+var ground = create_body(ground_def);
+ground.add_fixture(ground_fx);
+
+// Criar base do fisga (visual)
+var sling_base_def = create_bodydef(BODY_STATIC);
+sling_base_def.set_position(slingshot_x, slingshot_y);
+var sling_fx = create_fixture_def();
+sling_fx.set_box_shape(15, slingshot_height / 2);
+var sling_base = create_body(sling_base_def);
+sling_base.add_fixture(sling_fx);
+
+def create_rope_slingshot(from_x, from_y, to_x, to_y)
+{
+    var rope_def = b2RopeDef(rope_segments);
+    rope_def.set_position(from_x, from_y);
+    rope_def.set_gravity(0, 0); // Sem gravidade na corda
+    rope_def.set_damping(0.1);
+    
+    var points = [];
+    var masses = [];
+    
+    var dx = to_x - from_x;
+    var dy = to_y - from_y;
+    
+    for (var i = 0; i < rope_segments; i = i + 1)
+    {
+        var t = i / (rope_segments - 1);
+        points.push(dx * t);
+        points.push(dy * t);
+        
+        if (i == 0 || i == rope_segments - 1)
+            masses.push(0); // Fixo nas pontas
+        else
+            masses.push(0.1);
+    }
+    
+    rope_def.set_vertices(points, masses);
+    
+    var rope = b2Rope();
+    rope.create(rope_def);
+    return rope;
+}
+
+def spawn_bird()
+{
+    if (birds_left <= 0) return nil;
+    
+    var bird_def = create_bodydef(BODY_DYNAMIC);
+    bird_def.set_position(slingshot_x, slingshot_y - slingshot_height);
+    bird_def.set_linear_damping(0.2);
+    bird_def.set_angular_damping(0.3);
+    
+    var bird_fx = create_fixture_def();
+    bird_fx.set_circle_shape(18);
+    bird_fx.set_density(1.0);
+    bird_fx.set_friction(0.4);
+    bird_fx.set_restitution(0.3);
+    
+    var bird = create_body(bird_def);
+    bird.add_fixture(bird_fx);
+    bird.set_gravity_scale(0.0);
+    bird.set_linear_velocity(0, 0);
+    bird.set_angular_velocity(0);
+    
+ 
+    all_birds.push(bird);
+    
+    return bird;
+}
+
+def create_wood_block(x, y, w, h)
+{
+    var block_def = create_bodydef(BODY_DYNAMIC);
+    block_def.set_position(x, y);
+    
+    var block_fx = create_fixture_def();
+    block_fx.set_box_shape(w, h);
+    block_fx.set_density(0.6);
+    block_fx.set_friction(0.4);
+    block_fx.set_restitution(0.1);
+    
+    var block = create_body(block_def);
+    block.add_fixture(block_fx);
+ 
+    
+    all_blocks.push(block);
+    all_block_w.push(w);
+    all_block_h.push(h);
+    all_block_kind.push("wood");
+    return block;
+}
+
+def create_stone_block(x, y, w, h)
+{
+    var block_def = create_bodydef(BODY_DYNAMIC);
+    block_def.set_position(x, y);
+    
+    var block_fx = create_fixture_def();
+    block_fx.set_box_shape(w, h);
+    block_fx.set_density(2.0);
+    block_fx.set_friction(0.4);
+    block_fx.set_restitution(0.05);
+    
+    var block = create_body(block_def);
+    block.add_fixture(block_fx);
+ 
+    
+    all_blocks.push(block);
+    all_block_w.push(w);
+    all_block_h.push(h);
+    all_block_kind.push("stone");
+    return block;
+}
+
+def create_glass_block(x, y, w, h)
+{
+    var block_def = create_bodydef(BODY_DYNAMIC);
+    block_def.set_position(x, y);
+    
+    var block_fx = create_fixture_def();
+    block_fx.set_box_shape(w, h);
+    block_fx.set_density(0.3);
+    block_fx.set_friction(0.3);
+    block_fx.set_restitution(0.2);
+    
+    var block = create_body(block_def);
+    block.add_fixture(block_fx);
+ 
+    
+    all_blocks.push(block);
+    all_block_w.push(w);
+    all_block_h.push(h);
+    all_block_kind.push("glass");
+    return block;
+}
+
+def create_pig(x, y, radius)
+{
+    var pig_def = create_bodydef(BODY_DYNAMIC);
+    pig_def.set_position(x, y);
+    pig_def.set_linear_damping(0.3);
+    pig_def.set_angular_damping(0.6);
+    
+    var pig_fx = create_fixture_def();
+    pig_fx.set_circle_shape(radius);
+    pig_fx.set_density(0.8);
+    pig_fx.set_friction(0.5);
+    pig_fx.set_restitution(0.2);
+    
+    var pig = create_body(pig_def);
+    pig.add_fixture(pig_fx);
+ 
+    
+    all_pigs.push(pig);
+    pigs_total = pigs_total + 1;
+    pigs_alive = pigs_alive + 1;
+    
+    return pig;
+}
+
+def build_tower_simple()
+{
+    var base_x = 730;
+    var ground_top = SCREEN_H - 40;
+    var base_y = ground_top - 80; // coluna hh=80
+    
+    // Colunas
+    create_wood_block(base_x - 60, base_y, 15, 80);
+    create_wood_block(base_x + 60, base_y, 15, 80);
+    
+    // Teto
+    create_wood_block(base_x, base_y - 95, 80, 15); // 80 + 15 acima
+    
+    // Porco no teto
+    create_pig(base_x, base_y - 135, 25); // 80 + 15 + 25 acima
+}
+
+def build_tower_medium()
+{
+    var base_x = 930;
+    var ground_top = SCREEN_H - 40;
+    var base_y = ground_top - 100; // coluna pedra hh=100
+    
+    // Base de pedra
+    create_stone_block(base_x - 70, base_y, 20, 100);
+    create_stone_block(base_x + 70, base_y, 20, 100);
+    
+    // Plataforma
+    create_wood_block(base_x, base_y - 115, 100, 15); // 100 + 15 acima
+    
+    // Segundo nível
+    create_glass_block(base_x - 50, base_y - 190, 15, 60); // 100 + 15 + 60
+    create_glass_block(base_x + 50, base_y - 190, 15, 60);
+    create_wood_block(base_x, base_y - 265, 70, 15); // + 15
+    
+    // Porcos nas plataformas
+    create_pig(base_x, base_y - 152, 22);
+    create_pig(base_x, base_y - 300, 20);
+}
+
+def build_tower_complex()
+{
+    var base_x = 1130;
+    var ground_top = SCREEN_H - 40;
+    var base_y = ground_top - 70; // coluna pedra hh=70
+    
+    // Base larga
+    create_stone_block(base_x - 80, base_y, 15, 70);
+    create_stone_block(base_x, base_y, 15, 70);
+    create_stone_block(base_x + 80, base_y, 15, 70);
+    
+    // Plataforma 1
+    create_wood_block(base_x, base_y - 85, 120, 15); // 70 + 15
+    
+    // Nível 2
+    create_glass_block(base_x - 50, base_y - 150, 15, 50); // + 50
+    create_glass_block(base_x + 50, base_y - 150, 15, 50);
+    
+    // Plataforma 2
+    create_wood_block(base_x, base_y - 215, 80, 15); // + 15
+    
+    // Topo
+    create_wood_block(base_x - 30, base_y - 270, 12, 40); // + 40
+    create_wood_block(base_x + 30, base_y - 270, 12, 40);
+    create_wood_block(base_x, base_y - 322, 50, 12); // + 12
+    
+    // Porcos nas plataformas
+    create_pig(base_x, base_y - 124, 24);
+    create_pig(base_x, base_y - 250, 20);
+    create_pig(base_x, base_y - 352, 18);
+}
+
+def reset_level()
+{
+    // Limpar objetos antigos
+    for (var i = 0; i < len(all_birds); i = i + 1)
+    {
+        all_birds[i].remove();
+    }
+    for (var i = 0; i < len(all_blocks); i = i + 1)
+    {
+        all_blocks[i].remove();
+    }
+    for (var i = 0; i < len(all_pigs); i = i + 1)
+    {
+        all_pigs[i].remove();
+    }
+    
+    all_birds = [];
+    all_blocks = [];
+    all_block_w = [];
+    all_block_h = [];
+    all_block_kind = [];
+    all_pigs = [];
+    
+    score = 0;
+    birds_left = 5;
+    pigs_total = 0;
+    pigs_alive = 0;
+    game_state = "ready";
+    
+    // Construir níveis
+    build_tower_simple();
+    build_tower_medium();
+    build_tower_complex();
+    
+    // Primeiro pássaro
+    current_bird = spawn_bird();
+    birds_left = birds_left - 1;
+}
+
+def draw_bird(x, y, radius, angry)
+{
+    // Corpo vermelho
+    set_color(220, 50, 50);
+    draw_circle(x, y, radius, true);
+    
+    // Contorno
+    set_color(180, 30, 30);
+    draw_circle(x, y, radius, false);
+    draw_circle(x, y, radius - 1, false);
+    
+    // Olho
+    set_color(255, 255, 255);
+    draw_circle(x + radius * 0.3, y - radius * 0.3, radius * 0.4, true);
+    
+    set_color(0, 0, 0);
+    draw_circle(x + radius * 0.35, y - radius * 0.25, radius * 0.25, true);
+    
+    // Sobrancelha raivosa
+    if (angry)
+    {
+        set_color(0, 0, 0);
+        draw_line(x, y - radius * 0.8, x + radius * 0.8, y - radius * 0.4);
+    }
+    
+    // Bico
+    set_color(255, 200, 0);
+    draw_triangle(x + radius * 0.7, y, x + radius * 1.2, y - 5, x + radius * 1.2, y + 5, true);
+}
+
+def draw_pig(x, y, radius)
+{
+    // Corpo verde
+    set_color(80, 200, 80);
+    draw_circle(x, y, radius, true);
+    
+    // Contorno
+    set_color(50, 160, 50);
+    draw_circle(x, y, radius, false);
+    
+    // Olhos
+    set_color(255, 255, 255);
+    draw_circle(x - radius * 0.3, y - radius * 0.2, radius * 0.3, true);
+    draw_circle(x + radius * 0.3, y - radius * 0.2, radius * 0.3, true);
+    
+    set_color(0, 0, 0);
+    draw_circle(x - radius * 0.3, y - radius * 0.2, radius * 0.15, true);
+    draw_circle(x + radius * 0.3, y - radius * 0.2, radius * 0.15, true);
+    
+    // Focinho
+    set_color(100, 220, 100);
+    draw_circle(x, y + radius * 0.3, radius * 0.4, true);
+    
+    set_color(50, 160, 50);
+    draw_circle(x - 4, y + radius * 0.25, 3, true);
+    draw_circle(x + 4, y + radius * 0.25, 3, true);
+}
+
+def draw_block(body, w, h, kind)
+{
+    var (x, y) = body.get_position();
+    var angle_deg = body.get_angle();
+    var angle = angle_deg * 0.0174532925199433;
+ 
+    if (kind == "stone")
+        set_color(170, 170, 180);
+    elif (kind == "glass")
+        set_color(140, 210, 240);
+    else
+        set_color(190, 145, 80);
+    
+    // Desenhar retângulo rotacionado
+    var cos_a = cos(angle);
+    var sin_a = sin(angle);
+    
+    var corners_x = [-w, w, w, -w];
+    var corners_y = [-h, -h, h, h];
+    
+    for (var i = 0; i < 4; i = i + 1)
+    {
+        var rx = corners_x[i] * cos_a - corners_y[i] * sin_a;
+        var ry = corners_x[i] * sin_a + corners_y[i] * cos_a;
+        corners_x[i] = x + rx;
+        corners_y[i] = y + ry;
+    }
+
+    // Fill (2 triângulos)
+    set_alpha(170);
+    draw_triangle(
+        corners_x[0], corners_y[0],
+        corners_x[2], corners_y[2],
+        corners_x[1], corners_y[1],
+        true
+    );
+    draw_triangle(
+        corners_x[0], corners_y[0],
+        corners_x[3], corners_y[3],
+        corners_x[2], corners_y[2],
+        true
+    );
+    set_alpha(255);
+
+    set_color(0, 0, 0);
+    set_alpha(120);
+    draw_line(corners_x[0], corners_y[0], corners_x[1], corners_y[1]);
+    draw_line(corners_x[1], corners_y[1], corners_x[2], corners_y[2]);
+    draw_line(corners_x[2], corners_y[2], corners_x[3], corners_y[3]);
+    draw_line(corners_x[3], corners_y[3], corners_x[0], corners_y[0]);
+    set_alpha(255);
+}
+
+def draw_trajectory(start_x, start_y, vel_x, vel_y)
+{
+    set_color(255, 255, 255);
+    set_alpha(150);
+
+    var xw = start_x / PPM;
+    var yw = start_y / PPM;
+    var prev_x = start_x;
+    var prev_y = start_y;
+    var g = 9.8;
+    var dt = 0.08;
+    var t = 0.0;
+
+    for (var i = 0; i < 30; i = i + 1)
+    {
+        t = t + dt;
+        var nx = (xw + vel_x * t) * PPM;
+        var ny = (yw + vel_y * t + 0.5 * g * t * t) * PPM;
+
+        draw_line(prev_x, prev_y, nx, ny);
+
+        prev_x = nx;
+        prev_y = ny;
+
+        if (ny > SCREEN_H + 40 || nx < -40 || nx > SCREEN_W + 40) break;
+    }
+    set_alpha(255);
+}
+
+// Inicializar nível
+reset_level();
+
+var show_trajectory = true;
+
+// Loop principal
+loop
+{
+    var dt = delta();
+    if (dt > 0.033) dt = 0.033;
+    
+    var mx = get_mouse_x();
+    var my = get_mouse_y();
+    
+    // Input do fisga
+    if (game_state == "ready" && current_bird != nil)
+    {
+        var (bird_x, bird_y) = current_bird.get_position();
+        var dx = mx - bird_x;
+        var dy = my - bird_y;
+        var dist = sqrt(dx * dx + dy * dy);
+        
+        // Pegar pássaro
+        if (mouse_pressed(0) && dist < 30)
+        {
+            bird_grabbed = true;
+            game_state = "aiming";
+            grab_start_x = bird_x;
+            grab_start_y = bird_y;
+        }
+    }
+    
+    if (game_state == "aiming" && bird_grabbed)
+    {
+        if (mouse_down(0))
+        {
+            // Calcular puxada
+            pull_x = grab_start_x - mx;
+            pull_y = grab_start_y - my;
+            
+            var pull_dist = sqrt(pull_x * pull_x + pull_y * pull_y);
+            
+            if (pull_dist > max_pull)
+            {
+                pull_x = (pull_x / pull_dist) * max_pull;
+                pull_y = (pull_y / pull_dist) * max_pull;
+            }
+            
+            var new_x = grab_start_x - pull_x;
+            var new_y = grab_start_y - pull_y;
+            
+            current_bird.set_transform(new_x, new_y, 0);
+            current_bird.set_linear_velocity(0, 0);
+        }
+        else
+        {
+            // Soltar!
+            var vx = pull_x * LAUNCH_POWER;
+            var vy = pull_y * LAUNCH_POWER;
+            current_bird.set_gravity_scale(1.0);
+            current_bird.set_linear_velocity(vx, vy);
+            
+            bird_grabbed = false;
+            game_state = "flying";
+        }
+    }
+    
+    if (game_state == "flying" && current_bird != nil)
+    {
+        var (bx, by) = current_bird.get_position();
+        var (vx, vy) = current_bird.get_linear_velocity();
+        var speed = sqrt(vx * vx + vy * vy);
+        
+        // Pássaro parou ou saiu da tela
+        if (speed < SLEEP_SPEED || bx < -80 || bx > SCREEN_W + 80 || by > SCREEN_H + 80)
+        {
+            game_state = "waiting";
+        }
+    }
+    
+    if (game_state == "waiting")
+    {
+        // Esperar um pouco antes do próximo pássaro
+        if (birds_left > 0 && pigs_alive > 0)
+        {
+            current_bird = spawn_bird();
+            birds_left = birds_left - 1;
+            game_state = "ready";
+        }
+        elif (pigs_alive == 0)
+        {
+            game_state = "victory";
+        }
+        else
+        {
+            game_state = "gameover";
+        }
+    }
+    
+    // Teclas
+    if (key_pressed(KEY_R))
+    {
+        reset_level();
+    }
+    
+    if (key_pressed(KEY_T))
+    {
+        show_trajectory = !show_trajectory;
+    }
+    
+    if (key_pressed(KEY_SPACE) && (game_state == "victory" || game_state == "gameover"))
+    {
+        reset_level();
+    }
+    
+    // Checar porcos destruídos (fora da tela ou atingidos)
+    var pigs_count = 0;
+    for (var i = 0; i < len(all_pigs); i = i + 1)
+    {
+        var pig = all_pigs[i];
+        var (px, py) = pig.get_position();
+        
+        if (py < SCREEN_H + 100)
+        {
+            pigs_count = pigs_count + 1;
+        }
+    }
+    pigs_alive = pigs_count;
+    
+    // Update física
+    update_world(dt);
+    
+    // ===== DESENHO =====
+    
+    // Background - céu
+    set_color(135, 206, 235);
+    draw_rectangle(0, 0, SCREEN_W, SCREEN_H, true);
+    
+    // Chão - grama
+    set_color(34, 139, 34);
+    draw_rectangle(0, SCREEN_H - 50, SCREEN_W, 50, true);
+    
+    // fisga base
+    set_color(101, 67, 33);
+    draw_rectangle(slingshot_x - 15, slingshot_y, 30, slingshot_height, true);
+    
+    // Elásticos do fisga
+    if (game_state == "aiming" && current_bird != nil)
+    {
+        var (bird_x, bird_y) = current_bird.get_position();
+        
+        set_color(80, 50, 20);
+        draw_line(slingshot_x - 10, slingshot_y - slingshot_height, bird_x, bird_y);
+        draw_line(slingshot_x + 10, slingshot_y - slingshot_height, bird_x, bird_y);
+    }
+    
+    // Trajetória
+    if (show_trajectory && game_state == "aiming" && bird_grabbed)
+    {
+        var (bird_x, bird_y) = current_bird.get_position();
+        draw_trajectory(bird_x, bird_y, pull_x * LAUNCH_POWER, pull_y * LAUNCH_POWER);
+    }
+    
+    // Desenhar blocos
+    for (var i = 0; i < len(all_blocks); i = i + 1)
+    {
+        var block = all_blocks[i];
+        var (bx, by) = block.get_position();
+        
+        if (by < SCREEN_H + 100)
+        {
+            draw_block(block, all_block_w[i], all_block_h[i], all_block_kind[i]);
+        }
+    }
+    
+    // Desenhar porcos
+    for (var i = 0; i < len(all_pigs); i = i + 1)
+    {
+        var pig = all_pigs[i];
+        var (px, py) = pig.get_position();
+        
+        if (py < SCREEN_H + 100)
+        {
+            draw_pig(px, py, 25);
+        }
+    }
+    
+    // Desenhar pássaros
+    for (var i = 0; i < len(all_birds); i = i + 1)
+    {
+        var bird = all_birds[i];
+        var (bx, by) = bird.get_position();
+        
+        if (by < SCREEN_H + 100)
+        {
+            var is_angry = (bird == current_bird && game_state == "aiming");
+            draw_bird(bx, by, 18, is_angry);
+        }
+    }
+    
+    // HUD
+    set_color(0, 0, 0);
+    draw_text("ANGRY BIRDS - Bulçang Edition", 20, 20, 24);
+    draw_text("Score: " + str(score), 20, 50, 20);
+    draw_text("Birds: " + str(birds_left + 1), 20, 75, 20);
+    draw_text("Pigs: " + str(pigs_alive) + "/" + str(pigs_total), 20, 100, 20);
+    draw_text("[R] Reset | [T] Trajectory | [Space] Continue", 20, 130, 16);
+    
+    // Mensagens de estado
+    if (game_state == "ready")
+    {
+        set_color(255, 255, 255);
+        draw_text("Click and drag bird to launch!", SCREEN_W / 2 - 150, 200, 20);
+    }
+    
+    if (game_state == "victory")
+    {
+        set_color(0, 0, 0);
+        set_alpha(200);
+        draw_rectangle(SCREEN_W / 2 - 200, SCREEN_H / 2 - 80, 400, 160, true);
+        set_alpha(255);
+        
+        set_color(255, 255, 0);
+        draw_text("VICTORY!", SCREEN_W / 2 - 80, SCREEN_H / 2 - 40, 32);
+        set_color(255, 255, 255);
+        draw_text("Score: " + str(score), SCREEN_W / 2 - 60, SCREEN_H / 2, 24);
+        draw_text("Press SPACE to play again", SCREEN_W / 2 - 120, SCREEN_H / 2 + 40, 18);
+    }
+    
+    if (game_state == "gameover")
+    {
+        set_color(0, 0, 0);
+        set_alpha(200);
+        draw_rectangle(SCREEN_W / 2 - 200, SCREEN_H / 2 - 80, 400, 160, true);
+        set_alpha(255);
+        
+        set_color(255, 50, 50);
+        draw_text("GAME OVER", SCREEN_W / 2 - 100, SCREEN_H / 2 - 40, 32);
+        set_color(255, 255, 255);
+        draw_text("Score: " + str(score), SCREEN_W / 2 - 60, SCREEN_H / 2, 24);
+        draw_text("Press SPACE to try again", SCREEN_W / 2 - 120, SCREEN_H / 2 + 40, 18);
+    }
+    
+    draw_fps(SCREEN_W - 100, 20);
+    
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+    
+    frame;
+}
+
+print("Thanks for playing!");

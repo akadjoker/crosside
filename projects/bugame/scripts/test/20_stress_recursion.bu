@@ -1,0 +1,24 @@
+// Test: Recursion and stress (function calls)
+// Moderate recursion (avoid stack overflow)
+def sum_to(n) {
+    if (n <= 0) { return 0; }
+    return n + sum_to(n - 1);
+}
+
+var r = sum_to(50);
+if (r != 1275) { throw "recursion"; }
+
+// Fibonacci (double recursion)
+def fib(n) {
+    if (n <= 1) { return n; }
+    return fib(n - 1) + fib(n - 2);
+}
+if (fib(10) != 55) { throw "fibonacci"; }
+
+// Many function calls (iterative)
+def inc(x) { return x + 1; }
+var v = 0;
+for (var i = 0; i < 10000; i++) {
+    v = inc(v);
+}
+if (v != 10000) { throw "many calls"; }

@@ -1,0 +1,37 @@
+{
+  "Configuration": {
+    "Modules": [
+      "sdl2"
+    ],
+    "Projects": [
+      "/media/projectos/projects/python/crosside/projects/bugame/main.mk"
+    ],
+    "Files": [
+      "/media/projectos/projects/python/crosside/projects/raylib/examples/core/core_2d_camera_platformer.c",
+      "/media/projectos/projects/python/crosside/projects/bugame/main.cpp",
+      "/media/projectos/projects/python/crosside/projects/bugame/src/bindings.cpp",
+      "/media/projectos/projects/python/crosside/projects/sdl/tutorial_1.cpp"
+    ],
+    "Session": {
+      "CurrentPlatform": 0,
+      "Theme": "dark"
+    },
+    "Desktop": {
+      "ArgCPP": [],
+      "ArgCC": [],
+      "ArgLD": [
+        "-lpthread"
+      ]
+    },
+    "Android": {
+      "ArgCPP": [],
+      "ArgCC": [],
+      "ArgLD": []
+    },
+    "Web": {
+      "ArgCPP": [],
+      "ArgCC": [],
+      "ArgLD": []
+    }
+  }
+}

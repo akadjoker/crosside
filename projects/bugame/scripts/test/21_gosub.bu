@@ -1,0 +1,43 @@
+// Test: goto/label (gosub requires process context)
+// Test forward goto
+var result = 0;
+
+def test_goto() {
+    result = 1;
+    goto skip;
+    result = 999;
+    skip:
+    result = result + 1;
+    return result;
+}
+
+if (test_goto() != 2) { throw "forward goto"; }
+
+// Test label after code
+var val = 0;
+
+def test_label() {
+    val = 10;
+    goto end;
+    val = 999;
+    end:
+    return val;
+}
+
+if (test_label() != 10) { throw "label skip"; }
+
+// Multiple labels
+def multi_label() {
+    var x = 0;
+    goto second;
+    first:
+    x = x + 1;
+    goto done;
+    second:
+    x = 100;
+    goto first;
+    done:
+    return x;
+}
+
+if (multi_label() != 101) { throw "multi label"; }

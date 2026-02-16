@@ -1,0 +1,16 @@
+// Test: Literals and basic types
+var a = 42;
+var b = 3.14;
+var c = "hello";
+var d = true;
+var e = false;
+var f = nil;
+var g = 0xFF;
+
+if (a != 42) { throw "int failed"; }
+if (b < 3.13 || b > 3.15) { throw "float failed"; }
+if (c != "hello") { throw "string failed"; }
+if (d != true) { throw "true failed"; }
+if (e != false) { throw "false failed"; }
+if (f != nil) { throw "nil failed"; }
+if (g != 255) { throw "hex failed"; }

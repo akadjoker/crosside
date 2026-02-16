@@ -1,0 +1,31 @@
+print("=== test_switch_break_compile_error ===");
+
+process bad_switch_break()
+{
+    var i = 0;
+
+    loop
+    {
+        i += 1;
+
+        switch (i)
+        {
+            case 1:
+                // Expected compiler error:
+                // Switch cases auto-exit; 'break' here would break an outer loop
+                break;
+
+            default:
+                i += 0;
+        }
+
+        if (i > 2)
+        {
+            break;
+        }
+
+        frame;
+    }
+}
+
+bad_switch_break();

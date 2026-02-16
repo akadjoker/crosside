@@ -1,0 +1,752 @@
+import math;
+include "gui_lib.bu";
+
+var KEY_ESCAPE = 256;
+var W = 1200;
+var H = 760;
+
+var DEMO_CLICKS = 0;
+var STRESS_WIDGETS = 80;
+var TICKER = 0;
+var DEMO_SOUND_ON = true;
+var DEMO_SPEED = 42;
+var DEMO_LOAD = 18;
+var DEMO_CHECK_A = true;
+var DEMO_CHECK_B = false;
+var DEMO_TAB = 0;
+var DEMO_DIFFICULTY = 1;
+var DEMO_CHANNELS = 8;
+var DEMO_LIST_A = false;
+var DEMO_LIST_B = true;
+var DEMO_GROUP_OPEN = true;
+var DEMO_COMBO_IDX = 0;
+var DEMO_DROPDOWN_IDX = 0;
+var DEMO_WIDGET_IDX = 0;
+var DEMO_PROP_VISIBLE = true;
+var DEMO_PROP_LOCKED = false;
+var DEMO_PROP_LAYER = 3;
+var DEMO_PROP_POS_X = 240;
+var DEMO_PROP_POS_Y = 180;
+var DEMO_PROP_SCALE_X = 1.0;
+var DEMO_PROP_SCALE_Y = 1.0;
+var DEMO_PROP_COLOR_R = 86;
+var DEMO_PROP_COLOR_G = 156;
+var DEMO_PROP_COLOR_B = 232;
+var DEMO_PROP_COLOR_A = 255;
+var DEMO_POPUP_LAST = GUI_POPUP_NONE;
+var DEMO_PICKER_LAST = GUI_FILE_PICKER_NONE;
+var DEMO_PICKER_PATH = "";
+var DEMO_MENU_GRID = true;
+var DEMO_MENU_PROFILER = false;
+var DEMO_MENU_THEME_MODE = 0;
+var DEMO_MENU_QUALITY = 1;
+var DEMO_MENU_LAST = "";
+var DEMO_PROC_GRAPH_OPTIONS = ["None", "Sprite", "Actor", "FX", "UI"];
+var DEMO_SCENE_PROCESSES = [];
+var DEMO_SCENE_SELECTED = -1;
+var DEMO_PROC_EDIT_INDEX = -1;
+var DEMO_PROC_X = 240;
+var DEMO_PROC_Y = 180;
+var DEMO_PROC_SIZE = 32;
+var DEMO_PROC_ANGLE = 0;
+var DEMO_PROC_GRAPH = 0;
+var DEMO_PROC_R = 86;
+var DEMO_PROC_G = 156;
+var DEMO_PROC_B = 232;
+var DEMO_PROC_A = 255;
+var DEMO_PROC_LAST_ACTION = "none";
+
+class DemoSceneProcess
+{
+    var x;
+    var y;
+    var size;
+    var angle;
+    var graph;
+    var r;
+    var g;
+    var b;
+    var a;
+
+    def init(_x, _y, _size, _angle, _graph, _r, _g, _b, _a)
+    {
+        self.x = _x;
+        self.y = _y;
+        self.size = _size;
+        self.angle = _angle;
+        self.graph = _graph;
+        self.r = _r;
+        self.g = _g;
+        self.b = _b;
+        self.a = _a;
+    }
+}
+
+def demo_process_editor_defaults()
+{
+    DEMO_PROC_EDIT_INDEX = -1;
+    DEMO_PROC_X = 240;
+    DEMO_PROC_Y = 180;
+    DEMO_PROC_SIZE = 32;
+    DEMO_PROC_ANGLE = 0;
+    DEMO_PROC_GRAPH = 0;
+    DEMO_PROC_R = 86;
+    DEMO_PROC_G = 156;
+    DEMO_PROC_B = 232;
+    DEMO_PROC_A = 255;
+}
+
+def demo_process_editor_load(index)
+{
+    if (index < 0 || index >= len(DEMO_SCENE_PROCESSES))
+    {
+        return false;
+    }
+
+    var scene_item = DEMO_SCENE_PROCESSES[index];
+    DEMO_PROC_EDIT_INDEX = index;
+    DEMO_PROC_X = scene_item.x;
+    DEMO_PROC_Y = scene_item.y;
+    DEMO_PROC_SIZE = scene_item.size;
+    DEMO_PROC_ANGLE = scene_item.angle;
+    DEMO_PROC_GRAPH = scene_item.graph;
+    DEMO_PROC_R = scene_item.r;
+    DEMO_PROC_G = scene_item.g;
+    DEMO_PROC_B = scene_item.b;
+    DEMO_PROC_A = scene_item.a;
+    return true;
+}
+
+def demo_process_editor_apply(index)
+{
+    if (index < 0 || index >= len(DEMO_SCENE_PROCESSES))
+    {
+        return false;
+    }
+
+    var scene_item = DEMO_SCENE_PROCESSES[index];
+    scene_item.x = DEMO_PROC_X;
+    scene_item.y = DEMO_PROC_Y;
+    scene_item.size = DEMO_PROC_SIZE;
+    scene_item.angle = DEMO_PROC_ANGLE;
+    scene_item.graph = DEMO_PROC_GRAPH;
+    scene_item.r = DEMO_PROC_R;
+    scene_item.g = DEMO_PROC_G;
+    scene_item.b = DEMO_PROC_B;
+    scene_item.a = DEMO_PROC_A;
+    return true;
+}
+
+def demo_process_editor_create()
+{
+    var scene_item = DemoSceneProcess(DEMO_PROC_X, DEMO_PROC_Y, DEMO_PROC_SIZE, DEMO_PROC_ANGLE,
+                                      DEMO_PROC_GRAPH, DEMO_PROC_R, DEMO_PROC_G, DEMO_PROC_B, DEMO_PROC_A);
+    DEMO_SCENE_PROCESSES.push(scene_item);
+    DEMO_SCENE_SELECTED = len(DEMO_SCENE_PROCESSES) - 1;
+    DEMO_PROC_EDIT_INDEX = DEMO_SCENE_SELECTED;
+}
+
+def demo_process_editor_delete_selected()
+{
+    var idx = DEMO_SCENE_SELECTED;
+    var count = len(DEMO_SCENE_PROCESSES);
+    if (idx < 0 || idx >= count)
+    {
+        return false;
+    }
+
+    var last = count - 1;
+    if (idx != last)
+    {
+        DEMO_SCENE_PROCESSES[idx] = DEMO_SCENE_PROCESSES[last];
+    }
+    DEMO_SCENE_PROCESSES.pop();
+
+    var new_count = len(DEMO_SCENE_PROCESSES);
+    if (new_count <= 0)
+    {
+        DEMO_SCENE_SELECTED = -1;
+        demo_process_editor_defaults();
+    }
+    else
+    {
+        if (idx >= new_count)
+        {
+            idx = new_count - 1;
+        }
+        DEMO_SCENE_SELECTED = idx;
+        demo_process_editor_load(idx);
+    }
+
+    return true;
+}
+
+def demo_process_graph_name(graph_index)
+{
+    var idx = int(graph_index);
+    if (idx < 0) idx = 0;
+    if (idx >= len(DEMO_PROC_GRAPH_OPTIONS)) idx = len(DEMO_PROC_GRAPH_OPTIONS) - 1;
+    return DEMO_PROC_GRAPH_OPTIONS[idx];
+}
+
+set_window_size(W, H);
+set_window_resizable(true);
+set_window_title("Bu GUI Demo");
+set_virtual_screen_enabled(true);
+gui_use_ascii_title_icons();
+
+var WIN_MAIN = gui_create_window(1, "Main", 90, 70, 380, 360);
+var WIN_STRESS = gui_create_window(2, "Stress", 500, 80, 460, 600);
+var WIN_STATS = gui_create_window(3, "Stats", 90, 390, 360, 220);
+var WIN_WIDGETS = gui_create_window(4, "Widgets", 880, 80, 300, 420);
+var WIN_PROCESS_EDITOR = gui_create_window(5, "Process Editor", 500, 390, 460, 320);
+var DEMO_FILE_PICKER = gui_filepicker_create("Select File", ".", "", false);
+var DEMO_STRESS_SCROLL = gui_scroll_state();
+var DEMO_PROCESS_EDITOR_SCROLL = gui_scroll_state();
+var DEMO_STRESS_SCROLL_MODE = GUI_SCROLL_BOTH;
+var DEMO_PROCESS_EDITOR_SCROLL_MODE = GUI_SCROLL_VERTICAL;
+gui_set_min_size(WIN_MAIN, 320, 280);
+gui_set_min_size(WIN_STRESS, 320, 240);
+gui_set_min_size(WIN_STATS, 300, 180);
+gui_set_min_size(WIN_WIDGETS, 260, 240);
+gui_set_min_size(WIN_PROCESS_EDITOR, 360, 260);
+WIN_PROCESS_EDITOR.visible = false;
+
+ 
+loop
+{
+    TICKER += 1;
+    DEMO_LOAD += 0.15;
+    if (DEMO_LOAD > 100)
+    {
+        DEMO_LOAD = 0;
+    }
+
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    gui_begin_frame();
+
+    var popup_result = gui_popup_take_result();
+    if (popup_result != GUI_POPUP_NONE)
+    {
+        DEMO_POPUP_LAST = popup_result;
+        if (popup_result == GUI_POPUP_OK)
+        {
+            DEMO_CLICKS += 1;
+        }
+        elif (popup_result == GUI_POPUP_CANCEL)
+        {
+            DEMO_CLICKS = math.max(0, DEMO_CLICKS - 1);
+        }
+    }
+
+    var picker_result = gui_filepicker_take_result(DEMO_FILE_PICKER);
+    if (picker_result != GUI_FILE_PICKER_NONE)
+    {
+        DEMO_PICKER_LAST = picker_result;
+        if (picker_result == GUI_FILE_PICKER_OK)
+        {
+            DEMO_PICKER_PATH = DEMO_FILE_PICKER.selected_path;
+        }
+    }
+
+    var popup_blocked = gui_popup_modal(W, H);
+    var picker_blocked = false;
+    if (!popup_blocked)
+    {
+        picker_blocked = gui_filepicker_modal(DEMO_FILE_PICKER, W, H);
+    }
+
+    if (!popup_blocked && !picker_blocked)
+    {
+        if (gui_window_begin(WIN_MAIN))
+        {
+            gui_layout_reset(24, 6);
+            gui_space(30);
+            gui_label("Reusable GUI lib for Bu");
+            gui_label("Can run normal UI or stress mode");
+            gui_space(8);
+
+            gui_layout_columns(2, 24, 6);
+            if (gui_button("Click me"))
+            {
+                DEMO_CLICKS += 1;
+            }
+            if (gui_button("+ 50 stress widgets"))
+            {
+                STRESS_WIDGETS += 50;
+            }
+            if (gui_button("- 50 stress widgets"))
+            {
+                STRESS_WIDGETS = math.max(0, STRESS_WIDGETS - 50);
+            }
+            if (gui_button("Toggle Stress Window"))
+            {
+                WIN_STRESS.visible = !WIN_STRESS.visible;
+            }
+            if (gui_button("Toggle Stress Resize"))
+            {
+                gui_set_resizable(WIN_STRESS, !WIN_STRESS.resizable);
+            }
+            if (gui_button("Toggle Theme"))
+            {
+                if (GUI_THEME.name == "dark")
+                {
+                    gui_use_theme_light();
+                    DEMO_MENU_THEME_MODE = 1;
+                }
+                else
+                {
+                    gui_use_theme_dark();
+                    DEMO_MENU_THEME_MODE = 0;
+                }
+            }
+            if (gui_button("Toggle Widgets"))
+            {
+                WIN_WIDGETS.visible = !WIN_WIDGETS.visible;
+            }
+            if (gui_button("Reset Widgets"))
+            {
+                DEMO_TAB = 0;
+                DEMO_DIFFICULTY = 1;
+                DEMO_CHANNELS = 8;
+                DEMO_LIST_A = false;
+                DEMO_LIST_B = true;
+                DEMO_GROUP_OPEN = true;
+                DEMO_COMBO_IDX = 0;
+                DEMO_DROPDOWN_IDX = 0;
+                DEMO_WIDGET_IDX = 0;
+                DEMO_PROP_VISIBLE = true;
+                DEMO_PROP_LOCKED = false;
+                DEMO_PROP_LAYER = 3;
+                DEMO_PROP_POS_X = 240;
+                DEMO_PROP_POS_Y = 180;
+                DEMO_PROP_SCALE_X = 1.0;
+                DEMO_PROP_SCALE_Y = 1.0;
+                DEMO_PROP_COLOR_R = 86;
+                DEMO_PROP_COLOR_G = 156;
+                DEMO_PROP_COLOR_B = 232;
+                DEMO_PROP_COLOR_A = 255;
+            }
+            if (gui_button("Popup Info"))
+            {
+                gui_popup_info("Info", "Layout updated successfully.");
+            }
+            if (gui_button("Popup Error"))
+            {
+                gui_popup_error("Error", "Failed to load texture atlas.");
+            }
+            if (gui_button("Popup Confirm"))
+            {
+                gui_popup_confirm("Confirm", "Delete selected object?");
+            }
+            if (gui_button("Novo Process"))
+            {
+                WIN_PROCESS_EDITOR.visible = true;
+                demo_process_editor_defaults();
+                DEMO_PROC_LAST_ACTION = "new draft";
+            }
+            if (gui_button("Editar Process"))
+            {
+                WIN_PROCESS_EDITOR.visible = true;
+                if (!demo_process_editor_load(DEMO_SCENE_SELECTED))
+                {
+                    demo_process_editor_defaults();
+                    DEMO_PROC_LAST_ACTION = "edit draft";
+                    gui_popup_warn("Process", "No selected process. Editing a new draft.");
+                }
+                else
+                {
+                    DEMO_PROC_LAST_ACTION = format("loaded #{}", DEMO_SCENE_SELECTED);
+                }
+            }
+            if (gui_button("Pick .bu File"))
+            {
+                DEMO_FILE_PICKER.title = "Select .bu Script";
+                DEMO_FILE_PICKER.filter_ext = ".bu";
+                DEMO_FILE_PICKER.select_dirs = false;
+                gui_filepicker_open(DEMO_FILE_PICKER);
+            }
+            if (gui_button("Pick Folder"))
+            {
+                DEMO_FILE_PICKER.title = "Select Folder";
+                DEMO_FILE_PICKER.filter_ext = "";
+                DEMO_FILE_PICKER.select_dirs = true;
+                gui_filepicker_open(DEMO_FILE_PICKER);
+            }
+            if (gui_button("Save .bu File"))
+            {
+                DEMO_FILE_PICKER.title = "Save .bu Script";
+                gui_filepicker_open_save(DEMO_FILE_PICKER, "new_script", ".bu");
+            }
+
+            gui_layout_reset(24, 6);
+            gui_space(4);
+            gui_label("Layout: 2 columns (buttons)");
+            gui_space(6);
+
+            gui_layout_reset(28, 8);
+            gui_label("Widget preview");
+            DEMO_SOUND_ON = gui_toggle("Sound enabled", DEMO_SOUND_ON);
+            DEMO_CHECK_A = gui_checkbox_align("Enable particles", DEMO_CHECK_A, GUI_ALIGN_CENTER);
+            DEMO_CHECK_B = gui_checkitem_align("Debug overlay", DEMO_CHECK_B, GUI_ALIGN_CENTER);
+            DEMO_SPEED = gui_slider("Simulation speed", DEMO_SPEED, 0, 100);
+            gui_progress("Load", DEMO_LOAD, 0, 100);
+
+            // Draw menu after content so popups always overlay window widgets.
+            GUI_LAYOUT_Y = WIN_MAIN.y + GUI_TITLE_H + GUI_PADDING;
+            GUI_LAYOUT_MODE = 0;
+            GUI_LAYOUT_COLS = 1;
+            GUI_LAYOUT_COL_INDEX = 0;
+            GUI_ROW_H = 24;
+            GUI_SPACING = 6;
+            if (gui_menubar_begin())
+            {
+                if (gui_menu_begin("File"))
+                {
+                    if (gui_menu_item("Open .bu..."))
+                    {
+                        DEMO_FILE_PICKER.title = "Select .bu Script";
+                        DEMO_FILE_PICKER.filter_ext = ".bu";
+                        DEMO_FILE_PICKER.select_dirs = false;
+                        gui_filepicker_open(DEMO_FILE_PICKER);
+                        DEMO_MENU_LAST = "File/Open .bu";
+                    }
+                    if (gui_menu_item("Save .bu..."))
+                    {
+                        DEMO_FILE_PICKER.title = "Save .bu Script";
+                        gui_filepicker_open_save(DEMO_FILE_PICKER, "new_script", ".bu");
+                        DEMO_MENU_LAST = "File/Save .bu";
+                    }
+                    if (gui_menu_item("Select Folder..."))
+                    {
+                        DEMO_FILE_PICKER.title = "Select Folder";
+                        DEMO_FILE_PICKER.filter_ext = "";
+                        DEMO_FILE_PICKER.select_dirs = true;
+                        gui_filepicker_open(DEMO_FILE_PICKER);
+                        DEMO_MENU_LAST = "File/Select Folder";
+                    }
+                    if (gui_menu_item("Confirm Exit"))
+                    {
+                        gui_popup_confirm("Confirm", "Exit app?");
+                        DEMO_MENU_LAST = "File/Confirm Exit";
+                    }
+                    gui_menu_end();
+                }
+
+                if (gui_menu_begin("View"))
+                {
+                    DEMO_MENU_GRID = gui_menu_item_check("Snap To Grid", DEMO_MENU_GRID);
+                    DEMO_MENU_PROFILER = gui_menu_item_check("Profiler Overlay", DEMO_MENU_PROFILER);
+                    gui_menu_end();
+                }
+
+                if (gui_menu_begin("Options"))
+                {
+                    if (gui_menu_begin_submenu("Theme"))
+                    {
+                        var prev_theme = DEMO_MENU_THEME_MODE;
+                        DEMO_MENU_THEME_MODE = gui_menu_item_radio("Dark", DEMO_MENU_THEME_MODE, 0);
+                        DEMO_MENU_THEME_MODE = gui_menu_item_radio("Light", DEMO_MENU_THEME_MODE, 1);
+                        if (DEMO_MENU_THEME_MODE != prev_theme)
+                        {
+                            if (DEMO_MENU_THEME_MODE == 0) gui_use_theme_dark();
+                            else gui_use_theme_light();
+                            DEMO_MENU_LAST = "Options/Theme";
+                        }
+                        gui_menu_end_submenu();
+                    }
+                    if (gui_menu_begin_submenu("Quality"))
+                    {
+                        DEMO_MENU_QUALITY = gui_menu_item_radio("Low", DEMO_MENU_QUALITY, 0);
+                        DEMO_MENU_QUALITY = gui_menu_item_radio("Medium", DEMO_MENU_QUALITY, 1);
+                        DEMO_MENU_QUALITY = gui_menu_item_radio("High", DEMO_MENU_QUALITY, 2);
+                        gui_menu_end_submenu();
+                    }
+                    gui_menu_end();
+                }
+
+                gui_menubar_end();
+            }
+            gui_window_end();
+        }
+
+        if (gui_window_begin(WIN_STRESS))
+        {
+            gui_layout_reset(20, 4);
+            gui_label(format("Widgets: {}", STRESS_WIDGETS));
+            gui_label("Scroll demo: wheel + drag bars");
+            gui_label(format("Offset x={} y={}", int(DEMO_STRESS_SCROLL.x), int(DEMO_STRESS_SCROLL.y)));
+            gui_layout_columns(4, 20, 4);
+            DEMO_STRESS_SCROLL_MODE = gui_radio_align("Auto", DEMO_STRESS_SCROLL_MODE, GUI_SCROLL_AUTO, GUI_ALIGN_CENTER);
+            DEMO_STRESS_SCROLL_MODE = gui_radio_align("V", DEMO_STRESS_SCROLL_MODE, GUI_SCROLL_VERTICAL, GUI_ALIGN_CENTER);
+            DEMO_STRESS_SCROLL_MODE = gui_radio_align("H", DEMO_STRESS_SCROLL_MODE, GUI_SCROLL_HORIZONTAL, GUI_ALIGN_CENTER);
+            DEMO_STRESS_SCROLL_MODE = gui_radio_align("Both", DEMO_STRESS_SCROLL_MODE, GUI_SCROLL_BOTH, GUI_ALIGN_CENTER);
+            gui_layout_reset(20, 4);
+            gui_space(6);
+
+            var stress_cols = 5;
+            var stress_rows = int((STRESS_WIDGETS + stress_cols - 1) / stress_cols);
+            if (stress_rows < 1) stress_rows = 1;
+            var stress_content_h = stress_rows * (20 + 4) + 16;
+            var stress_content_w = 1200;
+            var stress_view_h = WIN_STRESS.h - GUI_TITLE_H - GUI_PADDING * 2 - 98;
+            if (stress_view_h < 80) stress_view_h = 80;
+
+            if (gui_scroll_begin_mode(DEMO_STRESS_SCROLL, stress_view_h, stress_content_w, stress_content_h, DEMO_STRESS_SCROLL_MODE))
+            {
+                gui_layout_reset(20, 4);
+                gui_layout_columns(stress_cols, 20, 4);
+                var i = 0;
+                while (i < STRESS_WIDGETS)
+                {
+                    if (gui_button(format("Item {} [scroll]", i)))
+                    {
+                        DEMO_CLICKS += 1;
+                    }
+                    i += 1;
+                }
+                gui_scroll_end();
+            }
+            gui_window_end();
+        }
+
+        if (gui_window_begin(WIN_WIDGETS))
+        {
+            gui_layout_reset(24, 6);
+            gui_label("Advanced widget lab");
+            gui_separator();
+
+            var tabs = ["General", "Audio", "Debug", "Inspector"];
+            DEMO_TAB = gui_tabs(tabs, DEMO_TAB);
+            gui_space(2);
+
+            if (DEMO_TAB == 0)
+            {
+                var mode_options = ["Arcade", "Story", "Sandbox", "Replay"];
+                DEMO_COMBO_IDX = gui_combo_align("Mode", mode_options, DEMO_COMBO_IDX, GUI_ALIGN_CENTER);
+                DEMO_GROUP_OPEN = gui_collapsing_header("Gameplay", DEMO_GROUP_OPEN);
+                if (DEMO_GROUP_OPEN)
+                {
+                    DEMO_DIFFICULTY = gui_radio_align("Easy", DEMO_DIFFICULTY, 0, GUI_ALIGN_LEFT);
+                    DEMO_DIFFICULTY = gui_radio_align("Normal", DEMO_DIFFICULTY, 1, GUI_ALIGN_LEFT);
+                    DEMO_DIFFICULTY = gui_radio_align("Hard", DEMO_DIFFICULTY, 2, GUI_ALIGN_LEFT);
+                }
+            }
+            elif (DEMO_TAB == 1)
+            {
+                var out_options = ["Stereo", "Headphones", "Surround", "Mobile"];
+                DEMO_DROPDOWN_IDX = gui_dropdown_align("Output", out_options, DEMO_DROPDOWN_IDX, GUI_ALIGN_CENTER);
+                DEMO_CHANNELS = gui_stepper("Audio channels", DEMO_CHANNELS, 1, 64, 1);
+                DEMO_SOUND_ON = gui_checkbox_align("Master enabled", DEMO_SOUND_ON, GUI_ALIGN_CENTER);
+                gui_progress("Mix", DEMO_SPEED, 0, 100);
+            }
+            elif (DEMO_TAB == 2)
+            {
+                var widget_options = ["Button", "Toggle", "Checkbox", "Slider", "Progress", "Tabs", "Radio", "Stepper", "Combo"];
+                DEMO_WIDGET_IDX = gui_widget_list_align(widget_options, DEMO_WIDGET_IDX, 6, GUI_ALIGN_LEFT);
+                DEMO_LIST_A = gui_list_item_align("Show collision bounds", DEMO_LIST_A, GUI_ALIGN_LEFT);
+                DEMO_LIST_B = gui_list_item_align("Show process ids", DEMO_LIST_B, GUI_ALIGN_LEFT);
+                if (gui_button("Clear Click Counter"))
+                {
+                    DEMO_CLICKS = 0;
+                }
+            }
+            else
+            {
+                gui_property_section("Node");
+                DEMO_PROP_VISIBLE = gui_property_bool("Visible", DEMO_PROP_VISIBLE);
+                DEMO_PROP_LOCKED = gui_property_bool("Locked", DEMO_PROP_LOCKED);
+                DEMO_PROP_LAYER = gui_property_int("Layer", DEMO_PROP_LAYER, 0, 32, 1);
+
+                gui_property_section("Transform");
+                var prop_pos = gui_property_vec2("Position", DEMO_PROP_POS_X, DEMO_PROP_POS_Y, -2000, 2000);
+                DEMO_PROP_POS_X = prop_pos[0];
+                DEMO_PROP_POS_Y = prop_pos[1];
+                var prop_scale = gui_property_vec2("Scale", DEMO_PROP_SCALE_X, DEMO_PROP_SCALE_Y, 0, 8);
+                DEMO_PROP_SCALE_X = prop_scale[0];
+                DEMO_PROP_SCALE_Y = prop_scale[1];
+
+                gui_property_section("Render");
+                var prop_color = gui_property_color("Tint", DEMO_PROP_COLOR_R, DEMO_PROP_COLOR_G, DEMO_PROP_COLOR_B, DEMO_PROP_COLOR_A);
+                DEMO_PROP_COLOR_R = prop_color[0];
+                DEMO_PROP_COLOR_G = prop_color[1];
+                DEMO_PROP_COLOR_B = prop_color[2];
+                DEMO_PROP_COLOR_A = prop_color[3];
+            }
+
+            gui_window_end();
+        }
+
+        if (gui_window_begin(WIN_PROCESS_EDITOR))
+        {
+            gui_layout_reset(20, 4);
+            gui_label("Scroll mode");
+            gui_layout_columns(4, 20, 4);
+            DEMO_PROCESS_EDITOR_SCROLL_MODE = gui_radio_align("Auto", DEMO_PROCESS_EDITOR_SCROLL_MODE, GUI_SCROLL_AUTO, GUI_ALIGN_CENTER);
+            DEMO_PROCESS_EDITOR_SCROLL_MODE = gui_radio_align("V", DEMO_PROCESS_EDITOR_SCROLL_MODE, GUI_SCROLL_VERTICAL, GUI_ALIGN_CENTER);
+            DEMO_PROCESS_EDITOR_SCROLL_MODE = gui_radio_align("H", DEMO_PROCESS_EDITOR_SCROLL_MODE, GUI_SCROLL_HORIZONTAL, GUI_ALIGN_CENTER);
+            DEMO_PROCESS_EDITOR_SCROLL_MODE = gui_radio_align("Both", DEMO_PROCESS_EDITOR_SCROLL_MODE, GUI_SCROLL_BOTH, GUI_ALIGN_CENTER);
+            gui_layout_reset(24, 6);
+
+            var proc_rows = len(DEMO_SCENE_PROCESSES);
+            if (proc_rows < 8) proc_rows = 8;
+            var proc_content_h = 560 + proc_rows * 26;
+            var proc_content_w = WIN_PROCESS_EDITOR.w - GUI_PADDING * 2 - 8;
+            var proc_view_h = WIN_PROCESS_EDITOR.h - GUI_TITLE_H - GUI_PADDING * 2 - 54;
+            if (proc_view_h < 100) proc_view_h = 100;
+
+            if (gui_scroll_begin_mode(DEMO_PROCESS_EDITOR_SCROLL, proc_view_h, proc_content_w, proc_content_h, DEMO_PROCESS_EDITOR_SCROLL_MODE))
+            {
+                gui_layout_reset(24, 6);
+                gui_label("Scene Process Editor");
+                gui_label(format("Process count: {}", len(DEMO_SCENE_PROCESSES)));
+                gui_label(format("Selected: {}", DEMO_SCENE_SELECTED));
+                gui_label(format("Last action: {}", DEMO_PROC_LAST_ACTION));
+                gui_label(format("Scroll x={} y={}", int(DEMO_PROCESS_EDITOR_SCROLL.x), int(DEMO_PROCESS_EDITOR_SCROLL.y)));
+                gui_space(4);
+
+                gui_layout_columns(3, 24, 6);
+                if (gui_button("New Draft"))
+                {
+                    demo_process_editor_defaults();
+                    DEMO_PROC_LAST_ACTION = "draft reset";
+                }
+                if (gui_button("Create"))
+                {
+                    demo_process_editor_create();
+                    DEMO_PROC_LAST_ACTION = format("created #{}", DEMO_SCENE_SELECTED);
+                }
+                if (gui_button("Apply"))
+                {
+                    if (demo_process_editor_apply(DEMO_SCENE_SELECTED))
+                    {
+                        DEMO_PROC_LAST_ACTION = format("updated #{}", DEMO_SCENE_SELECTED);
+                    }
+                    else
+                    {
+                        DEMO_PROC_LAST_ACTION = "apply failed";
+                        gui_popup_warn("Process", "Select a process from scene list.");
+                    }
+                }
+                if (gui_button("Load Selected"))
+                {
+                    if (demo_process_editor_load(DEMO_SCENE_SELECTED))
+                    {
+                        DEMO_PROC_LAST_ACTION = format("loaded #{}", DEMO_SCENE_SELECTED);
+                    }
+                    else
+                    {
+                        DEMO_PROC_LAST_ACTION = "load failed";
+                    }
+                }
+                if (gui_button("Delete Selected"))
+                {
+                    if (demo_process_editor_delete_selected())
+                    {
+                        DEMO_PROC_LAST_ACTION = "deleted selected";
+                    }
+                    else
+                    {
+                        DEMO_PROC_LAST_ACTION = "delete failed";
+                    }
+                }
+                if (gui_button("Close"))
+                {
+                    WIN_PROCESS_EDITOR.visible = false;
+                }
+
+                gui_layout_reset(24, 6);
+                gui_property_section("Properties");
+                var proc_pos = gui_property_vec2("Position", DEMO_PROC_X, DEMO_PROC_Y, -4000, 4000);
+                DEMO_PROC_X = proc_pos[0];
+                DEMO_PROC_Y = proc_pos[1];
+                DEMO_PROC_SIZE = gui_property_int("Size", DEMO_PROC_SIZE, 1, 1024, 1);
+                DEMO_PROC_ANGLE = gui_property_float("Angle", DEMO_PROC_ANGLE, -360, 360);
+                DEMO_PROC_GRAPH = gui_combo_align("Graph", DEMO_PROC_GRAPH_OPTIONS, DEMO_PROC_GRAPH, GUI_ALIGN_LEFT);
+                var proc_tint = gui_property_color("Tint", DEMO_PROC_R, DEMO_PROC_G, DEMO_PROC_B, DEMO_PROC_A);
+                DEMO_PROC_R = proc_tint[0];
+                DEMO_PROC_G = proc_tint[1];
+                DEMO_PROC_B = proc_tint[2];
+                DEMO_PROC_A = proc_tint[3];
+
+                gui_property_section("Scene List");
+                if (len(DEMO_SCENE_PROCESSES) <= 0)
+                {
+                    gui_label("No process in scene.");
+                }
+                else
+                {
+                    var i = 0;
+                    while (i < len(DEMO_SCENE_PROCESSES))
+                    {
+                        var scene_item = DEMO_SCENE_PROCESSES[i];
+                        var row = format("#{} {}  pos({}, {})  size {}",
+                                         i, demo_process_graph_name(scene_item.graph),
+                                         int(scene_item.x), int(scene_item.y), int(scene_item.size));
+                        DEMO_SCENE_SELECTED = gui_radio_align(row, DEMO_SCENE_SELECTED, i, GUI_ALIGN_LEFT);
+                        i += 1;
+                    }
+                }
+
+                gui_scroll_end();
+            }
+
+            gui_window_end();
+        }
+
+        if (gui_window_begin(WIN_STATS))
+        {
+            gui_layout_reset(24, 6);
+            gui_label(format("FPS: {}", get_fps()));
+            gui_label(format("Clicks: {}", DEMO_CLICKS));
+            gui_label(format("Ticker process: {}", TICKER));
+            gui_label(format("Windows visible: {} {} {} {} {}",
+                             WIN_MAIN.visible, WIN_STRESS.visible, WIN_STATS.visible,
+                             WIN_WIDGETS.visible, WIN_PROCESS_EDITOR.visible));
+            gui_label(format("Stress resizable: {}", WIN_STRESS.resizable));
+            gui_label(format("Theme: {}", GUI_THEME.name));
+            gui_label(format("Menu grid/profiler: {} / {}", DEMO_MENU_GRID, DEMO_MENU_PROFILER));
+            gui_label(format("Menu theme/quality: {} / {}", DEMO_MENU_THEME_MODE, DEMO_MENU_QUALITY));
+            gui_label(format("Menu last action: {}", DEMO_MENU_LAST));
+            gui_label(format("Sound enabled: {}", DEMO_SOUND_ON));
+            gui_label(format("Enable particles: {}", DEMO_CHECK_A));
+            gui_label(format("Debug overlay: {}", DEMO_CHECK_B));
+            gui_label(format("Tab/Difficulty: {} / {}", DEMO_TAB, DEMO_DIFFICULTY));
+            gui_label(format("Channels: {}", DEMO_CHANNELS));
+            gui_label(format("Mode/Output: {} / {}", DEMO_COMBO_IDX, DEMO_DROPDOWN_IDX));
+            gui_label(format("Widget selected: {}", DEMO_WIDGET_IDX));
+            gui_label(format("Debug flags: {} {}", DEMO_LIST_A, DEMO_LIST_B));
+            gui_label(format("Simulation speed: {}", int(DEMO_SPEED)));
+            gui_label(format("Popup open: {}", gui_popup_is_open()));
+            gui_label(format("Popup last result: {}", DEMO_POPUP_LAST));
+            gui_label(format("Picker open: {}", gui_filepicker_is_open(DEMO_FILE_PICKER)));
+            gui_label(format("Picker last result: {}", DEMO_PICKER_LAST));
+            gui_label(format("Picker save mode: {}", DEMO_FILE_PICKER.save_mode));
+            gui_label(format("Picker path: {}", DEMO_PICKER_PATH));
+            gui_label(format("Scene process count: {}", len(DEMO_SCENE_PROCESSES)));
+            gui_label(format("Scene selected: {}", DEMO_SCENE_SELECTED));
+            gui_label(format("Edit graph: {}", demo_process_graph_name(DEMO_PROC_GRAPH)));
+            gui_label(format("Inspector: vis={} lock={} layer={}", DEMO_PROP_VISIBLE, DEMO_PROP_LOCKED, DEMO_PROP_LAYER));
+            gui_label(format("Pos/Scale: ({}, {}) / ({}, {})",
+                             int(DEMO_PROP_POS_X), int(DEMO_PROP_POS_Y),
+                             int(DEMO_PROP_SCALE_X * 100) / 100.0, int(DEMO_PROP_SCALE_Y * 100) / 100.0));
+            gui_label(format("Tint: {}, {}, {}, {}", DEMO_PROP_COLOR_R, DEMO_PROP_COLOR_G, DEMO_PROP_COLOR_B, DEMO_PROP_COLOR_A));
+            gui_label("Drag windows by title bar");
+            gui_label("Resize by bottom-right corner");
+            gui_label("Minimize/close in top-right buttons");
+            gui_window_end();
+        }
+    }
+
+    set_draw_screen(true);
+    set_color(255, 255, 255);
+    draw_fps(12, 10);
+
+    frame;
+}

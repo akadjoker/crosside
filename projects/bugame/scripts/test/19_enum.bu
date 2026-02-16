@@ -1,0 +1,30 @@
+// Test: Type conversions and coercion
+// str() conversion
+var s = str(42);
+if (s != "42") { throw "str(42)"; }
+
+var s2 = str(3.14);
+if (len(s2) < 3) { throw "str(3.14)"; }
+
+var s3 = str(true);
+if (s3 != "true") { throw "str(true)"; }
+
+// int() conversion
+var n = int("123");
+if (n != 123) { throw "int('123')"; }
+
+var n2 = int(3.7);
+if (n2 != 3) { throw "int(3.7)"; }
+
+// real() conversion
+var r = real("3.14");
+if (abs(r - 3.14) > 0.01) { throw "real('3.14')"; }
+
+var r2 = real(42);
+if (r2 != 42.0) { throw "real(42)"; }
+
+// Bool checks
+if (!true) { throw "not true"; }
+if (false) { throw "false is truthy"; }
+if (nil) { throw "nil is truthy"; }
+if (!1) { throw "1 not truthy"; }

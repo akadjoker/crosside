@@ -1,0 +1,160 @@
+print("Box2D Debug Drop Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_ENTER = 257;
+var KEY_BACKSPACE = 259;
+var KEY_C = 67;
+var KEY_L = 76;
+var KEY_P = 80;
+var KEY_V = 86;
+var KEY_B = 66;
+
+var MOUSE_LEFT = 0;
+var MOUSE_RIGHT = 1;
+var MOUSE_MIDDLE = 2;
+
+var DELTA_TIME = 0.016;
+var DRAW_VERTS = [];
+var RMB_WAS_DOWN = false;
+var DRAG_ID = -1;
+var DRAG_JOINT = nil;
+var DRAG_ACTIVE = false;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D Debug: Shapes + Balls + Boxes");
+create_world(0, 9.8);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16); // shape + joint + center of mass
+
+// Static ground
+var ground_def = create_bodydef(BODY_STATIC);
+ground_def.set_position(1280/2, 650);
+
+var ground_fx = create_fixture_def();
+ground_fx.set_friction(0.8);
+ground_fx.set_restitution(0.0);
+ground_fx.set_box_shape(600, 15);
+
+var ground = create_body(ground_def);
+ground.add_fixture(ground_fx);
+
+// Static shape host
+var shapes_def = create_bodydef(BODY_STATIC);
+shapes_def.set_position(0, 0);
+var shapes_body = create_body(shapes_def);
+
+ 
+
+ 
+
+process box(x, y)
+{
+    var box_fx = create_fixture_def();
+    box_fx.set_density(1.0);
+    box_fx.set_friction(0.35);
+    box_fx.set_restitution(0.15);
+    box_fx.set_box_shape(21, 21);
+
+    var box_def = create_bodydef(BODY_DYNAMIC);
+    box_def.set_position(x, y);
+    box_def.set_linear_damping(0.03);
+    box_def.set_angular_damping(0.03);
+
+    var b = create_body(box_def);
+    b.add_fixture(box_fx);
+    var body = b;
+
+    life=1;
+ 
+
+    loop
+    {
+ 
+        frame;
+    }
+
+    b.remove();
+}
+ 
+
+var BODY = nil;
+box(200,100);
+box(300,100);
+box(400,100);
+
+loop
+{
+    DELTA_TIME = delta();
+
+  
+
+    if (key_pressed(KEY_B))
+    {
+        box(get_mouse_x(), get_mouse_y());
+    }
+ 
+
+      if (!DRAG_ACTIVE && mouse_pressed(MOUSE_LEFT))
+    {
+        var (hit_id, hit_body) = physics_overlap_point(get_mouse_x(), get_mouse_y(), false);
+        if (hit_id > 0 && hit_body != nil)
+        {
+            
+            
+            
+                var mj = MouseJointDef();
+                mj.set_body_a(ground);
+                mj.set_body_b(hit_body);
+                mj.set_target(get_mouse_x(), get_mouse_y());
+                mj.set_max_force(25000);
+                mj.set_stiffness(12);
+                mj.set_damping(1.2);
+                mj.set_collide_connected(false);
+
+                DRAG_JOINT = MouseJoint(mj);
+                DRAG_ID = hit_id;
+                DRAG_ACTIVE = true;
+             
+        }
+    }
+
+    if (DRAG_ACTIVE)
+    {
+        if (!mouse_down(MOUSE_LEFT))
+        {
+            if (DRAG_JOINT != nil)
+            {
+                DRAG_JOINT.destroy();
+            }
+            DRAG_JOINT = nil;
+            DRAG_ID = -1;
+            DRAG_ACTIVE = false;
+        }
+        elif (DRAG_JOINT != nil)
+        {
+            DRAG_JOINT.set_target(get_mouse_x(), get_mouse_y());
+        }
+    }
+ 
+    update_world(DELTA_TIME);
+
+     
+
+    draw_text("ESC close", 20, 20, 20);
+ 
+    draw_text("Bodys: " + str(get_body_count()), 20, 140, 20);
+    if (DRAG_ACTIVE)
+    {
+        draw_text("Dragging process id: " + str(DRAG_ID), 20, 164, 20);
+    }
+    draw_fps(20, 188);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}
+ 

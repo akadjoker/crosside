@@ -1,0 +1,48 @@
+{
+  "module": "miniz",
+  "about": "miniz compression library",
+  "author": "djokersoft",
+  "version": "1.0.0",
+  "depends": [],
+  "static": true,
+  "priority": 0,
+  "system": ["linux", "android", "emscripten", "windows"],
+  "src": [
+    "src/miniz.c",
+    "src/miniz_tdef.c",
+    "src/miniz_tinfl.c",
+    "src/miniz_zip.c"
+  ],
+  "include": [],
+  "plataforms": {
+    "linux": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-D_LARGEFILE64_SOURCE=1",
+      "LD_ARGS": "",
+      "src": [],
+      "include": []
+    },
+    "windows": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "",
+      "LD_ARGS": "",
+      "src": [],
+      "include": []
+    },
+    "android": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-D_LARGEFILE64_SOURCE=1",
+      "LD_ARGS": "",
+      "src": [],
+      "include": []
+    },
+    "emscripten": {
+      "template": "",
+      "CPP_ARGS": "",
+      "CC_ARGS": "-D_LARGEFILE64_SOURCE=1",
+      "LD_ARGS": "",
+      "src": [],
+      "include": []
+    }
+  }
+}

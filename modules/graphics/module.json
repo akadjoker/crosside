@@ -1,0 +1,57 @@
+{
+  "module": "graphics",
+  "about": "graphics layer built on raylib and bu",
+  "author": "djokersoft",
+  "version": "1.0.0",
+  "depends": ["raylib", "bu", "miniz"],
+  "static": true,
+  "priority": 0,
+  "system": ["linux", "android", "emscripten", "windows"],
+  "src": [
+    "src/collision.cpp",
+    "src/emitter.cpp",
+    "src/engine.cpp",
+    "src/entity.cpp",
+    "src/graph.cpp",
+    "src/mask.cpp",
+    "src/math.cpp",
+    "src/quadtreee.cpp",
+    "src/render.cpp",
+    "src/scene.cpp",
+    "src/sound.cpp",
+    "src/tilemap.cpp",
+    "src/tinyxml2.cpp"
+  ],
+  "include": ["src"],
+  "plataforms": {
+    "linux": {
+      "CPP_ARGS": "-std=c++17",
+      "CC_ARGS": "-std=c11",
+      "LD_ARGS": "-lraylib -lbu -lminiz -lGL -lc -lm -lpthread -ldl -lrt",
+      "src": [],
+      "include": []
+    },
+    "windows": {
+      "CPP_ARGS": "-std=c++17",
+      "CC_ARGS": "-std=c11",
+      "LD_ARGS": "-lraylib -lbu -lminiz",
+      "src": [],
+      "include": []
+    },
+    "android": {
+      "CPP_ARGS": "-std=c++17",
+      "CC_ARGS": "-std=c11",
+      "LD_ARGS": "-lraylib -lbu -lminiz -u ANativeActivity_onCreate -llog -landroid -lEGL -lGLESv2 -lOpenSLES -lc -lm",
+      "src": [],
+      "include": []
+    },
+    "emscripten": {
+      "template": "",
+      "CPP_ARGS": "-std=c++17",
+      "CC_ARGS": "-std=c11",
+      "LD_ARGS": "-lraylib -lbu -lminiz -s USE_GLFW=3 -s ASYNCIFY -D_DEFAULT_SOURCE -fPIC",
+      "src": [],
+      "include": []
+    }
+  }
+}

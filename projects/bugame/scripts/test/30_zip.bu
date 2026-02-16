@@ -1,0 +1,46 @@
+// Test: zip module (create, list, read, extract)
+
+import fs;
+import zip;
+
+var fileA = "zip_a.txt";
+var fileB = "zip_b.txt";
+var archive = "zip_test_bundle.zip";
+var outDir = "zip_out_dir";
+
+if (!fs.write(fileA, "alpha")) { throw "zip test write A"; }
+if (!fs.write(fileB, "beta")) { throw "zip test write B"; }
+
+if (!zip.create(archive, [fileA, fileB])) { throw "zip.create"; }
+
+var names = zip.list(archive);
+if (names == nil) { throw "zip.list nil"; }
+if (len(names) != 2) { throw "zip.list len"; }
+
+var haveA = false;
+var haveB = false;
+foreach (n in names) {
+    if (n == "zip_a.txt") { haveA = true; }
+    if (n == "zip_b.txt") { haveB = true; }
+}
+if (!haveA || !haveB) { throw "zip.list names"; }
+
+var txt = zip.read(archive, "zip_b.txt");
+if (txt != "beta") { throw "zip.read"; }
+
+var bb = zip.read_buffer(archive, "zip_b.txt");
+if (bb == nil) { throw "zip.read_buffer nil"; }
+if (bb.length() != 4) { throw "zip.read_buffer len"; }
+bb.seek(0);
+if (bb.readByte() != 98) { throw "zip.read_buffer b0"; }   // b
+if (bb.readByte() != 101) { throw "zip.read_buffer b1"; }  // e
+if (bb.readByte() != 116) { throw "zip.read_buffer b2"; }  // t
+if (bb.readByte() != 97) { throw "zip.read_buffer b3"; }   // a
+free(bb);
+
+if (!zip.extract(archive, outDir)) { throw "zip.extract"; }
+
+var outA = fs.read(outDir + "/zip_a.txt");
+var outB = fs.read(outDir + "/zip_b.txt");
+if (outA != "alpha") { throw "zip.extract read A"; }
+if (outB != "beta") { throw "zip.extract read B"; }

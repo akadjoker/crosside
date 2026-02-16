@@ -1,0 +1,50 @@
+{
+  "brush_graph_id": 2,
+  "world_width": 2200,
+  "selected_graph": 1,
+  "scene_instances": [
+    {
+      "y": 164,
+      "graph_id": 2,
+      "x": 290,
+      "angle": 0,
+      "size": 52,
+      "process_name": "Orb"
+    },
+    {
+      "y": 328,
+      "graph_id": 2,
+      "x": 882,
+      "angle": 0,
+      "size": 52,
+      "process_name": "Orb"
+    },
+    {
+      "y": 514,
+      "graph_id": 2,
+      "x": 771,
+      "angle": 0,
+      "size": 52,
+      "process_name": "Orb"
+    },
+    {
+      "y": 473,
+      "graph_id": 2,
+      "x": 382,
+      "angle": 0,
+      "size": 52,
+      "process_name": "Orb"
+    }
+  ],
+  "world_height": 1400,
+  "scene_settings": {
+    "world_width": 2200,
+    "world_height": 1400
+  },
+  "selected_scene_instance": 3,
+  "graphs": [
+    "assets/ship.png",
+    "assets/Orb.png",
+    "assets/ball.png"
+  ]
+}

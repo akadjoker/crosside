@@ -1,0 +1,58 @@
+{
+	"module":"gif",
+	"about":"Load GIF Images ",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":[""],
+        "static":true,
+            "priority":0,
+	"system":["linux","android","emscripten","windows"],
+	"src":["src/dev2gif.c",
+"src/dgif_lib.c",
+"src/egif_lib.c",
+"src/getarg.c",
+"src/gif_err.c",
+"src/gif_font.c",
+"src/gif_hash.c",
+"src/gifalloc.c",
+"src/qprintf.c",
+"src/quantize.c"],
+	"include":[""],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":"-Wno-unused-result -DHAVE_CONFIG_H ",
+ 	   "CC_ARGS":"-Wno-unused-result -DHAVE_CONFIG_H ",
+ 	   "LD_ARGS":"",
+	   "src":[""],
+	   "include":[""]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"-Wno-unused-result -DHAVE_CONFIG_H ",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"-Wno-unused-result -DHAVE_CONFIG_H ",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "emscripten":
+	  {
+	   "template":"",
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"-Wno-unused-result -DHAVE_CONFIG_H ",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  }
+      }
+}  
+

@@ -1,0 +1,342 @@
+print("Box2D Debug Drop Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_ENTER = 257;
+var KEY_BACKSPACE = 259;
+var KEY_C = 67;
+var KEY_L = 76;
+var KEY_P = 80;
+var KEY_V = 86;
+
+var MOUSE_LEFT = 0;
+var MOUSE_RIGHT = 1;
+var MOUSE_MIDDLE = 2;
+
+var DELTA_TIME = 0.016;
+var DRAW_VERTS = [];
+var RMB_WAS_DOWN = false;
+var DRAG_ID = -1;
+var DRAG_JOINT = nil;
+var DRAG_ACTIVE = false;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D Debug: Shapes + Balls + Boxes");
+create_world(0, 9.8);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16); // shape + joint + center of mass
+
+// Static ground
+var ground_def = create_bodydef(BODY_STATIC);
+ground_def.set_position(1280/2, 650);
+
+var ground_fx = create_fixture_def();
+ground_fx.set_friction(0.8);
+ground_fx.set_restitution(0.0);
+ground_fx.set_box_shape(600, 15);
+
+var ground = create_body(ground_def);
+ground.add_fixture(ground_fx);
+
+// Static shape host
+var shapes_def = create_bodydef(BODY_STATIC);
+shapes_def.set_position(0, 0);
+var shapes_body = create_body(shapes_def);
+
+// Baseline edge + chain + loop
+shapes_body.add_edge(150, 560, 360, 500);
+shapes_body.add_chain([460, 610, 520, 560, 600, 610, 680, 560], false);
+shapes_body.add_chain([900, 520, 980, 540, 960, 620, 880, 600], true);
+
+process ball(x, y)
+{
+    var ball_fx = create_fixture_def();
+    ball_fx.set_density(1.0);
+    ball_fx.set_friction(0.2);
+    ball_fx.set_restitution(0.45);
+    ball_fx.set_circle_shape(18);
+
+    var ball_def = create_bodydef(BODY_DYNAMIC);
+    ball_def.set_position(x, y);
+    ball_def.set_linear_damping(0.05);
+    ball_def.set_angular_damping(0.05);
+
+    var b = create_body(ball_def);
+    b.add_fixture(ball_fx);
+    var body = b;
+    life=1;
+
+    loop
+    {
+        var (px, py) = b.get_position();
+        // var (a,b) = physics_collision();
+        // if (a>0 && b>0)
+        // {
+        //     print("Ball Collided: " + str(a) + " with " + str(b));
+        // }
+        // if(life<=0)
+        // {
+        //     print("Ball Destroyed");
+        //     break;
+        // }
+
+        var hit = physics_collide_with(type box);
+        if (hit > 0) 
+        {
+           // print("Ball Hit Box: " + str(hit));
+
+    //proc(hit).life = 0;
+
+
+            
+        }
+
+
+        if (py > 740)
+        {
+            break;
+        }
+        frame;
+    }
+
+    b.remove();
+}
+
+process box(x, y)
+{
+    var box_fx = create_fixture_def();
+    box_fx.set_density(1.0);
+    box_fx.set_friction(0.35);
+    box_fx.set_restitution(0.15);
+    box_fx.set_box_shape(21, 21);
+
+    var box_def = create_bodydef(BODY_DYNAMIC);
+    box_def.set_position(x, y);
+    box_def.set_linear_damping(0.03);
+    box_def.set_angular_damping(0.03);
+
+    var b = create_body(box_def);
+    b.add_fixture(box_fx);
+    var body = b;
+
+    life=1;
+ 
+
+    loop
+    {
+        var (px, py) = b.get_position();
+        // var (a,b) = physics_collision();
+        // if (a>0 && b>0)
+        // {
+        //     if(a!=id)
+        //     {
+        //        // proc(a).life=0;
+        //     } else if(b!=id)
+        //     {
+        //        // proc(b).life=0;
+        //     }
+        //     print("Box Collided: " + str(proc(a)) + " with " + str(proc(b)));
+            
+        // }
+
+
+
+        if (py > 740 || life<=0)
+        {
+            break;
+        }
+        frame;
+    }
+
+    b.remove();
+}
+
+process poly(x, y)
+{
+    var poly_fx = create_fixture_def();
+    poly_fx.set_density(1.0);
+    poly_fx.set_friction(0.35);
+    poly_fx.set_restitution(0.10);
+
+    var poly_def = create_bodydef(BODY_DYNAMIC);
+    poly_def.set_position(x, y);
+    poly_def.set_linear_damping(0.03);
+    poly_def.set_angular_damping(0.03);
+
+    var b = create_body(poly_def);
+    // Local polygon points (pixels), flat array [x0, y0, x1, y1, ...]
+    b.add_polygon([
+        -27, -21,
+         27, -21,
+         33,   3,
+          0,  30,
+        -33,   3
+    ], poly_fx);
+    var body = b;
+
+    loop
+    {
+        var (px, py) = b.get_position();
+        if (py > 740)
+        {
+            break;
+        }
+        frame;
+    }
+
+    b.remove();
+}
+
+loop
+{
+    DELTA_TIME = delta();
+
+    if (mouse_pressed(MOUSE_LEFT))
+    {
+        ball(get_mouse_x(), get_mouse_y());
+    }
+
+    var rmb_now = mouse_down(MOUSE_RIGHT);
+    if (rmb_now && !RMB_WAS_DOWN)
+    {
+        box(get_mouse_x(), get_mouse_y());
+    }
+    RMB_WAS_DOWN = rmb_now;
+
+    if (key_pressed(KEY_P))
+    {
+        poly(get_mouse_x(), get_mouse_y());
+    }
+
+    if (!DRAG_ACTIVE && mouse_pressed(MOUSE_MIDDLE))
+    {
+        var (hit_id, hit_body) = physics_overlap_point(get_mouse_x(), get_mouse_y(), false);
+        if (hit_id > 0 && hit_body != nil)
+        {
+            var mj = MouseJointDef();
+            mj.set_body_a(ground);
+            mj.set_body_b(hit_body);
+            mj.set_target(get_mouse_x(), get_mouse_y());
+            mj.set_max_force(25000);
+            mj.set_stiffness(12);
+            mj.set_damping(1.2);
+            mj.set_collide_connected(false);
+
+            DRAG_JOINT = MouseJoint(mj);
+            DRAG_ID = hit_id;
+            DRAG_ACTIVE = true;
+        }
+    }
+
+    if (DRAG_ACTIVE)
+    {
+        var p = nil;
+        if (DRAG_ID > 0) p = proc(DRAG_ID);
+
+        if (!p || p.body == nil)
+        {
+            DRAG_JOINT = nil;
+            DRAG_ID = -1;
+            DRAG_ACTIVE = false;
+        }
+        elif (!mouse_down(MOUSE_MIDDLE))
+        {
+            if (DRAG_JOINT != nil)
+            {
+                DRAG_JOINT.destroy();
+            }
+            DRAG_JOINT = nil;
+            DRAG_ID = -1;
+            DRAG_ACTIVE = false;
+        }
+        elif (DRAG_JOINT != nil)
+        {
+            DRAG_JOINT.set_target(get_mouse_x(), get_mouse_y());
+        }
+    }
+
+    // Vertex editor: V add at mouse, Enter create open chain, L create loop
+    if (key_pressed(KEY_V))
+    {
+        DRAW_VERTS.push(get_mouse_x());
+        DRAW_VERTS.push(get_mouse_y());
+    }
+
+    if (key_pressed(KEY_BACKSPACE))
+    {
+        if (len(DRAW_VERTS) >= 2)
+        {
+            DRAW_VERTS.pop();
+            DRAW_VERTS.pop();
+        }
+    }
+
+    if (key_pressed(KEY_C))
+    {
+        DRAW_VERTS = [];
+    }
+
+    if (key_pressed(KEY_ENTER))
+    {
+        if (len(DRAW_VERTS) >= 4)
+        {
+            shapes_body.add_chain(DRAW_VERTS, false);
+            DRAW_VERTS = [];
+        }
+    }
+
+    if (key_pressed(KEY_L))
+    {
+        if (len(DRAW_VERTS) >= 6)
+        {
+            shapes_body.add_chain(DRAW_VERTS, true);
+            DRAW_VERTS = [];
+        }
+    }
+
+    update_world(DELTA_TIME);
+
+    // Vertex preview overlay
+    var i = 0;
+    while (i < len(DRAW_VERTS))
+    {
+        var x = DRAW_VERTS[i];
+        var y = DRAW_VERTS[i + 1];
+        draw_circle(x, y, 4, false);
+
+        if (i >= 2)
+        {
+            var px = DRAW_VERTS[i - 2];
+            var py = DRAW_VERTS[i - 1];
+            draw_line(px, py, x, y);
+        }
+        i += 2;
+    }
+
+    if (len(DRAW_VERTS) >= 2)
+    {
+        var lx = DRAW_VERTS[len(DRAW_VERTS) - 2];
+        var ly = DRAW_VERTS[len(DRAW_VERTS) - 1];
+        draw_line(lx, ly, get_mouse_x(), get_mouse_y());
+    }
+
+    draw_text("ESC close", 20, 20, 20);
+    draw_text("LMB ball | RMB box", 20, 44, 20);
+    draw_text("MMB drag body (MouseJoint)", 20, 68, 20);
+    draw_text("P polygon at mouse", 20, 92, 20);
+    draw_text("V add vertex | Enter chain | L loop | Backspace undo | C clear", 20, 116, 20);
+    draw_text("Bodys: " + str(get_body_count()), 20, 140, 20);
+    if (DRAG_ACTIVE)
+    {
+        draw_text("Dragging process id: " + str(DRAG_ID), 20, 164, 20);
+    }
+    draw_fps(20, 188);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}
+ 

@@ -1,0 +1,48 @@
+{
+	"module":"raylib",
+	"about":"raylib shared library",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":[],
+        "static":true,
+                    "priority":0,
+	"system":["linux","android","emscripten","windows"],
+	"src":["src/rcore.c","src/utils.c","src/rshapes.c","src/raudio.c","src/rtextures.c","src/rtext.c","src/rmodels.c"],
+	"include":["src/external/glfw/include"],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":" -Wall -D_GNU_SOURCE -D_DEFAULT_SOURCE -Wno-missing-braces -Werror=pointer-arith -fno-strict-aliasing  -fPIC -s -O1 -fPIC  -DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33",
+ 	   "CC_ARGS":" -Wall -D_GNU_SOURCE -D_DEFAULT_SOURCE -Wno-missing-braces -Werror=pointer-arith -fno-strict-aliasing  -fPIC -s -O1 -Werror=implicit-function-declaration -fPIC -DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33",
+ 	   "LD_ARGS":"-lGL -lc -lm -lpthread -ldl -lrt",
+	   "src":["src/rglfw.c"],
+	   "include":[""]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":"-DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33",
+ 	   "CC_ARGS":"-DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":"-D_DEFAULT_SOURCE -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -DSTBIR_NO_SIMD",
+ 	   "CC_ARGS":"-D_DEFAULT_SOURCE -DPLATFORM_ANDROID -DGRAPHICS_API_OPENGL_ES2 -DSTBIR_NO_SIMD",
+ 	   "LD_ARGS":"-u ANativeActivity_onCreate   -llog -landroid -lEGL -lGLESv2 -lOpenSLES -lc -lm",
+	    "src":["src/android_native_app_glue.c"],
+	    "include":[""]
+	  },
+	  "emscripten":
+	  {
+	  "template":"shell.html",
+ 	   "CPP_ARGS":"-DPLATFORM_WEB -DGRAPHICS_API_OPENGL_ES2",
+ 	   "CC_ARGS":"-DPLATFORM_WEB -DGRAPHICS_API_OPENGL_ES2",
+	   "LD_ARGS":"-s USE_GLFW=3 -s ASYNCIFY -D_DEFAULT_SOURCE -fPIC",
+	    "src":[""],
+	    "include":[""]
+	  }
+      }
+}

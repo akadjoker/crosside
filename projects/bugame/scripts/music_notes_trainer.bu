@@ -1,0 +1,659 @@
+import math;
+
+var KEY_ESCAPE = 256;
+var KEY_R = 82;
+var KEY_N = 78;
+var KEY_A = 65;
+var KEY_B = 66;
+var KEY_C = 67;
+var KEY_D = 68;
+var KEY_E = 69;
+var KEY_F = 70;
+var KEY_G = 71;
+var MOUSE_LEFT = 0;
+
+var SCREEN_W = 1280;
+var SCREEN_H = 720;
+
+var STAFF_X = 120;
+var STAFF_Y = 160;
+var STAFF_W = 1040;
+var STAFF_SPACING = 24;
+
+var HIT_X = 220;
+var HIT_WINDOW = 42;
+var NOTE_PANEL_X = 280;
+var NOTE_PANEL_Y = 560;
+var NOTE_BTN_W = 110;
+var NOTE_BTN_H = 74;
+var NOTE_BTN_GAP = 10;
+var MODE_BTN_X = 980;
+var MODE_BTN_Y = 22;
+var MODE_BTN_W = 260;
+var MODE_BTN_H = 38;
+var NAME_MODE_LETTER = 0;
+var NAME_MODE_SOLFEGE = 1;
+var NAME_MODE_BOTH = 2;
+
+var note_x = [];
+var note_n = [];
+var note_v = [];
+
+var score = 0;
+var lives = 5;
+var streak = 0;
+var level = 1;
+var game_over = false;
+
+var spawn_timer = 0.0;
+var spawn_interval = 1.5;
+
+var status_text = "Pressiona C D E F G A B";
+var status_t = 0.0;
+
+var flash_ok_t = 0.0;
+var flash_bad_t = 0.0;
+var note_hover = -1;
+var note_flash = -1;
+var note_flash_t = 0.0;
+var name_mode = NAME_MODE_BOTH;
+
+set_window_size(SCREEN_W, SCREEN_H);
+set_window_title("Bu Note Trainer");
+set_design_resolution(SCREEN_W, SCREEN_H);
+set_virtual_screen_enabled(true);
+
+
+def clamp(v, lo, hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+
+def note_name(n)
+{
+    if (name_mode == NAME_MODE_SOLFEGE)
+    {
+        if (n == 0) return "DO";
+        if (n == 1) return "RE";
+        if (n == 2) return "MI";
+        if (n == 3) return "FA";
+        if (n == 4) return "SOL";
+        if (n == 5) return "LA";
+        return "SI";
+    }
+    if (name_mode == NAME_MODE_BOTH)
+    {
+        if (n == 0) return "DO/C";
+        if (n == 1) return "RE/D";
+        if (n == 2) return "MI/E";
+        if (n == 3) return "FA/F";
+        if (n == 4) return "SOL/G";
+        if (n == 5) return "LA/A";
+        return "SI/B";
+    }
+
+    if (n == 0) return "C";
+    if (n == 1) return "D";
+    if (n == 2) return "E";
+    if (n == 3) return "F";
+    if (n == 4) return "G";
+    if (n == 5) return "A";
+    return "B";
+}
+
+
+def mode_name()
+{
+    if (name_mode == NAME_MODE_SOLFEGE) return "Solfejo";
+    if (name_mode == NAME_MODE_BOTH) return "Ambos";
+    return "Letras";
+}
+
+
+def mode_scale_text()
+{
+    if (name_mode == NAME_MODE_SOLFEGE) return "DO  RE  MI  FA  SOL  LA  SI";
+    if (name_mode == NAME_MODE_BOTH) return "DO/C  RE/D  MI/E  FA/F  SOL/G  LA/A  SI/B";
+    return "C  D  E  F  G  A  B";
+}
+
+
+def cycle_name_mode()
+{
+    name_mode += 1;
+    if (name_mode > NAME_MODE_BOTH) name_mode = NAME_MODE_LETTER;
+    status_text = "Notacao: " + mode_name();
+    status_t = 1.2;
+}
+
+
+def mode_button_hit(mx, my)
+{
+    if (mx >= MODE_BTN_X && mx <= MODE_BTN_X + MODE_BTN_W && my >= MODE_BTN_Y && my <= MODE_BTN_Y + MODE_BTN_H) return true;
+    return false;
+}
+
+
+def note_y(n)
+{
+    var bottom_line = STAFF_Y + STAFF_SPACING * 4;
+    var step = STAFF_SPACING * 0.5;
+    // E (2) fica na linha de baixo; C/D ficam com linhas suplementares simples.
+    return bottom_line - (n - 2) * step;
+}
+
+
+def set_status(text)
+{
+    status_text = text;
+    status_t = 1.2;
+}
+
+
+def clear_notes()
+{
+    note_x = [];
+    note_n = [];
+    note_v = [];
+}
+
+
+def spawn_note()
+{
+    var n = int(math.rand(0, 100000)) % 7;
+    var base_speed = 150 + level * 18;
+    var jitter = int(math.rand(0, 1000)) % 35;
+
+    note_x.push(SCREEN_W + 30);
+    note_n.push(n);
+    note_v.push(base_speed + jitter);
+}
+
+
+def reset_game()
+{
+    clear_notes();
+    score = 0;
+    lives = 5;
+    streak = 0;
+    level = 1;
+    game_over = false;
+    spawn_interval = 1.5;
+    spawn_timer = 0;
+    flash_ok_t = 0;
+    flash_bad_t = 0;
+    note_hover = -1;
+    note_flash = -1;
+    note_flash_t = 0;
+    set_status("Nova partida");
+}
+
+
+def note_button_x(i)
+{
+    return NOTE_PANEL_X + i * (NOTE_BTN_W + NOTE_BTN_GAP);
+}
+
+def note_from_mouse(mx, my)
+{
+    var i = 0;
+    while (i < 7)
+    {
+        var x = note_button_x(i);
+        if (mx >= x && mx <= x + NOTE_BTN_W && my >= NOTE_PANEL_Y && my <= NOTE_PANEL_Y + NOTE_BTN_H)
+        {
+            return i;
+        }
+        i += 1;
+    }
+    return -1;
+}
+
+
+def input_note()
+{
+    if (key_pressed(KEY_C)) return 0;
+    if (key_pressed(KEY_D)) return 1;
+    if (key_pressed(KEY_E)) return 2;
+    if (key_pressed(KEY_F)) return 3;
+    if (key_pressed(KEY_G)) return 4;
+    if (key_pressed(KEY_A)) return 5;
+    if (key_pressed(KEY_B)) return 6;
+
+    if (mouse_pressed(MOUSE_LEFT))
+    {
+        var mnote = note_from_mouse(get_mouse_x(), get_mouse_y());
+        if (mnote >= 0) return mnote;
+    }
+
+    return -1;
+}
+
+
+def get_target_note_idx()
+{
+    var i = 0;
+    var best = -1;
+    var best_dist = 999999;
+
+    while (i < len(note_x))
+    {
+        var x = note_x[i];
+        var d = abs(x - HIT_X);
+
+        if (d <= HIT_WINDOW)
+        {
+            if (d < best_dist)
+            {
+                best_dist = d;
+                best = i;
+            }
+        }
+        i += 1;
+    }
+
+    return best;
+}
+
+
+def remove_note_at(rem)
+{
+    var nx = [];
+    var nn = [];
+    var nv = [];
+    var i = 0;
+    while (i < len(note_x))
+    {
+        if (i != rem)
+        {
+            nx.push(note_x[i]);
+            nn.push(note_n[i]);
+            nv.push(note_v[i]);
+        }
+        i += 1;
+    }
+    note_x = nx;
+    note_n = nn;
+    note_v = nv;
+}
+
+
+def update_notes(dt)
+{
+    var nx = [];
+    var nn = [];
+    var nv = [];
+
+    var i = 0;
+    while (i < len(note_x))
+    {
+        var x = note_x[i] - note_v[i] * dt;
+        var n = note_n[i];
+        var v = note_v[i];
+
+        if (x < HIT_X - HIT_WINDOW - 26)
+        {
+            lives -= 1;
+            streak = 0;
+            flash_bad_t = 0.2;
+            set_status("Falhou: " + note_name(n));
+        }
+        else
+        {
+            nx.push(x);
+            nn.push(n);
+            nv.push(v);
+        }
+
+        i += 1;
+    }
+
+    note_x = nx;
+    note_n = nn;
+    note_v = nv;
+
+    if (lives <= 0)
+    {
+        lives = 0;
+        game_over = true;
+        set_status("Game Over");
+    }
+}
+
+
+def draw_treble_clef(x, y, scale)
+{
+    var gy = STAFF_Y + STAFF_SPACING * 3;
+
+    // sombra suave
+    set_alpha(80);
+    set_color(0, 0, 0);
+    draw_line(x + 2, y - 56 * scale + 2, x + 2, y + 146 * scale + 2);
+    set_alpha(255);
+
+    // traço principal
+    set_color(255, 220, 120);
+    draw_line(x, y - 56 * scale, x, y + 146 * scale);
+
+    // laço superior
+    draw_circle(x, y - 34 * scale, 12 * scale, false);
+
+    // anel principal da clave (linha de Sol)
+    draw_circle(x, gy, 18 * scale, false);
+    draw_circle(x, gy, 6 * scale, true);
+
+    // voltas inferiores
+    draw_circle(x - 10 * scale, gy + 28 * scale, 10 * scale, false);
+    draw_circle(x + 8 * scale, gy + 48 * scale, 8 * scale, false);
+}
+
+
+def draw_staff()
+{
+    set_color(24, 26, 36);
+    draw_rectangle(0, 0, SCREEN_W, SCREEN_H, true);
+
+    var i = 0;
+    while (i < 5)
+    {
+        var y = STAFF_Y + i * STAFF_SPACING;
+        set_color(224, 230, 245);
+        draw_line(STAFF_X, y, STAFF_X + STAFF_W, y);
+        i += 1;
+    }
+
+    draw_treble_clef(STAFF_X + 42, STAFF_Y + 4, 1.0);
+
+    // hit zone
+    set_alpha(45);
+    set_color(120, 240, 170);
+    draw_rectangle(HIT_X - HIT_WINDOW, STAFF_Y - 80, HIT_WINDOW * 2, STAFF_SPACING * 4 + 160, true);
+    set_alpha(255);
+    set_color(120, 240, 170);
+    draw_line(HIT_X, STAFF_Y - 80, HIT_X, STAFF_Y + STAFF_SPACING * 4 + 80);
+}
+
+
+def draw_note_symbol(x, n)
+{
+    var y = note_y(n);
+
+    set_color(22, 22, 22);
+    draw_circle(x + 1, y + 1, 11, true);
+
+    set_color(255, 232, 90);
+    draw_circle(x, y, 11, true);
+    set_color(16, 16, 16);
+    draw_circle(x, y, 11, false);
+
+    // haste
+    set_color(255, 232, 90);
+    draw_line(x + 10, y, x + 10, y - 34);
+
+    // linha suplementar para C e D
+    if (n == 0)
+    {
+        set_color(224, 230, 245);
+        draw_line(x - 16, note_y(2), x + 16, note_y(2));
+        draw_line(x - 16, y, x + 16, y);
+    }
+    elif (n == 1)
+    {
+        set_color(224, 230, 245);
+        draw_line(x - 16, note_y(2), x + 16, note_y(2));
+    }
+}
+
+
+def draw_notes()
+{
+    var i = 0;
+    while (i < len(note_x))
+    {
+        draw_note_symbol(note_x[i], note_n[i]);
+        i += 1;
+    }
+}
+
+
+def draw_note_board()
+{
+    set_alpha(80);
+    set_color(0, 0, 0);
+    draw_rectangle(NOTE_PANEL_X - 12, NOTE_PANEL_Y - 12, 7 * NOTE_BTN_W + 6 * NOTE_BTN_GAP + 24, NOTE_BTN_H + 24, true);
+    set_alpha(255);
+
+    var i = 0;
+    while (i < 7)
+    {
+        var x = note_button_x(i);
+        var y = NOTE_PANEL_Y;
+        var hover = (i == note_hover);
+        var flash = (note_flash_t > 0 && i == note_flash);
+
+        if (flash)
+        {
+            set_color(255, 232, 90);
+        }
+        elif (hover)
+        {
+            set_color(96, 116, 164);
+        }
+        else
+        {
+            set_color(66, 74, 105);
+        }
+        draw_rectangle(x, y, NOTE_BTN_W, NOTE_BTN_H, true);
+
+        set_color(180, 195, 235);
+        draw_rectangle(x, y, NOTE_BTN_W, NOTE_BTN_H, false);
+
+        set_color(245, 248, 255);
+        if (name_mode == NAME_MODE_BOTH)
+        {
+            draw_text(note_name(i), x + 18, y + 25, 24);
+        }
+        elif (name_mode == NAME_MODE_SOLFEGE)
+        {
+            draw_text(note_name(i), x + 24, y + 24, 28);
+        }
+        else
+        {
+            draw_text(note_name(i), x + 42, y + 24, 32);
+        }
+
+        i += 1;
+    }
+}
+
+
+def draw_ui()
+{
+    set_color(255, 255, 255);
+    draw_text("NOTE TRAINER", 24, 22, 36);
+
+    draw_text("Score: " + str(score), 24, 72, 24);
+    draw_text("Lives: " + str(lives), 24, 102, 24);
+    draw_text("Streak: " + str(streak), 24, 132, 24);
+    draw_text("Level: " + str(level), 24, 162, 24);
+    draw_text("Modo: " + mode_name(), 24, 186, 20);
+
+    draw_text("Teclas: C D E F G A B", 24, 214, 20);
+    draw_text("ou clica nos botoes abaixo", 24, 238, 20);
+    draw_text("N troca notacao | R restart | ESC sair", 24, 264, 20);
+
+    set_color(220, 230, 255);
+    draw_text("Ler a nota que entra na pauta e responder na zona verde", 24, SCREEN_H - 36, 18);
+
+    if (status_t > 0)
+    {
+        set_alpha(int(255 * (status_t / 1.2)));
+        set_color(255, 255, 255);
+        draw_text(status_text, 470, 34, 24);
+        set_alpha(255);
+    }
+
+    // seletor de notacao
+    set_color(66, 74, 105);
+    draw_rectangle(MODE_BTN_X, MODE_BTN_Y, MODE_BTN_W, MODE_BTN_H, true);
+    set_color(180, 195, 235);
+    draw_rectangle(MODE_BTN_X, MODE_BTN_Y, MODE_BTN_W, MODE_BTN_H, false);
+    set_color(245, 248, 255);
+    draw_text("Notacao: " + mode_name(), MODE_BTN_X + 20, MODE_BTN_Y + 10, 20);
+
+    // legenda das alturas
+    set_color(190, 210, 245);
+    var ly = STAFF_Y + STAFF_SPACING * 4 + 40;
+    draw_text(mode_scale_text(), STAFF_X + 60, ly, 18);
+}
+
+
+reset_game();
+
+loop
+{
+    var dt = delta();
+
+    if (status_t > 0)
+    {
+        status_t -= dt;
+        if (status_t < 0) status_t = 0;
+    }
+    if (flash_ok_t > 0)
+    {
+        flash_ok_t -= dt;
+        if (flash_ok_t < 0) flash_ok_t = 0;
+    }
+    if (flash_bad_t > 0)
+    {
+        flash_bad_t -= dt;
+        if (flash_bad_t < 0) flash_bad_t = 0;
+    }
+    if (note_flash_t > 0)
+    {
+        note_flash_t -= dt;
+        if (note_flash_t < 0) note_flash_t = 0;
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        reset_game();
+    }
+    if (key_pressed(KEY_N))
+    {
+        cycle_name_mode();
+    }
+    if (mouse_pressed(MOUSE_LEFT) && mode_button_hit(get_mouse_x(), get_mouse_y()))
+    {
+        cycle_name_mode();
+    }
+
+    note_hover = note_from_mouse(get_mouse_x(), get_mouse_y());
+
+    if (!game_over)
+    {
+        // spawn progressivo
+        spawn_timer += dt;
+        if (spawn_timer >= spawn_interval)
+        {
+            spawn_timer = 0;
+            spawn_note();
+
+            spawn_interval -= 0.01;
+            spawn_interval = clamp(spawn_interval, 0.65, 1.5);
+
+            level = 1 + int((1.5 - spawn_interval) * 10);
+        }
+
+        update_notes(dt);
+
+        var pressed = input_note();
+        if (pressed >= 0)
+        {
+            note_flash = pressed;
+            note_flash_t = 0.16;
+
+            var target = get_target_note_idx();
+            if (target < 0)
+            {
+                streak = 0;
+                set_status("Muito cedo/tarde");
+            }
+            else
+            {
+                var expected = note_n[target];
+                if (pressed == expected)
+                {
+                    streak += 1;
+                    var gain = 100 + streak * 8;
+                    score += gain;
+                    flash_ok_t = 0.16;
+                    set_status("Certo: " + note_name(expected) + "  +" + str(gain));
+                }
+                else
+                {
+                    lives -= 1;
+                    streak = 0;
+                    flash_bad_t = 0.22;
+                    set_status("Errado: era " + note_name(expected));
+                    if (lives <= 0)
+                    {
+                        lives = 0;
+                        game_over = true;
+                    }
+                }
+                remove_note_at(target);
+            }
+        }
+    }
+
+    draw_staff();
+
+    if (flash_ok_t > 0)
+    {
+        set_alpha(int(70 * (flash_ok_t / 0.16)));
+        set_color(90, 255, 160);
+        draw_rectangle(0, 0, SCREEN_W, SCREEN_H, true);
+        set_alpha(255);
+    }
+    if (flash_bad_t > 0)
+    {
+        set_alpha(int(90 * (flash_bad_t / 0.22)));
+        set_color(255, 90, 90);
+        draw_rectangle(0, 0, SCREEN_W, SCREEN_H, true);
+        set_alpha(255);
+    }
+
+    draw_notes();
+    draw_note_board();
+    draw_ui();
+
+    if (game_over)
+    {
+        set_alpha(170);
+        set_color(0, 0, 0);
+        draw_rectangle(420, 280, 460, 170, true);
+        set_alpha(255);
+
+        set_color(255, 220, 120);
+        draw_text("GAME OVER", 550, 320, 42);
+        set_color(255, 255, 255);
+        draw_text("Score final: " + str(score), 560, 372, 26);
+        draw_text("Pressiona R para reiniciar", 500, 405, 22);
+    }
+
+    draw_fps(SCREEN_W - 104, 18);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}
+
+print("Bye Note Trainer");

@@ -1,0 +1,412 @@
+// === RECT MOUSE SHOOTER ===
+// Player em retangulo, mira no rato e dispara com mouse.
+
+import math;
+
+var W = 960;
+var H = 540;
+
+var KEY_A = 65;
+var KEY_D = 68;
+var KEY_W = 87;
+var KEY_S = 83;
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+var KEY_UP = 265;
+var KEY_DOWN = 264;
+var KEY_R = 82;
+var KEY_ESCAPE = 256;
+
+var GAME_OVER = false;
+var SCORE = 0;
+var PLAYER_ID = -1;
+var PLAYER_HP_MAX = 8;
+var PLAYER_HP = 8;
+var ENEMY_COUNT = 0;
+
+def clamp(v, lo, hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+def spawn_enemy_edge()
+{
+    var side = math.irand(0, 3);
+    var ex = 0;
+    var ey = 0;
+
+    if (side == 0)
+    {
+        ex = -18;
+        ey = math.rand(24, H - 24);
+    }
+    elif (side == 1)
+    {
+        ex = W + 18;
+        ey = math.rand(24, H - 24);
+    }
+    elif (side == 2)
+    {
+        ex = math.rand(24, W - 24);
+        ey = -18;
+    }
+    else
+    {
+        ex = math.rand(24, W - 24);
+        ey = H + 18;
+    }
+
+    ENEMY_COUNT += 1;
+    enemy(ex, ey);
+}
+
+process fx_spark(px, py, r, g, b)
+{
+    x = px;
+    y = py;
+    var ang = math.rand(0, 360);
+    var spd = math.rand(60, 260);
+    var vx = get_distx(ang, spd);
+    var vy = get_disty(ang, spd);
+    var life = math.rand(0.08, 0.22);
+    var start_life = life;
+    var size = math.rand(2, 4);
+
+    loop
+    {
+        var dt = delta();
+        life -= dt;
+        if (life <= 0) break;
+
+        x += vx * dt;
+        y += vy * dt;
+        vy += 650 * dt;
+        vx *= (1.0 - dt * 2.2);
+
+        set_alpha(int(255 * (life / start_life)));
+        set_color(r, g, b);
+        draw_circle(x, y, size, true);
+        set_alpha(255);
+        frame;
+    }
+}
+
+def burst(px, py, n, r, g, b)
+{
+    var i = 0;
+    while (i < n)
+    {
+        fx_spark(px, py, r, g, b);
+        i += 1;
+    }
+}
+
+process bullet(px, py, ang)
+{
+    x = px;
+    y = py;
+    set_circle_shape(4);
+    set_collision_layer(3);
+    set_collision_mask(0);
+
+    var speed = 760;
+    var vx = get_distx(ang, speed);
+    var vy = get_disty(ang, speed);
+    var life = 1.2;
+
+    loop
+    {
+        var dt = delta();
+        life -= dt;
+        if (life <= 0) break;
+
+        x += vx * dt;
+        y += vy * dt;
+
+        if (x < -40 || x > W + 40 || y < -40 || y > H + 40)
+        {
+            break;
+        }
+
+        var hit = collision(type enemy, x, y);
+        if (hit)
+        {
+            hit.state += 1;
+            burst(x, y, 6, 255, 220, 120);
+            break;
+        }
+
+        set_alpha(90);
+        set_color(255, 190, 80);
+        draw_circle(x, y, 8, true);
+        set_alpha(255);
+        set_color(255, 245, 180);
+        draw_circle(x, y, 4, true);
+        frame;
+    }
+}
+
+process enemy(px, py)
+{
+    x = px;
+    y = py;
+    set_rect_shape(0, 0, 24, 24);
+    set_collision_layer(2);
+    set_collision_mask(0);
+
+    var hp = 3;
+    var speed = math.rand(75, 135);
+    var touch_cd = 0.0;
+
+    loop
+    {
+        var dt = delta();
+        if (GAME_OVER)
+        {
+            set_color(90, 90, 100);
+            draw_rectangle(x - 12, y - 12, 24, 24, true);
+            frame;
+            continue;
+        }
+
+        if (touch_cd > 0) touch_cd -= dt;
+
+        if (state > 0)
+        {
+            hp -= state;
+            state = 0;
+            burst(x, y, 4, 255, 130, 130);
+            if (hp <= 0)
+            {
+                SCORE += 1;
+                burst(x, y, 12, 255, 160, 160);
+                ENEMY_COUNT -= 1;
+                break;
+            }
+        }
+
+        var p = nil;
+        if (PLAYER_ID != -1) p = proc(PLAYER_ID);
+        if (p)
+        {
+            var ang = atan2(p.y - y, p.x - x);
+            x += get_distx(ang, speed) * dt;
+            y += get_disty(ang, speed) * dt;
+        }
+
+        var hit_p = collision(type player, x, y);
+        if (hit_p && touch_cd <= 0)
+        {
+            hit_p.state += 1;
+            touch_cd = 0.4;
+        }
+
+        set_color(175, 78, 96);
+        draw_rectangle(x - 12, y - 12, 24, 24, true);
+        set_color(255, 210, 220);
+        draw_circle(x + 4, y - 3, 3, true);
+        set_color(44, 24, 30);
+        draw_rectangle(x - 12, y - 12, 24, 24, false);
+        frame;
+    }
+}
+
+process enemy_spawner()
+{
+    var timer = 0.0;
+    var interval = 1.0;
+    var max_alive = 16;
+
+    loop
+    {
+        var dt = delta();
+        if (GAME_OVER)
+        {
+            frame;
+            continue;
+        }
+
+        timer += dt;
+        if (timer >= interval && ENEMY_COUNT < max_alive)
+        {
+            timer = 0.0;
+            spawn_enemy_edge();
+            if (interval > 0.45) interval -= 0.01;
+        }
+        frame;
+    }
+}
+
+process player(px, py)
+{
+    x = px;
+    y = py;
+    set_rect_shape(0, 0, 24, 24);
+    set_collision_layer(1);
+    set_collision_mask(0);
+
+    var speed = 260;
+    var fire_cd = 0.0;
+    var hurt_cd = 0.0;
+
+    loop
+    {
+        var dt = delta();
+        var mx = get_mouse_x();
+        var my = get_mouse_y();
+        var aim = atan2(my - y, mx - x);
+
+        if (!GAME_OVER)
+        {
+            var h = 0;
+            var v = 0;
+            if (key_down(KEY_A) || key_down(KEY_LEFT)) h -= 1;
+            if (key_down(KEY_D) || key_down(KEY_RIGHT)) h += 1;
+            if (key_down(KEY_W) || key_down(KEY_UP)) v -= 1;
+            if (key_down(KEY_S) || key_down(KEY_DOWN)) v += 1;
+
+            if (h != 0 && v != 0)
+            {
+                h *= 0.7071;
+                v *= 0.7071;
+            }
+
+            x += h * speed * dt;
+            y += v * speed * dt;
+            x = clamp(x, 12, W - 12);
+            y = clamp(y, 12, H - 12);
+
+            if (fire_cd > 0) fire_cd -= dt;
+            if (hurt_cd > 0) hurt_cd -= dt;
+
+            if (mouse_down(0) && fire_cd <= 0)
+            {
+                fire_cd = 0.09;
+                bullet(x + get_distx(aim, 18), y + get_disty(aim, 18), aim);
+                burst(x + get_distx(aim, 16), y + get_disty(aim, 16), 2, 255, 230, 170);
+            }
+
+            if (state > 0 && hurt_cd <= 0)
+            {
+                state = 0;
+                hurt_cd = 0.55;
+                PLAYER_HP -= 1;
+                burst(x, y, 14, 255, 120, 120);
+                start_camera_shake(-2, -2, 24, 14);
+                if (PLAYER_HP <= 0)
+                {
+                    PLAYER_HP = 0;
+                    GAME_OVER = true;
+                }
+            }
+            else
+            {
+                state = 0;
+            }
+        }
+
+        var rr = 110;
+        var gg = 175;
+        var bb = 255;
+        if (hurt_cd > 0)
+        {
+            rr = 255;
+            gg = 125;
+            bb = 125;
+        }
+
+        // Corpo (retangulo) + "cano" apontando para o rato.
+        set_color(rr, gg, bb);
+        draw_rectangle(x - 12, y - 12, 24, 24, true);
+        set_color(30, 38, 56);
+        draw_rectangle(x - 12, y - 12, 24, 24, false);
+
+        set_color(255, 245, 210);
+        draw_line(x, y, x + get_distx(aim, 22), y + get_disty(aim, 22));
+        draw_circle(x + get_distx(aim, 22), y + get_disty(aim, 22), 3, true);
+
+        // Crosshair
+        set_color(255, 235, 160);
+        draw_circle(mx, my, 8, false);
+        draw_line(mx - 12, my, mx - 4, my);
+        draw_line(mx + 4, my, mx + 12, my);
+        draw_line(mx, my - 12, mx, my - 4);
+        draw_line(mx, my + 4, mx, my + 12);
+
+        frame;
+    }
+}
+
+def start_game()
+{
+    let_me_alone();
+    SCORE = 0;
+    PLAYER_HP = PLAYER_HP_MAX;
+    GAME_OVER = false;
+    PLAYER_ID = -1;
+    ENEMY_COUNT = 0;
+
+    var p = player(W / 2, H / 2);
+    if (p) PLAYER_ID = p.id;
+    enemy_spawner();
+}
+
+set_window_size(W, H);
+set_window_title("Rect Mouse Shooter");
+set_design_resolution(W, H);
+set_virtual_screen_enabled(true);
+set_screen_scale_mode(0);
+init_collision(0, 0, W, H);
+
+start_game();
+
+loop
+{
+    set_color(16, 20, 30);
+    draw_rectangle(0, 0, W, H, true);
+
+    set_draw_screen(true);
+    set_alpha(180);
+    set_color(8, 10, 16);
+    draw_rectangle(10, 10, 360, 110, true);
+    set_alpha(255);
+    set_color(80, 105, 160);
+    draw_rectangle(10, 10, 360, 110, false);
+
+    set_color(240, 245, 255);
+    draw_text("RECT MOUSE SHOOTER", 20, 18, 24);
+    draw_text(format("Score: {}", SCORE), 20, 50, 18);
+    draw_text(format("HP: {}/{}", PLAYER_HP, PLAYER_HP_MAX), 20, 72, 18);
+    draw_text("WASD move | Mouse aim/shoot | R restart", 20, 94, 16);
+
+    var hp_ratio = PLAYER_HP / PLAYER_HP_MAX;
+    set_color(24, 26, 34);
+    draw_rectangle(140, 74, 170, 12, true);
+    set_color(255, 98, 115);
+    draw_rectangle(140, 74, 170 * hp_ratio, 12, true);
+    set_color(255, 180, 190);
+    draw_rectangle(140, 74, 170, 12, false);
+
+    if (GAME_OVER)
+    {
+        set_color(255, 120, 120);
+        draw_text("GAME OVER - press R", W / 2 - 140, H / 2 - 14, 30);
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        start_game();
+    }
+
+    if (key_pressed(KEY_ESCAPE))
+    {
+        set_draw_screen(false);
+        let_me_alone();
+        break;
+    }
+
+    set_draw_screen(false);
+    frame;
+}

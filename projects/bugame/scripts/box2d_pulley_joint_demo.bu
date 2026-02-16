@@ -1,0 +1,147 @@
+print("Box2D PulleyJoint Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_SPACE = 32;
+var KEY_R = 82;
+var MOUSE_LEFT = 0;
+var MOUSE_RIGHT = 1;
+var MOUSE_MIDDLE = 2;
+var DRAG_JOINT = nil;
+var DRAG_ACTIVE = false;
+var DRAG_ID = -1;
+var DRAG_JOINT = nil;
+var DRAG_ACTIVE = false;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D PulleyJoint Demo");
+create_world(0, 9.8);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16);
+
+var ground_def = create_bodydef(BODY_STATIC);
+ground_def.set_position(640, 700);
+var ground_fx = create_fixture_def();
+ground_fx.set_box_shape(640, 20);
+var ground = create_body(ground_def);
+ground.add_fixture(ground_fx);
+
+
+var floor_def = create_bodydef(BODY_STATIC);
+floor_def.set_position(640, 700);
+var floor_fx = create_fixture_def();
+floor_fx.set_box_shape(640, 20);
+var world_floor = create_body(floor_def);
+world_floor.add_fixture(floor_fx);
+
+var left_def = create_bodydef(BODY_DYNAMIC);
+left_def.set_position(460, 390);
+var left_fx = create_fixture_def();
+left_fx.set_density(1.0);
+left_fx.set_friction(0.5);
+left_fx.set_box_shape(34, 34);
+var left_box = create_body(left_def);
+left_box.add_fixture(left_fx);
+
+var right_def = create_bodydef(BODY_DYNAMIC);
+right_def.set_position(820, 390);
+var right_fx = create_fixture_def();
+right_fx.set_density(1.0);
+right_fx.set_friction(0.5);
+right_fx.set_box_shape(34, 34);
+var right_box = create_body(right_def);
+right_box.add_fixture(right_fx);
+
+var jd = PulleyJointDef();
+jd.initialize(
+    left_box,
+    right_box,
+    460, 120,
+    820, 120,
+    460, 390,
+    820, 390,
+    1.0
+);
+jd.set_collide_connected(false);
+var pulley = PulleyJoint(jd);
+
+loop
+{
+    var dt = delta();
+    if (dt > 0.033) { dt = 0.033; }
+
+    if (key_pressed(KEY_SPACE))
+    {
+        left_box.set_linear_velocity(0, -220);
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        left_box.set_transform(460, 390, 0);
+        left_box.set_linear_velocity(0, 0);
+        left_box.set_angular_velocity(0);
+        right_box.set_transform(820, 390, 0);
+        right_box.set_linear_velocity(0, 0);
+        right_box.set_angular_velocity(0);
+    }
+
+      if (!DRAG_ACTIVE && mouse_pressed(MOUSE_LEFT))
+    {
+        var (hit_id, hit_body) = physics_overlap_point(get_mouse_x(), get_mouse_y(), false);
+        if (  hit_body != nil)
+        {
+            
+            
+            
+                var mj = MouseJointDef();
+                mj.set_body_a(ground);
+                mj.set_body_b(hit_body);
+                mj.set_target(get_mouse_x(), get_mouse_y());
+                mj.set_max_force(25000);
+                mj.set_stiffness(12);
+                mj.set_damping(1.2);
+                mj.set_collide_connected(false);
+
+                DRAG_JOINT = MouseJoint(mj);
+                DRAG_ID = hit_id;
+                DRAG_ACTIVE = true;
+             
+        }
+    }
+
+    if (DRAG_ACTIVE)
+    {
+        if (!mouse_down(MOUSE_LEFT))
+        {
+            if (DRAG_JOINT != nil)
+            {
+                DRAG_JOINT.destroy();
+            }
+            DRAG_JOINT = nil;
+            DRAG_ID = -1;
+            DRAG_ACTIVE = false;
+        }
+        elif (DRAG_JOINT != nil)
+        {
+            DRAG_JOINT.set_target(get_mouse_x(), get_mouse_y());
+        }
+    }
+
+    update_world(dt);
+
+    draw_text("PulleyJoint demo", 20, 20, 20);
+    draw_text("SPACE kick left body up | R reset | ESC close", 20, 44, 20);
+    draw_text("LenA: " + str(pulley.get_current_length_a()), 20, 68, 20);
+    draw_text("LenB: " + str(pulley.get_current_length_b()), 20, 92, 20);
+    draw_fps(20, 116);
+           if (DRAG_ACTIVE)
+    {
+        draw_text("Dragging process id: " + str(DRAG_ID), 20, 164, 20);
+    }
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+    frame;
+}

@@ -1,0 +1,749 @@
+import math;
+// Teclas
+var KEY_ESCAPE = 256;
+var KEY_R = 82;
+var KEY_SPACE = 32;
+
+// Configuração
+var SCREEN_W = 800;
+var SCREEN_H = 600;
+
+set_window_size(SCREEN_W, SCREEN_H);
+set_window_title("Candy Crush - Bulçang");
+set_design_resolution(SCREEN_W, SCREEN_H);
+set_virtual_screen_enabled(true);
+
+// Grid do jogo
+var GRID_W = 8;
+var GRID_H = 8;
+var CELL_SIZE = 60;
+var GRID_X = (SCREEN_W - GRID_W * CELL_SIZE) / 2;
+var GRID_Y = 80;
+
+// Tipos de candy (0 = vazio)
+var TYPE_RED = 1;
+var TYPE_ORANGE = 2;
+var TYPE_YELLOW = 3;
+var TYPE_GREEN = 4;
+var TYPE_BLUE = 5;
+var TYPE_PURPLE = 6;
+var NUM_TYPES = 6;
+
+// Grid principal
+var grid = [];
+var grid_anim_y = []; // Animação de queda
+
+// Estado do jogo
+var score = 0;
+var moves = 30;
+var target_score = 1000;
+var game_state = "playing"; // playing, gameover, victory
+
+// Seleção
+var selected_x = -1;
+var selected_y = -1;
+var swapping = false;
+var swap_from_x = 0;
+var swap_from_y = 0;
+var swap_to_x = 0;
+var swap_to_y = 0;
+var swap_progress = 0.0;
+var swap_speed = 6.0;
+
+// Animação de queda
+var falling = false;
+var fall_speed = 8.0;
+
+// Matching
+var checking_matches = false;
+
+// Cores dos candies
+def get_candy_color(TYPE)
+{
+    if (TYPE == TYPE_RED)
+        return [220, 50, 50];
+    elif (TYPE == TYPE_ORANGE)
+        return [255, 150, 50];
+    elif (TYPE == TYPE_YELLOW)
+        return [255, 220, 50];
+    elif (TYPE == TYPE_GREEN)
+        return [50, 200, 80];
+    elif (TYPE == TYPE_BLUE)
+        return [50, 150, 255];
+    elif (TYPE == TYPE_PURPLE)
+        return [180, 80, 200];
+    else
+        return [100, 100, 100];
+}
+
+// Obter candy na posição
+def get_candy(x, y)
+{
+    if (x < 0 || x >= GRID_W || y < 0 || y >= GRID_H)
+        return 0;
+    return grid[y][x];
+}
+
+// Setar candy na posição
+def set_candy(x, y, TYPE)
+{
+    if (x >= 0 && x < GRID_W && y >= 0 && y < GRID_H)
+        grid[y][x] = TYPE;
+}
+
+// Verificar se duas posições são adjacentes
+def are_adjacent(x1, y1, x2, y2)
+{
+    var dx = abs(x1 - x2);
+    var dy = abs(y1 - y2);
+    return (dx == 1 && dy == 0 || dx == 0 && dy == 1);
+}
+
+// Swap dois candies
+def swap_candies(x1, y1, x2, y2)
+{
+    var temp = get_candy(x1, y1);
+    set_candy(x1, y1, get_candy(x2, y2));
+    set_candy(x2, y2, temp);
+}
+
+// Verificar match horizontal
+def check_horizontal_match(x, y)
+{
+    var TYPE = get_candy(x, y);
+    if (TYPE == 0) return 0;
+    
+    var count = 1;
+    
+    // Esquerda
+    var check_x = x - 1;
+    while (check_x >= 0 && get_candy(check_x, y) == TYPE)
+    {
+        count = count + 1;
+        check_x = check_x - 1;
+    }
+    
+    // Direita
+    check_x = x + 1;
+    while (check_x < GRID_W && get_candy(check_x, y) == TYPE)
+    {
+        count = count + 1;
+        check_x = check_x + 1;
+    }
+    
+    return count;
+}
+
+// Verificar match vertical
+def check_vertical_match(x, y)
+{
+    var TYPE = get_candy(x, y);
+    if (TYPE == 0) return 0;
+    
+    var count = 1;
+    
+    // Cima
+    var check_y = y - 1;
+    while (check_y >= 0 && get_candy(x, check_y) == TYPE)
+    {
+        count = count + 1;
+        check_y = check_y - 1;
+    }
+    
+    // Baixo
+    check_y = y + 1;
+    while (check_y < GRID_H && get_candy(x, check_y) == TYPE)
+    {
+        count = count + 1;
+        check_y = check_y + 1;
+    }
+    
+    return count;
+}
+
+
+// Marcar matches para remoção
+def mark_matches()
+{
+    var marked = [];
+    for (var y = 0; y < GRID_H; y = y + 1)
+    {
+        var row = [];
+        for (var x = 0; x < GRID_W; x = x + 1)
+        {
+            row.push(false);
+        }
+        marked.push(row);
+    }
+    
+    var found_any = false;
+    
+    // Procurar matches
+    for (var y = 0; y < GRID_H; y = y + 1)
+    {
+        for (var x = 0; x < GRID_W; x = x + 1)
+        {
+            var h_match = check_horizontal_match(x, y);
+            var v_match = check_vertical_match(x, y);
+            
+            if (h_match >= 3)
+            {
+                found_any = true;
+                var TYPE = get_candy(x, y);
+                
+                // Marcar horizontal
+                for (var i = x; i < GRID_W && get_candy(i, y) == TYPE; i = i + 1)
+                {
+                    marked[y][i] = true;
+                }
+                for (var i = x - 1; i >= 0 && get_candy(i, y) == TYPE; i = i - 1)
+                {
+                    marked[y][i] = true;
+                }
+            }
+            
+            if (v_match >= 3)
+            {
+                found_any = true;
+                var TYPE = get_candy(x, y);
+                
+                // Marcar vertical
+                for (var i = y; i < GRID_H && get_candy(x, i) == TYPE; i = i + 1)
+                {
+                    marked[i][x] = true;
+                }
+                for (var i = y - 1; i >= 0 && get_candy(x, i) == TYPE; i = i - 1)
+                {
+                    marked[i][x] = true;
+                }
+            }
+        }
+    }
+    
+    // Remover marcados e contar pontos
+    if (found_any)
+    {
+        var removed_count = 0;
+        for (var y = 0; y < GRID_H; y = y + 1)
+        {
+            for (var x = 0; x < GRID_W; x = x + 1)
+            {
+                if (marked[y][x])
+                {
+                    set_candy(x, y, 0);
+                    removed_count = removed_count + 1;
+                }
+            }
+        }
+        
+        score = score + removed_count * 10;
+    }
+    
+    return found_any;
+}
+
+// Fazer candies caírem
+def apply_gravity()
+{
+    var moved = false;
+    
+    for (var x = 0; x < GRID_W; x = x + 1)
+    {
+        // De baixo para cima
+        for (var y = GRID_H - 1; y >= 0; y = y - 1)
+        {
+            if (get_candy(x, y) == 0)
+            {
+                // Procurar candy acima
+                var found_y = -1;
+                for (var check_y = y - 1; check_y >= 0; check_y = check_y - 1)
+                {
+                    if (get_candy(x, check_y) != 0)
+                    {
+                        found_y = check_y;
+                        break;
+                    }
+                }
+                
+                if (found_y != -1)
+                {
+                    set_candy(x, y, get_candy(x, found_y));
+                    set_candy(x, found_y, 0);
+                    grid_anim_y[y][x] = -(y - found_y) * CELL_SIZE;
+                    moved = true;
+                }
+            }
+        }
+    }
+    
+    return moved;
+}
+
+// Preencher espaços vazios no topo
+def fill_empty_top()
+{
+    var filled = false;
+    
+    for (var x = 0; x < GRID_W; x = x + 1)
+    {
+        for (var y = 0; y < GRID_H; y = y + 1)
+        {
+            if (get_candy(x, y) == 0)
+            {
+                var new_candy = 1 + int(math.rand() * NUM_TYPES);
+                set_candy(x, y, new_candy);
+                grid_anim_y[y][x] = -CELL_SIZE * 2;
+                filled = true;
+            }
+        }
+    }
+    
+    return filled;
+}
+
+// Remover todos os matches (para inicialização)
+def remove_all_matches()
+{
+    var iterations = 0;
+    while (iterations < 10)
+    {
+        var found = mark_matches();
+        if (!found) break;
+        
+        apply_gravity();
+        fill_empty_top();
+        
+        iterations = iterations + 1;
+    }
+}
+
+// Inicializar grid
+def init_grid()
+{
+    grid = [];
+    grid_anim_y = [];
+    
+    for (var y = 0; y < GRID_H; y = y + 1)
+    {
+        var row = [];
+        var anim_row = [];
+        for (var x = 0; x < GRID_W; x = x + 1)
+        {
+            var candy = 1 + int(math.rand() * NUM_TYPES);
+            row.push(candy);
+            anim_row.push(0.0);
+        }
+        grid.push(row);
+        grid_anim_y.push(anim_row);
+    }
+    
+    // Remover matches iniciais
+    remove_all_matches();
+}
+
+
+
+
+
+
+
+
+
+
+// Verificar se tem movimentos possíveis
+def has_possible_moves()
+{
+    for (var y = 0; y < GRID_H; y = y + 1)
+    {
+        for (var x = 0; x < GRID_W; x = x + 1)
+        {
+            // Tentar swap horizontal
+            if (x < GRID_W - 1)
+            {
+                swap_candies(x, y, x + 1, y);
+                var h1 = check_horizontal_match(x, y);
+                var v1 = check_vertical_match(x, y);
+                var h2 = check_horizontal_match(x + 1, y);
+                var v2 = check_vertical_match(x + 1, y);
+                swap_candies(x, y, x + 1, y); // Desfazer
+                
+                if (h1 >= 3 || v1 >= 3 || h2 >= 3 || v2 >= 3)
+                    return true;
+            }
+            
+            // Tentar swap vertical
+            if (y < GRID_H - 1)
+            {
+                swap_candies(x, y, x, y + 1);
+                var h1 = check_horizontal_match(x, y);
+                var v1 = check_vertical_match(x, y);
+                var h2 = check_horizontal_match(x, y + 1);
+                var v2 = check_vertical_match(x, y + 1);
+                swap_candies(x, y, x, y + 1); // Desfazer
+                
+                if (h1 >= 3 || v1 >= 3 || h2 >= 3 || v2 >= 3)
+                    return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+// Desenhar candy
+def draw_candy(x, y, TYPE, offset_y)
+{
+    if (TYPE == 0) return;
+    
+    var screen_x = GRID_X + x * CELL_SIZE + CELL_SIZE / 2;
+    var screen_y = GRID_Y + y * CELL_SIZE + CELL_SIZE / 2 + offset_y;
+    
+    var color = get_candy_color(TYPE);
+    set_color(color[0], color[1], color[2]);
+    
+    // Candy redondo
+    var radius = CELL_SIZE * 0.4;
+    draw_circle(screen_x, screen_y, radius, true);
+    
+    // Brilho
+    set_color(255, 255, 255);
+    set_alpha(150);
+    draw_circle(screen_x - radius * 0.3, screen_y - radius * 0.3, radius * 0.3, true);
+    set_alpha(255);
+    
+    // Contorno
+    set_color(color[0] * 0.7, color[1] * 0.7, color[2] * 0.7);
+    draw_circle(screen_x, screen_y, radius, false);
+    draw_circle(screen_x, screen_y, radius - 1, false);
+}
+
+// Desenhar grid
+def draw_grid()
+{
+    // Fundo do grid
+    set_color(50, 50, 80);
+    draw_rectangle(GRID_X - 5, GRID_Y - 5, GRID_W * CELL_SIZE + 10, GRID_H * CELL_SIZE + 10, true);
+    
+    // Células
+    for (var y = 0; y < GRID_H; y = y + 1)
+    {
+        for (var x = 0; x < GRID_W; x = x + 1)
+        {
+            var screen_x = GRID_X + x * CELL_SIZE;
+            var screen_y = GRID_Y + y * CELL_SIZE;
+            
+            // Célula
+            set_color(30, 30, 50);
+            draw_rectangle(screen_x + 2, screen_y + 2, CELL_SIZE - 4, CELL_SIZE - 4, true);
+            
+            // Borda
+            set_color(60, 60, 100);
+            draw_rectangle(screen_x + 2, screen_y + 2, CELL_SIZE - 4, CELL_SIZE - 4, false);
+        }
+    }
+}
+
+// Desenhar seleção
+def draw_selection()
+{
+    if (selected_x >= 0 && selected_y >= 0)
+    {
+        var screen_x = GRID_X + selected_x * CELL_SIZE;
+        var screen_y = GRID_Y + selected_y * CELL_SIZE;
+        
+        set_color(255, 255, 100);
+        draw_rectangle(screen_x, screen_y, CELL_SIZE, CELL_SIZE, false);
+        draw_rectangle(screen_x + 1, screen_y + 1, CELL_SIZE - 2, CELL_SIZE - 2, false);
+        draw_rectangle(screen_x + 2, screen_y + 2, CELL_SIZE - 4, CELL_SIZE - 4, false);
+    }
+}
+
+// Inicializar
+init_grid();
+
+// Loop principal
+loop
+{
+    var dt = delta();
+    if (dt > 0.033) dt = 0.033;
+    
+    var mx = get_mouse_x();
+    var my = get_mouse_y();
+    
+    // Input
+    if (game_state == "playing" && !swapping && !falling && !checking_matches)
+    {
+        if (mouse_pressed(0))
+        {
+            // Converter para grid
+            var grid_mx = int((mx - GRID_X) / CELL_SIZE);
+            var grid_my = int((my - GRID_Y) / CELL_SIZE);
+            
+            if (grid_mx >= 0 && grid_mx < GRID_W && grid_my >= 0 && grid_my < GRID_H)
+            {
+                if (selected_x == -1)
+                {
+                    // Primeira seleção
+                    selected_x = grid_mx;
+                    selected_y = grid_my;
+                }
+                else
+                {
+                    // Segunda seleção - tentar swap
+                    if (are_adjacent(selected_x, selected_y, grid_mx, grid_my))
+                    {
+                        swap_from_x = selected_x;
+                        swap_from_y = selected_y;
+                        swap_to_x = grid_mx;
+                        swap_to_y = grid_my;
+                        swapping = true;
+                        swap_progress = 0.0;
+                        selected_x = -1;
+                        selected_y = -1;
+                        moves = moves - 1;
+                    }
+                    else
+                    {
+                        // Nova seleção
+                        selected_x = grid_mx;
+                        selected_y = grid_my;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Animação de swap
+    if (swapping)
+    {
+        swap_progress = swap_progress + dt * swap_speed;
+        
+        if (swap_progress >= 1.0)
+        {
+            swap_progress = 1.0;
+            swapping = false;
+            
+            // Executar swap
+            swap_candies(swap_from_x, swap_from_y, swap_to_x, swap_to_y);
+            
+            // Verificar se fez match
+            var h1 = check_horizontal_match(swap_from_x, swap_from_y);
+            var v1 = check_vertical_match(swap_from_x, swap_from_y);
+            var h2 = check_horizontal_match(swap_to_x, swap_to_y);
+            var v2 = check_vertical_match(swap_to_x, swap_to_y);
+            
+            if (h1 < 3 && v1 < 3 && h2 < 3 && v2 < 3)
+            {
+                // Swap inválido - desfazer
+                swap_candies(swap_from_x, swap_from_y, swap_to_x, swap_to_y);
+                moves = moves + 1; // Devolver movimento
+            }
+            else
+            {
+                checking_matches = true;
+            }
+        }
+    }
+    
+    // Processar matches
+    if (checking_matches && !swapping && !falling)
+    {
+        var found = mark_matches();
+        
+        if (found)
+        {
+            falling = true;
+        }
+        else
+        {
+            checking_matches = false;
+            
+            // Verificar fim de jogo
+            if (moves <= 0)
+            {
+                if (score >= target_score)
+                    game_state = "victory";
+                else
+                    game_state = "gameover";
+            }
+        }
+    }
+    
+    // Animação de queda
+    if (falling)
+    {
+        var still_falling = false;
+        
+        for (var y = 0; y < GRID_H; y = y + 1)
+        {
+            for (var x = 0; x < GRID_W; x = x + 1)
+            {
+                if (grid_anim_y[y][x] != 0.0)
+                {
+                    var dir = 1;
+                    if (grid_anim_y[y][x] < 0) dir = -1;
+                    
+                    grid_anim_y[y][x] = grid_anim_y[y][x] + dir * fall_speed * dt * 60;
+                    
+                    if (dir == 1 && grid_anim_y[y][x] >= 0)
+                        grid_anim_y[y][x] = 0.0;
+                    elif (dir == -1 && grid_anim_y[y][x] <= 0)
+                        grid_anim_y[y][x] = 0.0;
+                    else
+                        still_falling = true;
+                }
+            }
+        }
+        
+        if (!still_falling)
+        {
+            var moved = apply_gravity();
+            var filled = fill_empty_top();
+            
+            if (!moved && !filled)
+            {
+                falling = false;
+                checking_matches = true;
+            }
+        }
+    }
+    
+    // Teclas
+    if (key_pressed(KEY_R))
+    {
+        init_grid();
+        score = 0;
+        moves = 30;
+        game_state = "playing";
+        selected_x = -1;
+        selected_y = -1;
+    }
+    
+    if (key_pressed(KEY_SPACE) && (game_state == "victory" || game_state == "gameover"))
+    {
+        init_grid();
+        score = 0;
+        moves = 30;
+        game_state = "playing";
+        selected_x = -1;
+        selected_y = -1;
+    }
+    
+    // ===== DESENHO =====
+    
+    // Background
+    set_color(20, 20, 40);
+    draw_rectangle(0, 0, SCREEN_W, SCREEN_H, true);
+    
+    // Título
+    set_color(255, 200, 255);
+    draw_text("CANDY CRUSH", SCREEN_W / 2 - 120, 20, 32);
+    
+    // HUD
+    set_color(255, 255, 255);
+    draw_text("Score: " + str(score), 30, GRID_Y + 20, 20);
+    draw_text("Target: " + str(target_score), 30, GRID_Y + 45, 16);
+    draw_text("Moves: " + str(moves), 30, GRID_Y + 70, 20);
+    
+    // Grid
+    draw_grid();
+    draw_selection();
+    
+    // Candies
+    for (var y = 0; y < GRID_H; y = y + 1)
+    {
+        for (var x = 0; x < GRID_W; x = x + 1)
+        {
+            var candy_type = get_candy(x, y);
+            var offset_y = grid_anim_y[y][x];
+            
+            // Animação de swap
+            if (swapping)
+            {
+                if (x == swap_from_x && y == swap_from_y)
+                {
+                    var tx = swap_from_x + (swap_to_x - swap_from_x) * swap_progress;
+                    var ty = swap_from_y + (swap_to_y - swap_from_y) * swap_progress;
+                    var screen_x = GRID_X + tx * CELL_SIZE + CELL_SIZE / 2;
+                    var screen_y = GRID_Y + ty * CELL_SIZE + CELL_SIZE / 2;
+                    
+                    var orig_type = get_candy(swap_to_x, swap_to_y);
+                    var color = get_candy_color(orig_type);
+                    set_color(color[0], color[1], color[2]);
+                    var radius = CELL_SIZE * 0.4;
+                    draw_circle(screen_x, screen_y, radius, true);
+                    set_color(255, 255, 255);
+                    set_alpha(150);
+                    draw_circle(screen_x - radius * 0.3, screen_y - radius * 0.3, radius * 0.3, true);
+                    set_alpha(255);
+                    continue;
+                }
+                elif (x == swap_to_x && y == swap_to_y)
+                {
+                    var tx = swap_to_x + (swap_from_x - swap_to_x) * swap_progress;
+                    var ty = swap_to_y + (swap_from_y - swap_to_y) * swap_progress;
+                    var screen_x = GRID_X + tx * CELL_SIZE + CELL_SIZE / 2;
+                    var screen_y = GRID_Y + ty * CELL_SIZE + CELL_SIZE / 2;
+                    
+                    var orig_type = get_candy(swap_from_x, swap_from_y);
+                    var color = get_candy_color(orig_type);
+                    set_color(color[0], color[1], color[2]);
+                    var radius = CELL_SIZE * 0.4;
+                    draw_circle(screen_x, screen_y, radius, true);
+                    set_color(255, 255, 255);
+                    set_alpha(150);
+                    draw_circle(screen_x - radius * 0.3, screen_y - radius * 0.3, radius * 0.3, true);
+                    set_alpha(255);
+                    continue;
+                }
+            }
+            
+            draw_candy(x, y, candy_type, offset_y);
+        }
+    }
+    
+    // Instruções
+    set_color(200, 200, 200);
+    draw_text("[R] Reset | Click to swap candies", 30, SCREEN_H - 30, 14);
+    
+    // Mensagens de fim
+    if (game_state == "victory")
+    {
+        set_color(0, 0, 0);
+        set_alpha(200);
+        draw_rectangle(SCREEN_W / 2 - 150, SCREEN_H / 2 - 80, 300, 160, true);
+        set_alpha(255);
+        
+        set_color(255, 255, 0);
+        draw_text("VICTORY!", SCREEN_W / 2 - 70, SCREEN_H / 2 - 40, 32);
+        set_color(255, 255, 255);
+        draw_text("Score: " + str(score), SCREEN_W / 2 - 50, SCREEN_H / 2, 24);
+        draw_text("Press SPACE", SCREEN_W / 2 - 60, SCREEN_H / 2 + 40, 18);
+    }
+    
+    if (game_state == "gameover")
+    {
+        set_color(0, 0, 0);
+        set_alpha(200);
+        draw_rectangle(SCREEN_W / 2 - 150, SCREEN_H / 2 - 80, 300, 160, true);
+        set_alpha(255);
+        
+        set_color(255, 50, 50);
+        draw_text("GAME OVER", SCREEN_W / 2 - 90, SCREEN_H / 2 - 40, 28);
+        set_color(255, 255, 255);
+        draw_text("Score: " + str(score), SCREEN_W / 2 - 50, SCREEN_H / 2, 24);
+        draw_text("Press SPACE", SCREEN_W / 2 - 60, SCREEN_H / 2 + 40, 18);
+    }
+    
+    draw_fps(SCREEN_W - 100, 20);
+    
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+    
+    frame;
+}
+
+print("Thanks for playing Candy Crush!");

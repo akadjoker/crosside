@@ -1,0 +1,795 @@
+import math;
+import json;
+include "gui_lib.bu";
+
+var KEY_ESCAPE = 256;
+var WIDTH = 1280;
+var HEIGHT = 720;
+
+var PICK_MODE_LOAD = 0;
+var PICK_MODE_SAVE = 1;
+
+var PRESET_DEFAULT_PATH = "scripts/test/particle_engine_default.json";
+var PRESET_PATH = "";
+var PRESET_STATUS = "ready";
+var PRESET_PICKER_MODE = PICK_MODE_LOAD;
+var PRESET_PICKER = gui_filepicker_create("Load Particle Preset", ".", ".json", false);
+
+var PARTICLE_GRAPH = -1;
+var PARTICLE_TEXTURE_PATH = "assets/texture.png";
+var PARTICLE_BASE_SIZE = 64;
+
+var AUTO_EMIT = true;
+var FOLLOW_MOUSE = true;
+var DRAW_HELP = true;
+var DO_BURST = false;
+
+var EMITTER_X = WIDTH * 0.5;
+var EMITTER_Y = HEIGHT * 0.5;
+var EMIT_ACC = 0.0;
+
+var EMIT_RATE = 900;        // particles per second
+var BURST_COUNT = 400;
+var PARTICLE_LIMIT = 9000;
+
+var EMIT_BASE_ANGLE = -90;
+var EMIT_SPREAD = 70;
+var EMIT_SPEED_MIN = 180;
+var EMIT_SPEED_MAX = 520;
+
+var EMIT_LIFE_MIN = 0.30;
+var EMIT_LIFE_MAX = 1.40;
+var EMIT_SIZE_MIN = 8;
+var EMIT_SIZE_MAX = 28;
+
+var EMIT_SPIN_MIN = -220;
+var EMIT_SPIN_MAX = 220;
+
+var PARTICLE_GRAVITY = 420;
+var PARTICLE_DRAG = 0.35;
+
+var COLOR_MODE = 0;
+var COLOR_OPTIONS = ["Fire", "Ice", "Neon", "Smoke", "Rainbow", "Custom UV"];
+var COLOR_HUE = 22.0;
+var COLOR_SAT = 0.75;
+var COLOR_VAL = 1.00;
+
+var WIN_CTRL = nil;
+var CTRL_SCROLL = gui_scroll_state();
+
+def particle_str_starts_with(text, prefix)
+{
+    if (text == nil || prefix == nil) return false;
+    if (len(text) < len(prefix)) return false;
+    return text.sub(0, len(prefix)) == prefix;
+}
+
+def particle_resolve_path(raw_path)
+{
+    if (raw_path == nil || raw_path == "") return raw_path;
+    if (path.exists(raw_path)) return raw_path;
+
+    var p = raw_path;
+    if (particle_str_starts_with(p, "/"))
+    {
+        var abs_bin = "bin" + p;
+        if (path.exists(abs_bin)) return abs_bin;
+    }
+
+    var with_bin = "bin/" + p;
+    if (path.exists(with_bin)) return with_bin;
+
+    if (particle_str_starts_with(p, "bin/"))
+    {
+        var without_bin = p.sub(4, len(p));
+        if (path.exists(without_bin)) return without_bin;
+    }
+
+    return raw_path;
+}
+
+def particle_default_preset_path()
+{
+    var p = PRESET_DEFAULT_PATH;
+    if (path.exists(p)) return p;
+
+    var p2 = "../" + PRESET_DEFAULT_PATH;
+    if (path.exists(p2)) return p2;
+
+    return PRESET_DEFAULT_PATH;
+}
+
+def particle_swapf(a, b)
+{
+    // Keep min/max stable; only swap when values are inverted.
+    if (a > b)
+    {
+        var t = a;
+        a = b;
+        b = t;
+    }
+    return (a, b);
+}
+
+def particle_clamp_settings()
+{
+    if (EMIT_RATE < 0) EMIT_RATE = 0;
+    if (EMIT_RATE > 20000) EMIT_RATE = 20000;
+
+    if (BURST_COUNT < 1) BURST_COUNT = 1;
+    if (BURST_COUNT > 200000) BURST_COUNT = 200000;
+
+    if (PARTICLE_LIMIT < 100) PARTICLE_LIMIT = 100;
+    if (PARTICLE_LIMIT > 200000) PARTICLE_LIMIT = 200000;
+
+    if (EMIT_SPREAD < 0) EMIT_SPREAD = 0;
+    if (EMIT_SPREAD > 360) EMIT_SPREAD = 360;
+
+    var (speed_min, speed_max) = particle_swapf(EMIT_SPEED_MIN, EMIT_SPEED_MAX);
+    EMIT_SPEED_MIN = speed_min;
+    EMIT_SPEED_MAX = speed_max;
+
+    var (life_min, life_max) = particle_swapf(EMIT_LIFE_MIN, EMIT_LIFE_MAX);
+    EMIT_LIFE_MIN = life_min;
+    EMIT_LIFE_MAX = life_max;
+
+    var (size_min, size_max) = particle_swapf(EMIT_SIZE_MIN, EMIT_SIZE_MAX);
+    EMIT_SIZE_MIN = size_min;
+    EMIT_SIZE_MAX = size_max;
+
+    var (spin_min, spin_max) = particle_swapf(EMIT_SPIN_MIN, EMIT_SPIN_MAX);
+    EMIT_SPIN_MIN = spin_min;
+    EMIT_SPIN_MAX = spin_max;
+
+    if (EMIT_SPEED_MIN < 0) EMIT_SPEED_MIN = 0;
+    if (EMIT_SPEED_MAX < 0) EMIT_SPEED_MAX = 0;
+
+    if (EMIT_LIFE_MIN < 0.02) EMIT_LIFE_MIN = 0.02;
+    if (EMIT_LIFE_MAX < 0.02) EMIT_LIFE_MAX = 0.02;
+
+    if (EMIT_SIZE_MIN < 1) EMIT_SIZE_MIN = 1;
+    if (EMIT_SIZE_MAX < 1) EMIT_SIZE_MAX = 1;
+
+    if (PARTICLE_DRAG < 0) PARTICLE_DRAG = 0;
+    if (PARTICLE_DRAG > 8) PARTICLE_DRAG = 8;
+
+    if (COLOR_MODE < 0) COLOR_MODE = 0;
+    if (COLOR_MODE >= len(COLOR_OPTIONS)) COLOR_MODE = len(COLOR_OPTIONS) - 1;
+    COLOR_HUE = gui_clamp(COLOR_HUE, 0, 360);
+    COLOR_SAT = gui_clamp(COLOR_SAT, 0, 1);
+    COLOR_VAL = gui_clamp(COLOR_VAL, 0, 1);
+}
+
+def particle_load_texture(image_path)
+{
+    if (image_path == nil || image_path == "")
+    {
+        PRESET_STATUS = "Invalid texture path";
+        return false;
+    }
+
+    var resolved = particle_resolve_path(image_path);
+    var gid = load_graph(resolved);
+    if (gid < 0)
+    {
+        PRESET_STATUS = format("Failed to load texture: {}", image_path);
+        return false;
+    }
+
+    PARTICLE_GRAPH = gid;
+    PARTICLE_TEXTURE_PATH = resolved;
+
+    var gw = get_graph_width(gid);
+    var gh = get_graph_height(gid);
+    var base = gw;
+    if (gh > base) base = gh;
+    if (base < 1) base = 1;
+    PARTICLE_BASE_SIZE = base;
+
+    PRESET_STATUS = format("Texture loaded id={} {}x{} from {}", gid, gw, gh, resolved);
+    return true;
+}
+
+def particle_pick_color()
+{
+    var r = 255;
+    var g = 220;
+    var b = 120;
+
+    if (COLOR_MODE == 0)
+    {
+        r = 255;
+        g = math.rand(120, 230);
+        b = math.rand(20, 90);
+    }
+    elif (COLOR_MODE == 1)
+    {
+        r = math.rand(80, 140);
+        g = math.rand(170, 240);
+        b = 255;
+    }
+    elif (COLOR_MODE == 2)
+    {
+        r = math.rand(130, 255);
+        g = math.rand(40, 190);
+        b = math.rand(180, 255);
+    }
+    elif (COLOR_MODE == 3)
+    {
+        var c = math.rand(120, 220);
+        r = c;
+        g = c;
+        b = c;
+    }
+    elif (COLOR_MODE == 5)
+    {
+        var (_r,_g,_b) = gui_hsv_to_rgb(COLOR_HUE, COLOR_SAT, COLOR_VAL);
+        r = _r;
+        g = _g;
+        b = _b;
+    }
+    else
+    {
+        r = math.irand(80, 255);
+        g = math.irand(80, 255);
+        b = math.irand(80, 255);
+    }
+
+    return (r, g, b);
+}
+
+def particle_preset_map()
+{
+    return {
+        texture_path: PARTICLE_TEXTURE_PATH,
+        auto_emit: AUTO_EMIT,
+        follow_mouse: FOLLOW_MOUSE,
+        draw_help: DRAW_HELP,
+        emit_rate: int(EMIT_RATE),
+        burst_count: int(BURST_COUNT),
+        particle_limit: int(PARTICLE_LIMIT),
+        emitter_x: int(EMITTER_X),
+        emitter_y: int(EMITTER_Y),
+        base_angle: EMIT_BASE_ANGLE,
+        spread: EMIT_SPREAD,
+        speed_min: EMIT_SPEED_MIN,
+        speed_max: EMIT_SPEED_MAX,
+        life_min: EMIT_LIFE_MIN,
+        life_max: EMIT_LIFE_MAX,
+        size_min: EMIT_SIZE_MIN,
+        size_max: EMIT_SIZE_MAX,
+        spin_min: EMIT_SPIN_MIN,
+        spin_max: EMIT_SPIN_MAX,
+        gravity: PARTICLE_GRAVITY,
+        drag: PARTICLE_DRAG,
+        color_mode: int(COLOR_MODE),
+        color_hue: COLOR_HUE,
+        color_sat: COLOR_SAT,
+        color_val: COLOR_VAL
+    };
+}
+
+def particle_apply_preset(data)
+{
+    if (data == nil)
+    {
+        PRESET_STATUS = "Invalid preset data";
+        return false;
+    }
+
+    var target_texture = PARTICLE_TEXTURE_PATH;
+    if (data["texture_path"] != nil) target_texture = data["texture_path"];
+
+    if (!particle_load_texture(target_texture))
+    {
+        return false;
+    }
+
+    if (data["auto_emit"] != nil) AUTO_EMIT = data["auto_emit"];
+    if (data["follow_mouse"] != nil) FOLLOW_MOUSE = data["follow_mouse"];
+    if (data["draw_help"] != nil) DRAW_HELP = data["draw_help"];
+
+    if (data["emit_rate"] != nil) EMIT_RATE = int(data["emit_rate"]);
+    if (data["burst_count"] != nil) BURST_COUNT = int(data["burst_count"]);
+    if (data["particle_limit"] != nil) PARTICLE_LIMIT = int(data["particle_limit"]);
+
+    if (data["emitter_x"] != nil) EMITTER_X = int(data["emitter_x"]);
+    if (data["emitter_y"] != nil) EMITTER_Y = int(data["emitter_y"]);
+
+    if (data["base_angle"] != nil) EMIT_BASE_ANGLE = data["base_angle"];
+    if (data["spread"] != nil) EMIT_SPREAD = data["spread"];
+
+    if (data["speed_min"] != nil) EMIT_SPEED_MIN = data["speed_min"];
+    if (data["speed_max"] != nil) EMIT_SPEED_MAX = data["speed_max"];
+
+    if (data["life_min"] != nil) EMIT_LIFE_MIN = data["life_min"];
+    if (data["life_max"] != nil) EMIT_LIFE_MAX = data["life_max"];
+
+    if (data["size_min"] != nil) EMIT_SIZE_MIN = data["size_min"];
+    if (data["size_max"] != nil) EMIT_SIZE_MAX = data["size_max"];
+
+    if (data["spin_min"] != nil) EMIT_SPIN_MIN = data["spin_min"];
+    if (data["spin_max"] != nil) EMIT_SPIN_MAX = data["spin_max"];
+
+    if (data["gravity"] != nil) PARTICLE_GRAVITY = data["gravity"];
+    if (data["drag"] != nil) PARTICLE_DRAG = data["drag"];
+
+    if (data["color_mode"] != nil) COLOR_MODE = int(data["color_mode"]);
+    if (data["color_hue"] != nil) COLOR_HUE = data["color_hue"];
+    if (data["color_sat"] != nil) COLOR_SAT = data["color_sat"];
+    if (data["color_val"] != nil) COLOR_VAL = data["color_val"];
+
+    particle_clamp_settings();
+    PRESET_STATUS = "Preset applied";
+    return true;
+}
+
+def particle_save_preset(preset_path)
+{
+    if (preset_path == nil || preset_path == "")
+    {
+        PRESET_STATUS = "Invalid preset save path";
+        return false;
+    }
+
+    particle_clamp_settings();
+
+    var data = particle_preset_map();
+    var out = json.stringify(data, 2);
+    if (!fs.write(preset_path, out))
+    {
+        PRESET_STATUS = format("Failed to write preset: {}", preset_path);
+        return false;
+    }
+
+    PRESET_PATH = preset_path;
+    PRESET_STATUS = format("Preset saved: {}", preset_path);
+    return true;
+}
+
+def particle_save_current()
+{
+    if (PRESET_PATH == nil || PRESET_PATH == "")
+    {
+        PRESET_PICKER_MODE = PICK_MODE_SAVE;
+        gui_filepicker_open_save(PRESET_PICKER, "particle_preset.json", ".json");
+        return false;
+    }
+    return particle_save_preset(PRESET_PATH);
+}
+
+def particle_load_preset(preset_path)
+{
+    if (preset_path == nil || preset_path == "")
+    {
+        PRESET_STATUS = "Invalid preset path";
+        return false;
+    }
+    if (!path.exists(preset_path) || !path.isfile(preset_path))
+    {
+        PRESET_STATUS = format("Preset file not found: {}", preset_path);
+        return false;
+    }
+
+    var text = fs.read(preset_path);
+    if (text == nil || text == "")
+    {
+        PRESET_STATUS = format("Failed to read preset: {}", preset_path);
+        return false;
+    }
+
+    var data = nil;
+    try {
+        data = json.parse(text);
+    } catch (e) {
+        PRESET_STATUS = format("Preset parse error: {}", e);
+        return false;
+    }
+
+    if (!particle_apply_preset(data))
+    {
+        return false;
+    }
+
+    PRESET_PATH = preset_path;
+    PRESET_STATUS = format("Preset loaded: {}", preset_path);
+    return true;
+}
+
+def particle_ensure_default_preset()
+{
+    var p = particle_default_preset_path();
+    if (path.exists(p) && path.isfile(p)) return true;
+
+    var data = particle_preset_map();
+    var out = json.stringify(data, 2);
+    if (!fs.write(PRESET_DEFAULT_PATH, out))
+    {
+        PRESET_STATUS = format("Failed to create default preset: {}", PRESET_DEFAULT_PATH);
+        return false;
+    }
+
+    PRESET_STATUS = format("Default preset created: {}", PRESET_DEFAULT_PATH);
+    return true;
+}
+
+def particle_open_load_preset()
+{
+    PRESET_PICKER.title = "Load Particle Preset";
+    PRESET_PICKER.filter_ext = ".json";
+    PRESET_PICKER.select_dirs = false;
+    PRESET_PICKER_MODE = PICK_MODE_LOAD;
+    gui_filepicker_open(PRESET_PICKER);
+}
+
+def particle_open_save_preset_as()
+{
+    PRESET_PICKER.title = "Save Particle Preset";
+    PRESET_PICKER.filter_ext = ".json";
+    PRESET_PICKER.select_dirs = false;
+    PRESET_PICKER_MODE = PICK_MODE_SAVE;
+    gui_filepicker_open_save(PRESET_PICKER, "particle_preset.json", ".json");
+}
+
+def particle_spawn_one(px, py)
+{
+    if (PARTICLE_GRAPH < 0) return false;
+    if (count_processes(type particle_fx) >= PARTICLE_LIMIT) return false;
+
+    var ang = EMIT_BASE_ANGLE + math.rand(-EMIT_SPREAD * 0.5, EMIT_SPREAD * 0.5);
+    var speed = math.rand(EMIT_SPEED_MIN, EMIT_SPEED_MAX);
+    var life = math.rand(EMIT_LIFE_MIN, EMIT_LIFE_MAX);
+    var size = math.rand(EMIT_SIZE_MIN, EMIT_SIZE_MAX);
+    var spin_speed = math.rand(EMIT_SPIN_MIN, EMIT_SPIN_MAX);
+    var (r, g, b) = particle_pick_color();
+    particle_fx(px, py, ang, speed, life, size, spin_speed, r, g, b);
+    return true;
+}
+
+def particle_spawn_burst(px, py, amount)
+{
+    var i = 0;
+    while (i < amount)
+    {
+        if (!particle_spawn_one(px, py)) break;
+        i += 1;
+    }
+}
+
+process particle_fx(px, py, ang, speed, life_secs, start_size, spin_speed, c_r, c_g, c_b)
+{
+    x = px;
+    y = py;
+    graph = PARTICLE_GRAPH;
+    red = c_r;
+    green = c_g;
+    blue = c_b;
+    alpha = 255;
+
+    var vx = get_distx(ang, speed);
+    var vy = get_disty(ang, speed);
+    var life = life_secs;
+    var max_life = life_secs;
+    var rot = math.rand(0, 360);
+
+    loop
+    {
+        var dt = delta();
+        life -= dt;
+        if (life <= 0) break;
+
+        x += vx * dt;
+        y += vy * dt;
+        vy += PARTICLE_GRAVITY * dt;
+
+        var damp = 1.0 - PARTICLE_DRAG * dt;
+        if (damp < 0) damp = 0;
+        vx *= damp;
+        vy *= damp;
+
+        rot += spin_speed * dt;
+        angle = rot;
+
+        var t = life / max_life;
+        if (t < 0) t = 0;
+
+        var draw_size = start_size * (0.2 + t * 0.8);
+        var scale = int((draw_size / PARTICLE_BASE_SIZE) * 100);
+        if (scale < 1) scale = 1;
+        size = scale;
+        alpha = int(255 * t);
+
+        frame;
+    }
+}
+
+process particle_engine_demo()
+{
+    loop
+    {
+        if (key_down(KEY_ESCAPE))
+        {
+            close_window();
+            break;
+        }
+
+        var dt = delta();
+
+        if (FOLLOW_MOUSE)
+        {
+            EMITTER_X = get_mouse_x();
+            EMITTER_Y = get_mouse_y();
+        }
+        elif (mouse_pressed(1))
+        {
+            EMITTER_X = get_mouse_x();
+            EMITTER_Y = get_mouse_y();
+        }
+
+        var should_emit = AUTO_EMIT;
+        if (mouse_down(0)) should_emit = true;
+
+        if (should_emit)
+        {
+            EMIT_ACC += EMIT_RATE * dt;
+            var guard = 0;
+            while (EMIT_ACC >= 1)
+            {
+                if (!particle_spawn_one(EMITTER_X, EMITTER_Y)) break;
+                EMIT_ACC -= 1;
+                guard += 1;
+                if (guard > 4096) break;
+            }
+        }
+        else
+        {
+            EMIT_ACC = 0;
+        }
+
+        if (DO_BURST)
+        {
+            particle_spawn_burst(EMITTER_X, EMITTER_Y, BURST_COUNT);
+            DO_BURST = false;
+        }
+
+        particle_clamp_settings();
+        var active = count_processes(type particle_fx);
+
+        // Screen HUD first; GUI comes later on top.
+        set_draw_screen(true);
+
+        set_color(255, 220, 120);
+        draw_circle(EMITTER_X, EMITTER_Y, 8, false);
+        draw_line(EMITTER_X - 12, EMITTER_Y, EMITTER_X + 12, EMITTER_Y);
+        draw_line(EMITTER_X, EMITTER_Y - 12, EMITTER_X, EMITTER_Y + 12);
+
+        var dir_len = 42;
+        var a0 = EMIT_BASE_ANGLE - EMIT_SPREAD * 0.5;
+        var a1 = EMIT_BASE_ANGLE + EMIT_SPREAD * 0.5;
+        set_color(180, 190, 220);
+        draw_line(EMITTER_X, EMITTER_Y,
+                  EMITTER_X + get_distx(EMIT_BASE_ANGLE, dir_len),
+                  EMITTER_Y + get_disty(EMIT_BASE_ANGLE, dir_len));
+        set_color(130, 140, 170);
+        draw_line(EMITTER_X, EMITTER_Y,
+                  EMITTER_X + get_distx(a0, dir_len),
+                  EMITTER_Y + get_disty(a0, dir_len));
+        draw_line(EMITTER_X, EMITTER_Y,
+                  EMITTER_X + get_distx(a1, dir_len),
+                  EMITTER_Y + get_disty(a1, dir_len));
+
+        set_color(230, 230, 230);
+        draw_fps(12, 10);
+        draw_text(format("Particles: {}", active), 12, 34, 18);
+        if (DRAW_HELP)
+        {
+            draw_text("LMB emit | RMB move emitter (when follow off) | ESC quit", 12, HEIGHT - 32, 18);
+        }
+
+        gui_begin_frame();
+
+        var pick_result = gui_filepicker_take_result(PRESET_PICKER);
+        if (pick_result == GUI_FILE_PICKER_OK)
+        {
+            var ok = true;
+            if (PRESET_PICKER_MODE == PICK_MODE_SAVE)
+            {
+                ok = particle_save_preset(PRESET_PICKER.selected_path);
+            }
+            else
+            {
+                ok = particle_load_preset(PRESET_PICKER.selected_path);
+            }
+
+            if (!ok)
+            {
+                gui_popup_error("Preset", PRESET_STATUS);
+            }
+            PRESET_PICKER_MODE = PICK_MODE_LOAD;
+        }
+
+        var popup_blocked = gui_popup_modal(WIDTH, HEIGHT);
+        var picker_blocked = false;
+        if (!popup_blocked)
+        {
+            picker_blocked = gui_filepicker_modal(PRESET_PICKER, WIDTH, HEIGHT);
+        }
+
+        if (!popup_blocked && !picker_blocked)
+        {
+            if (gui_window_begin(WIN_CTRL))
+            {
+                gui_layout_reset(22, 6);
+
+                var content_w = WIN_CTRL.w - GUI_PADDING * 2 - 10;
+                var view_h = WIN_CTRL.h - GUI_TITLE_H - GUI_PADDING * 3;
+                if (view_h < 200) view_h = 200;
+                var content_h = 1180;
+
+                if (gui_scroll_begin_mode(CTRL_SCROLL, view_h, content_w, content_h, GUI_SCROLL_VERTICAL))
+                {
+                    gui_layout_set_margins(6, 6);
+                    gui_layout_reset(22, 6);
+
+                    gui_label("Particle Process Engine");
+                    gui_label(format("Status: {}", PRESET_STATUS));
+                    gui_label(format("Preset: {}", PRESET_PATH));
+                    gui_label(format("Texture: {}", PARTICLE_TEXTURE_PATH));
+                    gui_label(format("Active: {} / {}", active, PARTICLE_LIMIT));
+                    gui_label(format("Emitter: ({}, {})", int(EMITTER_X), int(EMITTER_Y)));
+                    gui_space(2);
+
+                    gui_layout_columns(3, 24, 6);
+                    AUTO_EMIT = gui_checkbox_align("Auto Emit", AUTO_EMIT, GUI_ALIGN_LEFT);
+                    FOLLOW_MOUSE = gui_checkbox_align("Follow Mouse", FOLLOW_MOUSE, GUI_ALIGN_LEFT);
+                    DRAW_HELP = gui_checkbox_align("Draw Help", DRAW_HELP, GUI_ALIGN_LEFT);
+
+                    if (gui_button("Burst"))
+                    {
+                        DO_BURST = true;
+                    }
+                    if (gui_button("Clear"))
+                    {
+                        signal(type particle_fx, SKILL);
+                    }
+                    if (gui_button("Center"))
+                    {
+                        EMITTER_X = WIDTH * 0.5;
+                        EMITTER_Y = HEIGHT * 0.5;
+                    }
+
+                    gui_layout_reset(22, 6);
+                    gui_property_section("Emission");
+                    EMIT_RATE = gui_property_int("Rate/s", int(EMIT_RATE), 0, 20000, 10);
+                    BURST_COUNT = gui_property_int("Burst", BURST_COUNT, 1, 200000, 10);
+                    PARTICLE_LIMIT = gui_property_int("Limit", PARTICLE_LIMIT, 100, 200000, 100);
+
+                    gui_property_section("Movement");
+                    EMIT_BASE_ANGLE = gui_property_float("Base angle", EMIT_BASE_ANGLE, -360, 360);
+                    EMIT_SPREAD = gui_property_float("Spread", EMIT_SPREAD, 0, 360);
+                    EMIT_SPEED_MIN = gui_property_float("Speed min", EMIT_SPEED_MIN, 0, 4000);
+                    EMIT_SPEED_MAX = gui_property_float("Speed max", EMIT_SPEED_MAX, 0, 4000);
+                    EMIT_SPIN_MIN = gui_property_float("Spin min", EMIT_SPIN_MIN, -2000, 2000);
+                    EMIT_SPIN_MAX = gui_property_float("Spin max", EMIT_SPIN_MAX, -2000, 2000);
+                    PARTICLE_GRAVITY = gui_property_float("Gravity", PARTICLE_GRAVITY, -3000, 3000);
+                    PARTICLE_DRAG = gui_property_float("Drag", PARTICLE_DRAG, 0, 8);
+
+                    gui_property_section("Lifetime");
+                    EMIT_LIFE_MIN = gui_property_float("Life min", EMIT_LIFE_MIN, 0.02, 20);
+                    EMIT_LIFE_MAX = gui_property_float("Life max", EMIT_LIFE_MAX, 0.02, 20);
+                    EMIT_SIZE_MIN = gui_property_float("Size min", EMIT_SIZE_MIN, 1, 120);
+                    EMIT_SIZE_MAX = gui_property_float("Size max", EMIT_SIZE_MAX, 1, 120);
+
+                    gui_property_section("Color");
+                    COLOR_MODE = gui_combo_align("Preset", COLOR_OPTIONS, COLOR_MODE, GUI_ALIGN_LEFT);
+                    if (COLOR_MODE == 5)
+                    {
+                        var (hue, sat, val, changed, r, g, b)= gui_color_panel_uv("UV Color Panel", COLOR_HUE, COLOR_SAT, COLOR_VAL);
+                        COLOR_HUE = hue;
+                        COLOR_SAT = sat;
+                        COLOR_VAL = val;
+                    }
+
+                    gui_layout_clear_margins();
+                    gui_scroll_end();
+                }
+
+                // Draw menu after content so popups stay above widgets.
+                GUI_LAYOUT_Y = WIN_CTRL.y + GUI_TITLE_H + GUI_PADDING;
+                GUI_LAYOUT_MODE = 0;
+                GUI_LAYOUT_COLS = 1;
+                GUI_LAYOUT_COL_INDEX = 0;
+                GUI_ROW_H = 24;
+                GUI_SPACING = 6;
+                if (gui_menubar_begin())
+                {
+                    if (gui_menu_begin("File"))
+                    {
+                        if (gui_menu_item("Load Preset..."))
+                        {
+                            particle_open_load_preset();
+                        }
+                        if (gui_menu_item("Load As..."))
+                        {
+                            particle_open_load_preset();
+                        }
+                        if (gui_menu_item("Load Default"))
+                        {
+                            var p_load = particle_default_preset_path();
+                            if (!particle_load_preset(p_load))
+                            {
+                                gui_popup_error("Preset", PRESET_STATUS);
+                            }
+                        }
+                        if (gui_menu_item("Save Preset"))
+                        {
+                            var had_path = (PRESET_PATH != nil && PRESET_PATH != "");
+                            if (!particle_save_current() && had_path)
+                            {
+                                gui_popup_error("Preset", PRESET_STATUS);
+                            }
+                        }
+                        if (gui_menu_item("Save Preset As..."))
+                        {
+                            particle_open_save_preset_as();
+                        }
+                        if (gui_menu_item("Save Default"))
+                        {
+                            var p_save = particle_default_preset_path();
+                            if (!particle_save_preset(p_save))
+                            {
+                                gui_popup_error("Preset", PRESET_STATUS);
+                            }
+                        }
+                        gui_menu_end();
+                    }
+                    if (gui_menu_begin("Texture"))
+                    {
+                        if (gui_menu_item("Reload assets/texture.png"))
+                        {
+                            if (!particle_load_texture("assets/texture.png"))
+                            {
+                                gui_popup_error("Texture", PRESET_STATUS);
+                            }
+                        }
+                        if (gui_menu_item("Reload current texture"))
+                        {
+                            if (!particle_load_texture(PARTICLE_TEXTURE_PATH))
+                            {
+                                gui_popup_error("Texture", PRESET_STATUS);
+                            }
+                        }
+                        gui_menu_end();
+                    }
+                    gui_menubar_end();
+                }
+
+                gui_window_end();
+            }
+        }
+
+        frame;
+    }
+}
+
+set_window_size(WIDTH, HEIGHT);
+set_window_resizable(true);
+set_window_title("Bu Particle Process Engine");
+set_virtual_screen_enabled(true);
+gui_use_ascii_title_icons();
+
+WIN_CTRL = gui_create_window(901, "Particle Engine", 16, 16, 390, 540);
+gui_set_min_size(WIN_CTRL, 340, 340);
+
+if (!particle_load_texture("assets/texture.png"))
+{
+    if (!particle_load_texture("bin/assets/texture.png"))
+    {
+        gui_popup_error("Texture", PRESET_STATUS);
+    }
+}
+
+particle_ensure_default_preset();
+if (PRESET_PATH == "") PRESET_PATH = particle_default_preset_path();
+
+particle_engine_demo();

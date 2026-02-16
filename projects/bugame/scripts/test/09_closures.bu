@@ -1,0 +1,29 @@
+// Test: Closures and upvalues
+def make_counter(start) {
+    var count = start;
+    def inc() {
+        count = count + 1;
+        return count;
+    }
+    return inc;
+}
+
+var c = make_counter(0);
+if (c() != 1) { throw "closure 1"; }
+if (c() != 2) { throw "closure 2"; }
+if (c() != 3) { throw "closure 3"; }
+
+// Two independent closures
+var c1 = make_counter(10);
+var c2 = make_counter(20);
+if (c1() != 11) { throw "independent 1"; }
+if (c2() != 21) { throw "independent 2"; }
+if (c1() != 12) { throw "independent 3"; }
+
+// Closure capturing multiple variables
+def make_adder(a, b) {
+    def add(x) { return a + b + x; }
+    return add;
+}
+var f = make_adder(100, 50);
+if (f(5) != 155) { throw "multi capture"; }

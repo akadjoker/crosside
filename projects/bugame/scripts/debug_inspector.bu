@@ -1,0 +1,307 @@
+include "gui_lib.bu";
+
+var KEY_ESCAPE = 256;
+var W = 1280;
+var H = 720;
+
+var DBG_TAB = 0;
+var DBG_FRAME = 0;
+var DBG_REFRESH_EVERY = 8;
+var DBG_AUTO_REFRESH = true;
+var DBG_STATUS = "Ready";
+
+var DBG_SELECTED_PID = -1;
+var DBG_SELECTED_NAME = "";
+var DBG_SELECTED_STATE = -1;
+var DBG_SELECTED_FRAMES = 0;
+var DBG_SELECTED_STACK = 0;
+
+var DBG_PROCESSES = [];
+var DBG_STACK = [];
+var DBG_LOCALS = [];
+var DBG_FRAMES = [];
+
+var DBG_PROC_SCROLL = gui_scroll_state();
+var DBG_DETAILS_SCROLL = gui_scroll_state();
+
+var WIN_PROC = nil;
+var WIN_DETAIL = nil;
+
+process dummy()
+{
+    x=100;
+    y=100;
+    loop
+    {
+        
+        
+        frame;
+    }
+}
+
+def dbg_state_text(state)
+{
+    if (state == 0) return "RUNNING";
+    if (state == 1) return "SUSPENDED";
+    if (state == 2) return "FROZEN";
+    if (state == 3) return "DEAD";
+    return format("{}", state);
+}
+
+def dbg_clear_selected()
+{
+    DBG_SELECTED_PID = -1;
+    DBG_SELECTED_NAME = "";
+    DBG_SELECTED_STATE = -1;
+    DBG_SELECTED_FRAMES = 0;
+    DBG_SELECTED_STACK = 0;
+    DBG_STACK = [];
+    DBG_LOCALS = [];
+    DBG_FRAMES = [];
+}
+
+def dbg_refresh_selected()
+{
+    if (DBG_SELECTED_PID < 0)
+    {
+        dbg_clear_selected();
+        return;
+    }
+
+    var st = debug_stack(DBG_SELECTED_PID);
+    var lc = debug_locals(DBG_SELECTED_PID);
+    var fr = debug_frames(DBG_SELECTED_PID);
+
+    if (st == nil || lc == nil || fr == nil)
+    {
+        DBG_STATUS = format("Process #{} no longer alive", DBG_SELECTED_PID);
+        dbg_clear_selected();
+        return;
+    }
+
+    DBG_STACK = st;
+    DBG_LOCALS = lc;
+    DBG_FRAMES = fr;
+}
+
+def dbg_refresh_all()
+{
+    var list = debug_processes();
+    if (list == nil)
+    {
+        DBG_STATUS = "debug_processes() unavailable";
+        DBG_PROCESSES = [];
+        dbg_clear_selected();
+        return;
+    }
+
+    DBG_PROCESSES = list;
+
+    var found = false;
+    var i = 0;
+    while (i < len(DBG_PROCESSES))
+    {
+        var p = DBG_PROCESSES[i];
+        var pid = int(p["id"]);
+        if (pid == DBG_SELECTED_PID)
+        {
+            found = true;
+            DBG_SELECTED_NAME = format("{}", p["name"]);
+            DBG_SELECTED_STATE = int(p["state"]);
+            DBG_SELECTED_FRAMES = int(p["frames"]);
+            DBG_SELECTED_STACK = int(p["stack"]);
+            break;
+        }
+        i += 1;
+    }
+
+    if (!found && DBG_SELECTED_PID >= 0)
+    {
+        DBG_STATUS = format("Process #{} ended", DBG_SELECTED_PID);
+        dbg_clear_selected();
+    }
+
+    if (DBG_SELECTED_PID >= 0)
+    {
+        dbg_refresh_selected();
+    }
+
+    DBG_STATUS = format("Updated: {} processes", len(DBG_PROCESSES));
+}
+
+set_window_size(W, H);
+set_window_resizable(true);
+set_window_title("Bu Debug Inspector");
+set_virtual_screen_enabled(true);
+gui_use_ascii_title_icons();
+
+dummy();
+
+
+WIN_PROC = gui_create_window(4101, "Processes", 16, 16, 420, H - 32);
+WIN_DETAIL = gui_create_window(4102, "Inspector", 448, 16, W - 464, H - 32);
+gui_set_min_size(WIN_PROC, 320, 260);
+gui_set_min_size(WIN_DETAIL, 460, 260);
+
+dbg_refresh_all();
+
+
+
+loop
+{
+    DBG_FRAME += 1;
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    if (DBG_AUTO_REFRESH && (DBG_FRAME % DBG_REFRESH_EVERY) == 0)
+    {
+        dbg_refresh_all();
+    }
+
+    gui_begin_frame();
+
+    if (gui_window_begin(WIN_PROC))
+    {
+        gui_layout_reset(22, 6);
+        gui_label("Runtime Processes");
+        gui_label(format("Count: {}", len(DBG_PROCESSES)));
+        gui_label(format("Status: {}", DBG_STATUS));
+
+        gui_layout_columns(2, 24, 6);
+        if (gui_button("Refresh"))
+        {
+            dbg_refresh_all();
+        }
+        DBG_AUTO_REFRESH = gui_checkbox_align("Auto", DBG_AUTO_REFRESH, GUI_ALIGN_LEFT);
+
+        gui_layout_reset(22, 6);
+        DBG_REFRESH_EVERY = gui_property_int("Auto every N frames", DBG_REFRESH_EVERY, 1, 120, 1);
+
+        var content_w = WIN_PROC.w - GUI_PADDING * 2 - 10;
+        var view_h = WIN_PROC.h - GUI_TITLE_H - 150;
+        if (view_h < 120) view_h = 120;
+        var content_h = len(DBG_PROCESSES) * 26 + 10;
+        if (content_h < 26) content_h = 26;
+
+        if (gui_scroll_begin_mode(DBG_PROC_SCROLL, view_h, content_w, content_h, GUI_SCROLL_VERTICAL))
+        {
+            gui_layout_reset(22, 4);
+            var i = 0;
+            while (i < len(DBG_PROCESSES))
+            {
+                var p = DBG_PROCESSES[i];
+                var pid = int(p["id"]);
+                var sel = " ";
+                if (pid == DBG_SELECTED_PID) sel = ">";
+
+                var row = format("{} #{} {} [{}] fr:{} st:{}",
+                                 sel,
+                                 pid,
+                                 p["name"],
+                                 dbg_state_text(int(p["state"])),
+                                 int(p["frames"]),
+                                 int(p["stack"]));
+                if (gui_button(row))
+                {
+                    DBG_SELECTED_PID = pid;
+                    DBG_SELECTED_NAME = format("{}", p["name"]);
+                    DBG_SELECTED_STATE = int(p["state"]);
+                    DBG_SELECTED_FRAMES = int(p["frames"]);
+                    DBG_SELECTED_STACK = int(p["stack"]);
+                    dbg_refresh_selected();
+                    DBG_STATUS = format("Selected process #{}", pid);
+                }
+                i += 1;
+            }
+            gui_scroll_end();
+        }
+
+        gui_window_end();
+    }
+
+    if (gui_window_begin(WIN_DETAIL))
+    {
+        gui_layout_reset(22, 6);
+        gui_label("Runtime Inspector");
+
+        if (DBG_SELECTED_PID < 0)
+        {
+            gui_label("Select a process from the left panel.");
+            gui_window_end();
+            frame;
+            continue;
+        }
+
+        gui_label(format("PID: {} | Name: {}", DBG_SELECTED_PID, DBG_SELECTED_NAME));
+        gui_label(format("State: {} | Frames: {} | Stack: {}",
+                         dbg_state_text(DBG_SELECTED_STATE),
+                         DBG_SELECTED_FRAMES,
+                         DBG_SELECTED_STACK));
+
+        DBG_TAB = gui_tabs_align(["Stack", "Locals", "Frames"], DBG_TAB, GUI_ALIGN_LEFT);
+
+        var content_w = WIN_DETAIL.w - GUI_PADDING * 2 - 10;
+        var view_h = WIN_DETAIL.h - GUI_TITLE_H - 130;
+        if (view_h < 120) view_h = 120;
+
+        var row_count = 0;
+        if (DBG_TAB == 0) row_count = len(DBG_STACK);
+        elif (DBG_TAB == 1) row_count = len(DBG_LOCALS);
+        else row_count = len(DBG_FRAMES);
+
+        var content_h = row_count * 24 + 10;
+        if (content_h < 24) content_h = 24;
+
+        if (gui_scroll_begin_mode(DBG_DETAILS_SCROLL, view_h, content_w, content_h, GUI_SCROLL_VERTICAL))
+        {
+            gui_layout_reset(22, 4);
+
+            var i = 0;
+            if (DBG_TAB == 0)
+            {
+                while (i < len(DBG_STACK))
+                {
+                    gui_label(format("[{}] {}", i, DBG_STACK[i]));
+                    i += 1;
+                }
+            }
+            elif (DBG_TAB == 1)
+            {
+                while (i < len(DBG_LOCALS))
+                {
+                    gui_label(format("local[{}] {}", i, DBG_LOCALS[i]));
+                    i += 1;
+                }
+            }
+            else
+            {
+                while (i < len(DBG_FRAMES))
+                {
+                    var f = DBG_FRAMES[i];
+                    gui_label(format("#{} {} line:{} ip:{} slot:{}",
+                                     int(f["index"]),
+                                     f["func"],
+                                     int(f["line"]),
+                                     int(f["ip"]),
+                                     int(f["slot"])));
+                    i += 1;
+                }
+            }
+
+            if (row_count <= 0)
+            {
+                gui_label("(empty)");
+            }
+
+            gui_scroll_end();
+        }
+
+        gui_window_end();
+    }
+
+    frame;
+}

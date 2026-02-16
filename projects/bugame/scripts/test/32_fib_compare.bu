@@ -1,0 +1,39 @@
+// Fibonacci benchmark to compare BuLang VM against Python script.
+
+def fib(n) {
+    if (n <= 1) return n;
+    return fib(n - 1) + fib(n - 2);
+}
+
+def bench_case(n, iterations, expected) {
+    var start = clock();
+    var last = 0;
+
+    var i = 0;
+    while (i < iterations) {
+        last = fib(n);
+        i++;
+    }
+
+    var total_ms = (clock() - start) * 1000.0;
+    var per_iter_ms = total_ms / iterations;
+
+    write("[BULANG] fib({}) = {} | iterations={} | total_ms={} | per_iter_ms={}\n",
+          n, last, iterations, total_ms, per_iter_ms);
+
+    if (last != expected) {
+        throw "invalid fibonacci result";
+    }
+}
+
+print("========================================");
+print("BuLang Fibonacci Benchmark");
+print("========================================");
+
+bench_case(20, 50, 6765);
+bench_case(25, 20, 75025);
+bench_case(30, 5, 832040);
+
+print("========================================");
+print("BuLang Fibonacci benchmark complete");
+print("========================================");

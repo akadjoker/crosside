@@ -1,0 +1,26 @@
+// Test: Variable declaration, assignment, compound assignment
+var a = 10;
+a = 20;
+if (a != 20) { throw "assign"; }
+
+a += 5;
+if (a != 25) { throw "+="; }
+a -= 10;
+if (a != 15) { throw "-="; }
+a *= 2;
+if (a != 30) { throw "*="; }
+a /= 3;
+if (a != 10) { throw "/="; }
+a %= 3;
+if (a != 1) { throw "%="; }
+
+// Increment/decrement
+var b = 5;
+b++;
+if (b != 6) { throw "++"; }
+b--;
+if (b != 5) { throw "--"; }
+
+// Multiple declarations
+var c = 1, d = 2, e = 3;
+if (c + d + e != 6) { throw "multi var"; }

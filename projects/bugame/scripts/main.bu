@@ -1,0 +1,55 @@
+print("Load Main");
+//include "survive.bu";
+//include "test_collision.bu";
+//include "game_simples.bu";
+//include "test_scroll_collide.bu";
+//include "galax.bu";
+//include "rambo.bu";
+//include "arkanoid.bu";
+//include "arkanoid_hard.bu";
+//include "super_shapes.bu";
+//include "super_square_world.bu";
+//include "rect_mouse_shooter.bu";
+//include "square_world_gunner.bu";
+//include "topdown_chaos_cars.bu";
+//include "topdown_chaos_waypoints.bu";
+
+//include "fast_and_chaos.bu";
+//include "dead_rails.bu";
+//include "dead_rails_chaos.bu";
+//include "arena_rogue.bu";
+//include "tower_defense.bu";
+//include "bunnymark.bu";
+//include "gui_demo.bu";
+//include "process_editor.bu";
+//include "debug_inspector.bu";
+ 
+//include "particle_engine_gui.bu";
+//include "debug_inspector.bu";
+
+
+//include "box2d_drop_demo.bu";
+//include "box2d_mouse_joint.bu";
+//include "box2d_car_demo.bu";
+//include "box2d_flipper_demo.bu";
+include "box2d_angry_birds_demo.bu";
+
+//include "test_candy_crush.bu";
+//include "candicrash.bu";
+//include "candicrash_2.bu";
+
+//include "box2d_distance_joint_demo.bu";
+
+//include "box2d_prismatic_joint_demo.bu";
+//include "box2d_pulley_joint_demo.bu";
+
+//include "box2d_friction_joint_demo.bu";
+
+//include "box2d_gear_joint_demo.bu";
+
+
+//include "box2d_motor_joint_demo.bu";
+//include "box2d_rope_demo.bu";
+//include "candicrash_3.bu";
+
+//include "music_notes_trainer.bu";

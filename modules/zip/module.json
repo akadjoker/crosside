@@ -1,0 +1,49 @@
+{
+	"module":"zip",
+	"about":" ",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":["zlib"],
+        "static":true,
+             "priority":0,
+	"system":["linux","android","emscripten","windows"],
+	"src":["src/ioapi.c","src/unzip.c","src/zip.c"],
+	"include":[""],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":" ",
+ 	   "CC_ARGS":"  ",
+ 	   "LD_ARGS":"",
+	   "src":[""],
+	   "include":[""]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "emscripten":
+	  {
+	   "template":"",
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  }
+      }
+}  
+

@@ -1,0 +1,171 @@
+import math;
+include "stages.bu";
+include "popup.bu";
+
+var APP_KEY_UP = 265;
+var APP_KEY_DOWN = 264;
+var APP_KEY_RETURN = 257;
+var APP_KEY_ESCAPE = 256;
+
+var APP_POPUP_NONE = 0;
+var APP_POPUP_EXIT_APP = 1;
+var APP_POPUP_BACK_MENU = 2;
+
+def app_point_in_rect(px, py, rx, ry, rw, rh)
+{
+    return (px >= rx && px <= rx + rw && py >= ry && py <= ry + rh);
+}
+
+class AppCore
+{
+    var width;
+    var height;
+    var title;
+    var stages;
+    var popup_manager;
+    var exit_fade;
+    var exit_closing;
+    var exit_fade_tween;
+    var back_stage;
+    var dt;
+    var mx;
+    var my;
+    var should_break;
+
+    def init(_width, _height, _title)
+    {
+        self.width = _width;
+        self.height = _height;
+        self.title = _title;
+        self.stages = Stages();
+        self.popup_manager = PopupManager();
+        self.exit_fade = 0.0;
+        self.exit_closing = false;
+        self.exit_fade_tween = Tween(0, 0, 0.001, "linear");
+        self.back_stage = 10;
+        self.dt = 0.0;
+        self.mx = 0;
+        self.my = 0;
+        self.should_break = false;
+
+        self.popup_manager.register_popup("exit_confirm", APP_POPUP_EXIT_APP, "Confirm Exit", "Sair da demo?", "YES", "CANCEL");
+        self.popup_manager.register_popup("back_to_menu", APP_POPUP_BACK_MENU, "Pause", "Voltar ao menu?", "YES", "CANCEL");
+
+        set_window_size(self.width, self.height);
+        set_window_title(self.title);
+    }
+
+    def add_screen(_screen)
+    {
+        self.stages.add(_screen);
+    }
+
+    def start(_stage)
+    {
+        self.stages.change(_stage);
+    }
+
+    def set_back_stage(_stage)
+    {
+        self.back_stage = _stage;
+    }
+
+    def goto_stage(_stage)
+    {
+        if (self.stages.current != nil)
+        {
+            self.stages.current.goto_stage(_stage);
+        }
+        else
+        {
+            self.stages.change(_stage);
+        }
+    }
+
+    def current_stage()
+    {
+        if (self.stages.current != nil)
+        {
+            return self.stages.current.stage;
+        }
+        return -1;
+    }
+
+    def can_receive_input()
+    {
+        return !(self.popup_manager.is_blocking() || self.exit_closing);
+    }
+
+    def open_exit_popup()
+    {
+        self.popup_manager.open_popup("exit_confirm");
+    }
+
+    def open_back_popup()
+    {
+        self.popup_manager.open_popup("back_to_menu");
+    }
+
+    def begin_frame()
+    {
+        self.dt = delta();
+        self.mx = get_mouse_x();
+        self.my = get_mouse_y();
+
+        self.stages.update(self.dt);
+        self.popup_manager.step(self.dt);
+
+        if (self.exit_closing)
+        {
+            self.exit_fade = self.exit_fade_tween.update(self.dt);
+            if (self.exit_fade_tween.done())
+            {
+                close_window();
+                self.should_break = true;
+            }
+        }
+    }
+
+    def end_frame()
+    {
+    
+        self.popup_manager.draw(self.width, self.height, self.mx, self.my);
+        self.popup_manager.process_input(self.width, self.height, self.mx, self.my, APP_KEY_RETURN, APP_KEY_ESCAPE);
+
+        var popup_event = self.popup_manager.consume_event();
+        if (popup_event == POPUP_EVENT_CONFIRM)
+        {
+            if (self.popup_manager.last_event_action == APP_POPUP_EXIT_APP)
+            {
+                self.exit_closing = true;
+                self.exit_fade_tween.start(self.exit_fade, 1.0, 0.38, "sine_in");
+            }
+            elif (self.popup_manager.last_event_action == APP_POPUP_BACK_MENU)
+            {
+                self.goto_stage(self.back_stage);
+            }
+        }
+
+        if (self.exit_fade > 0.001)
+        {
+            set_color(0, 0, 0);
+            set_alpha(int(255 * self.exit_fade));
+            draw_rectangle(0, 0, self.width, self.height, true);
+            set_alpha(255);
+        }
+
+        frame;
+    }
+
+    def tick()
+    {
+        self.begin_frame();
+        if (self.should_break)
+        {
+            return false;
+        }
+
+        self.end_frame();
+        return !self.should_break;
+    }
+}

@@ -1,0 +1,46 @@
+// Test: Advanced class features
+class Counter {
+    var count;
+
+    def init(start) {
+        self.count = start;
+    }
+
+    def inc() {
+        self.count = self.count + 1;
+        return self;
+    }
+
+    def get() {
+        return self.count;
+    }
+}
+
+// Method chaining (if returning self works)
+var c = Counter(0);
+c.inc();
+c.inc();
+c.inc();
+if (c.get() != 3) { throw "method calls"; }
+
+// Multiple instances don't interfere
+var c1 = Counter(10);
+var c2 = Counter(20);
+c1.inc();
+c2.inc();
+c2.inc();
+if (c1.get() != 11) { throw "instance isolation 1"; }
+if (c2.get() != 22) { throw "instance isolation 2"; }
+
+// Class with default field values
+class Config {
+    var width = 800;
+    var height = 600;
+    var title = "default";
+
+    def init() { }
+}
+
+var cfg = Config();
+if (cfg.width != 800) { throw "default field int"; }
+if (cfg.title != "default") { throw "default field string"; }

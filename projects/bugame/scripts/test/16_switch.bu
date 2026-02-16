@@ -1,0 +1,26 @@
+// Test: Switch statement
+def classify(x) {
+    switch (x) {
+        case 1: return "one";
+        case 2: return "two";
+        case 3: return "three";
+        default: return "other";
+    }
+}
+
+if (classify(1) != "one") { throw "case 1"; }
+if (classify(2) != "two") { throw "case 2"; }
+if (classify(3) != "three") { throw "case 3"; }
+if (classify(99) != "other") { throw "default"; }
+
+// String switch
+def greet(lang) {
+    switch (lang) {
+        case "pt": return "ola";
+        case "en": return "hello";
+        case "es": return "hola";
+        default: return "hi";
+    }
+}
+if (greet("pt") != "ola") { throw "string switch"; }
+if (greet("xx") != "hi") { throw "string default"; }

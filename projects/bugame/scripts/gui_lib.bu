@@ -1,0 +1,3797 @@
+import fs;
+import path;
+
+// Minimal immediate-mode GUI helpers 
+
+var GUI_TITLE_H = 24;
+var GUI_PADDING = 8;
+var GUI_ROW_H = 24;
+var GUI_SPACING = 6;
+var GUI_FONT_SIZE = 18;
+var GUI_RESIZE_HANDLE = 14;
+
+var GUI_MOUSE_X = 0;
+var GUI_MOUSE_Y = 0;
+var GUI_MOUSE_DOWN = false;
+var GUI_MOUSE_PRESSED = false;
+var GUI_MOUSE_WHEEL = 0;
+var GUI_MOUSE_WHEEL_X = 0;
+var GUI_MOUSE_WHEEL_Y = 0;
+var GUI_FRAME_INDEX = 0;
+var GUI_DOUBLE_CLICK_FRAMES = 18;
+
+var GUI_CURRENT_WINDOW = nil;
+var GUI_LAYOUT_X = 0;
+var GUI_LAYOUT_Y = 0;
+var GUI_LAYOUT_W = 0;
+var GUI_LAYOUT_BASE_X = 0;
+var GUI_LAYOUT_BASE_W = 0;
+var GUI_LAYOUT_MARGIN_LEFT = 0;
+var GUI_LAYOUT_MARGIN_RIGHT = 0;
+var GUI_LAYOUT_MODE = 0; // 0=vertical, 1=columns
+var GUI_LAYOUT_COLS = 1;
+var GUI_LAYOUT_COL_INDEX = 0;
+var GUI_WIDGET_X = 0;
+var GUI_WIDGET_Y = 0;
+var GUI_WIDGET_W = 0;
+var GUI_WIDGET_H = 0;
+var GUI_CLIP_ACTIVE = false;
+var GUI_CLIP_X = 0;
+var GUI_CLIP_Y = 0;
+var GUI_CLIP_W = 0;
+var GUI_CLIP_H = 0;
+var GUI_WINDOW_MOVING = false;
+var GUI_CAPTURE_MOVE = false;
+var GUI_ITEM_ID = 1;
+var GUI_ACTIVE_ITEM = 0;
+var GUI_OPEN_DROPDOWN_ID = 0;
+var GUI_COMBO_POPUP_ACTIVE = false;
+var GUI_COMBO_POPUP_WINDOW_ID = 0;
+var GUI_COMBO_POPUP_X = 0;
+var GUI_COMBO_POPUP_Y = 0;
+var GUI_COMBO_POPUP_W = 0;
+var GUI_COMBO_POPUP_ITEM_H = 0;
+var GUI_COMBO_POPUP_COUNT = 0;
+var GUI_COMBO_POPUP_ALIGN = 0;
+var GUI_COMBO_POPUP_SELECTED = 0;
+var GUI_COMBO_POPUP_OPTIONS = [];
+var GUI_ALIGN_LEFT = 0;
+var GUI_ALIGN_CENTER = 1;
+var GUI_ALIGN_RIGHT = 2;
+var GUI_POPUP_NONE = 0;
+var GUI_POPUP_OK = 1;
+var GUI_POPUP_CANCEL = 2;
+var GUI_POPUP_KIND_INFO = 0;
+var GUI_POPUP_KIND_WARN = 1;
+var GUI_POPUP_KIND_ERROR = 2;
+var GUI_POPUP_OPEN = false;
+var GUI_POPUP_CONFIRM = false;
+var GUI_POPUP_TITLE = "";
+var GUI_POPUP_MESSAGE = "";
+var GUI_POPUP_KIND = GUI_POPUP_KIND_INFO;
+var GUI_POPUP_RESULT = GUI_POPUP_NONE;
+var GUI_POPUP_W = 420;
+var GUI_POPUP_H = 180;
+var GUI_FILE_PICKER_NONE = 0;
+var GUI_FILE_PICKER_OK = 1;
+var GUI_FILE_PICKER_CANCEL = 2;
+var GUI_MENU_MAX_DEPTH = 8;
+var GUI_MENU_OPEN_IDS = [0, 0, 0, 0, 0, 0, 0, 0];
+var GUI_MENU_OPEN_DEPTH = 0;
+var GUI_MENU_POPUP_X = [0, 0, 0, 0, 0, 0, 0, 0];
+var GUI_MENU_POPUP_Y = [0, 0, 0, 0, 0, 0, 0, 0];
+var GUI_MENU_POPUP_W = [0, 0, 0, 0, 0, 0, 0, 0];
+var GUI_MENU_POPUP_END_Y = [0, 0, 0, 0, 0, 0, 0, 0];
+var GUI_MENU_POPUP_DRAWN_END_Y = [0, 0, 0, 0, 0, 0, 0, 0];
+var GUI_MENU_POPUP_CURSOR_Y = [0, 0, 0, 0, 0, 0, 0, 0];
+var GUI_MENU_CONTEXT_DEPTH = -1;
+var GUI_MENU_CONTEXT_STACK = [0, 0, 0, 0, 0, 0, 0, 0];
+var GUI_MENU_CONTEXT_TOP = 0;
+var GUI_MENU_IN_BAR = false;
+var GUI_MENU_BAR_X = 0;
+var GUI_MENU_BAR_Y = 0;
+var GUI_MENU_BAR_W = 0;
+var GUI_MENU_BAR_H = 0;
+var GUI_MENU_BAR_CURSOR_X = 0;
+var GUI_MENU_HIT_ANY = false;
+var GUI_MENU_NEEDS_CLIP_RESTORE = false;
+var GUI_MENU_PREV_CLIP_X = 0;
+var GUI_MENU_PREV_CLIP_Y = 0;
+var GUI_MENU_PREV_CLIP_W = 0;
+var GUI_MENU_PREV_CLIP_H = 0;
+var GUI_ICON_MIN = "-";
+var GUI_ICON_CLOSE = "x";
+var GUI_SCROLLBAR_SIZE = 12;
+var GUI_SCROLL_AUTO = 0;
+var GUI_SCROLL_VERTICAL = 1;
+var GUI_SCROLL_HORIZONTAL = 2;
+var GUI_SCROLL_BOTH = 3;
+var GUI_SCROLL_CONTEXTS = [];
+var GUI_WINDOW_REGISTRY = [];
+var GUI_WINDOW_ORDER_LAST = [];
+var GUI_WINDOW_ORDER_FRAME = [];
+var GUI_INPUT_WINDOW_ID = 0;
+var GUI_INPUT_BLOCKED = false;
+var GUI_INPUT_BLOCK_STACK = [];
+var GUI_THEME = nil;
+
+def gui_point_in_rect_raw(px, py, rx, ry, rw, rh)
+{
+    return (px >= rx && px <= rx + rw && py >= ry && py <= ry + rh);
+}
+
+def gui_rect_intersects_clip(rx, ry, rw, rh)
+{
+    if (rw <= 0 || rh <= 0) return false;
+    if (!GUI_CLIP_ACTIVE) return true;
+
+    var rx2 = rx + rw;
+    var ry2 = ry + rh;
+    var cx2 = GUI_CLIP_X + GUI_CLIP_W;
+    var cy2 = GUI_CLIP_Y + GUI_CLIP_H;
+
+    if (rx2 <= GUI_CLIP_X) return false;
+    if (ry2 <= GUI_CLIP_Y) return false;
+    if (rx >= cx2) return false;
+    if (ry >= cy2) return false;
+    return true;
+}
+
+def gui_point_in_clip(px, py)
+{
+    if (!GUI_CLIP_ACTIVE) return true;
+    return gui_point_in_rect_raw(px, py, GUI_CLIP_X, GUI_CLIP_Y, GUI_CLIP_W, GUI_CLIP_H);
+}
+
+def gui_point_in_rect(px, py, rx, ry, rw, rh)
+{
+    if (GUI_INPUT_BLOCKED) return false;
+    if (GUI_CLIP_ACTIVE && GUI_CURRENT_WINDOW != nil && !gui_point_in_clip(px, py)) return false;
+    return gui_point_in_rect_raw(px, py, rx, ry, rw, rh);
+}
+
+class GuiTheme
+{
+    var name;
+
+    var window_bg_r; var window_bg_g; var window_bg_b;
+    var window_border_r; var window_border_g; var window_border_b;
+
+    var title_bg_r; var title_bg_g; var title_bg_b;
+    var title_border_r; var title_border_g; var title_border_b;
+    var title_text_r; var title_text_g; var title_text_b;
+
+    var min_btn_r; var min_btn_g; var min_btn_b;
+    var min_btn_hover_r; var min_btn_hover_g; var min_btn_hover_b;
+    var min_text_r; var min_text_g; var min_text_b;
+
+    var close_btn_r; var close_btn_g; var close_btn_b;
+    var close_btn_hover_r; var close_btn_hover_g; var close_btn_hover_b;
+    var close_text_r; var close_text_g; var close_text_b;
+
+    var resize_r; var resize_g; var resize_b;
+    var resize_hover_r; var resize_hover_g; var resize_hover_b;
+
+    var label_r; var label_g; var label_b;
+    var button_r; var button_g; var button_b;
+    var button_hover_r; var button_hover_g; var button_hover_b;
+    var button_pressed_r; var button_pressed_g; var button_pressed_b;
+    var button_border_r; var button_border_g; var button_border_b;
+    var button_text_r; var button_text_g; var button_text_b;
+
+    def init()
+    {
+        self.name = "custom";
+    }
+}
+
+def gui_theme_dark()
+{
+    var t = GuiTheme();
+    t.name = "dark";
+
+    t.window_bg_r = 38; t.window_bg_g = 40; t.window_bg_b = 48;
+    t.window_border_r = 190; t.window_border_g = 196; t.window_border_b = 208;
+
+    t.title_bg_r = 58; t.title_bg_g = 64; t.title_bg_b = 82;
+    t.title_border_r = 210; t.title_border_g = 215; t.title_border_b = 228;
+    t.title_text_r = 232; t.title_text_g = 236; t.title_text_b = 245;
+
+    t.min_btn_r = 70; t.min_btn_g = 96; t.min_btn_b = 156;
+    t.min_btn_hover_r = 96; t.min_btn_hover_g = 128; t.min_btn_hover_b = 198;
+    t.min_text_r = 232; t.min_text_g = 236; t.min_text_b = 245;
+
+    t.close_btn_r = 152; t.close_btn_g = 72; t.close_btn_b = 72;
+    t.close_btn_hover_r = 206; t.close_btn_hover_g = 82; t.close_btn_hover_b = 82;
+    t.close_text_r = 248; t.close_text_g = 236; t.close_text_b = 236;
+
+    t.resize_r = 130; t.resize_g = 140; t.resize_b = 160;
+    t.resize_hover_r = 170; t.resize_hover_g = 178; t.resize_hover_b = 198;
+
+    t.label_r = 224; t.label_g = 228; t.label_b = 236;
+    t.button_r = 58; t.button_g = 58; t.button_b = 64;
+    t.button_hover_r = 74; t.button_hover_g = 74; t.button_hover_b = 82;
+    t.button_pressed_r = 46; t.button_pressed_g = 46; t.button_pressed_b = 52;
+    t.button_border_r = 132; t.button_border_g = 136; t.button_border_b = 148;
+    t.button_text_r = 236; t.button_text_g = 238; t.button_text_b = 244;
+    return t;
+}
+
+def gui_theme_set_button_palette(theme,
+                                 normal_r, normal_g, normal_b,
+                                 hover_r, hover_g, hover_b,
+                                 pressed_r, pressed_g, pressed_b,
+                                 border_r, border_g, border_b,
+                                 text_r, text_g, text_b)
+{
+    theme.button_r = normal_r; theme.button_g = normal_g; theme.button_b = normal_b;
+    theme.button_hover_r = hover_r; theme.button_hover_g = hover_g; theme.button_hover_b = hover_b;
+    theme.button_pressed_r = pressed_r; theme.button_pressed_g = pressed_g; theme.button_pressed_b = pressed_b;
+    theme.button_border_r = border_r; theme.button_border_g = border_g; theme.button_border_b = border_b;
+    theme.button_text_r = text_r; theme.button_text_g = text_g; theme.button_text_b = text_b;
+}
+
+def gui_theme_light()
+{
+    var t = GuiTheme();
+    t.name = "light";
+
+    t.window_bg_r = 236; t.window_bg_g = 238; t.window_bg_b = 244;
+    t.window_border_r = 122; t.window_border_g = 130; t.window_border_b = 148;
+
+    t.title_bg_r = 202; t.title_bg_g = 210; t.title_bg_b = 228;
+    t.title_border_r = 108; t.title_border_g = 118; t.title_border_b = 138;
+    t.title_text_r = 30; t.title_text_g = 36; t.title_text_b = 48;
+
+    t.min_btn_r = 236; t.min_btn_g = 204; t.min_btn_b = 124;
+    t.min_btn_hover_r = 246; t.min_btn_hover_g = 220; t.min_btn_hover_b = 152;
+    t.min_text_r = 58; t.min_text_g = 42; t.min_text_b = 20;
+
+    t.close_btn_r = 236; t.close_btn_g = 154; t.close_btn_b = 132;
+    t.close_btn_hover_r = 248; t.close_btn_hover_g = 130; t.close_btn_hover_b = 106;
+    t.close_text_r = 64; t.close_text_g = 26; t.close_text_b = 20;
+
+    t.resize_r = 132; t.resize_g = 144; t.resize_b = 170;
+    t.resize_hover_r = 108; t.resize_hover_g = 126; t.resize_hover_b = 166;
+
+    t.label_r = 44; t.label_g = 52; t.label_b = 70;
+    // Restore the previous blue button palette for light theme.
+    gui_theme_set_button_palette(t,
+                                 78, 108, 176,    // normal
+                                 102, 138, 218,   // hover
+                                 88, 122, 198,    // pressed
+                                 224, 230, 240,   // border
+                                 245, 248, 252);  // text
+    return t;
+}
+
+def gui_set_theme(theme)
+{
+    if (theme != nil)
+    {
+        GUI_THEME = theme;
+    }
+}
+
+def gui_use_theme_dark()
+{
+    GUI_THEME = gui_theme_dark();
+}
+
+def gui_use_theme_light()
+{
+    GUI_THEME = gui_theme_light();
+}
+
+def gui_set_title_icons(min_icon, close_icon)
+{
+    GUI_ICON_MIN = min_icon;
+    GUI_ICON_CLOSE = close_icon;
+}
+
+def gui_use_ascii_title_icons()
+{
+    GUI_ICON_MIN = "-";
+    GUI_ICON_CLOSE = "x";
+}
+
+class GuiWindow
+{
+    var id;
+    var title;
+    var x;
+    var y;
+    var w;
+    var h;
+    var visible;
+    var minimized;
+    var dragging;
+    var resizing;
+    var resizable;
+    var drag_off_x;
+    var drag_off_y;
+    var min_w;
+    var min_h;
+    var movable;
+    var show_min_button;
+    var show_close_button;
+
+    def init(_id, _title, _x, _y, _w, _h)
+    {
+        self.id = _id;
+        self.title = _title;
+        self.x = _x;
+        self.y = _y;
+        self.w = _w;
+        self.h = _h;
+        self.visible = true;
+        self.minimized = false;
+        self.dragging = false;
+        self.resizing = false;
+        self.resizable = true;
+        self.drag_off_x = 0;
+        self.drag_off_y = 0;
+        self.min_w = 140;
+        self.min_h = 90;
+        self.movable = true;
+        self.show_min_button = true;
+        self.show_close_button = true;
+    }
+}
+
+class GuiScrollState
+{
+    var x;
+    var y;
+
+    def init()
+    {
+        self.x = 0;
+        self.y = 0;
+    }
+}
+
+class GuiScrollContext
+{
+    var layout_x;
+    var layout_y;
+    var layout_w;
+    var layout_base_x;
+    var layout_base_w;
+    var layout_margin_left;
+    var layout_margin_right;
+    var layout_mode;
+    var layout_cols;
+    var layout_col_index;
+    var row_h;
+    var spacing;
+    var had_clip;
+    var clip_x;
+    var clip_y;
+    var clip_w;
+    var clip_h;
+
+    def init()
+    {
+        self.layout_x = 0;
+        self.layout_y = 0;
+        self.layout_w = 0;
+        self.layout_base_x = 0;
+        self.layout_base_w = 0;
+        self.layout_margin_left = 0;
+        self.layout_margin_right = 0;
+        self.layout_mode = 0;
+        self.layout_cols = 1;
+        self.layout_col_index = 0;
+        self.row_h = 24;
+        self.spacing = 6;
+        self.had_clip = false;
+        self.clip_x = 0;
+        self.clip_y = 0;
+        self.clip_w = 0;
+        self.clip_h = 0;
+    }
+}
+
+def gui_create_window(_id, _title, _x, _y, _w, _h)
+{
+    var win = GuiWindow(_id, _title, _x, _y, _w, _h);
+
+    var i = 0;
+    while (i < len(GUI_WINDOW_REGISTRY))
+    {
+        if (GUI_WINDOW_REGISTRY[i].id == win.id)
+        {
+            return win;
+        }
+        i += 1;
+    }
+
+    GUI_WINDOW_REGISTRY.push(win);
+    GUI_WINDOW_ORDER_LAST.push(win.id);
+    return win;
+}
+
+def gui_scroll_state()
+{
+    return GuiScrollState();
+}
+
+if (GUI_THEME == nil)
+{
+    GUI_THEME = gui_theme_dark();
+}
+
+def gui_begin_frame()
+{
+    GUI_FRAME_INDEX += 1;
+    GUI_MOUSE_X = get_mouse_x();
+    GUI_MOUSE_Y = get_mouse_y();
+    GUI_MOUSE_DOWN = mouse_down(0);
+    GUI_MOUSE_PRESSED = mouse_pressed(0);
+    GUI_MOUSE_WHEEL = get_mouse_wheel();
+    GUI_MOUSE_WHEEL_X = get_mouse_wheel_x();
+    GUI_MOUSE_WHEEL_Y = get_mouse_wheel_y();
+
+    if (len(GUI_WINDOW_ORDER_FRAME) > 0)
+    {
+        GUI_WINDOW_ORDER_LAST = [];
+        var oi = 0;
+        while (oi < len(GUI_WINDOW_ORDER_FRAME))
+        {
+            GUI_WINDOW_ORDER_LAST.push(GUI_WINDOW_ORDER_FRAME[oi]);
+            oi += 1;
+        }
+    }
+    GUI_WINDOW_ORDER_FRAME = [];
+
+    GUI_INPUT_WINDOW_ID = 0;
+    var wi = 0;
+    while (wi < len(GUI_WINDOW_REGISTRY))
+    {
+        var wcap = GUI_WINDOW_REGISTRY[wi];
+        if (wcap.visible && (wcap.dragging || wcap.resizing))
+        {
+            GUI_INPUT_WINDOW_ID = wcap.id;
+            break;
+        }
+        wi += 1;
+    }
+    if (GUI_INPUT_WINDOW_ID == 0)
+    {
+        var order_count = len(GUI_WINDOW_ORDER_LAST);
+        if (order_count <= 0)
+        {
+            var ri = 0;
+            while (ri < len(GUI_WINDOW_REGISTRY))
+            {
+                GUI_WINDOW_ORDER_LAST.push(GUI_WINDOW_REGISTRY[ri].id);
+                ri += 1;
+            }
+            order_count = len(GUI_WINDOW_ORDER_LAST);
+        }
+
+        var oi2 = order_count - 1;
+        while (oi2 >= 0)
+        {
+            var w = nil;
+            var id = GUI_WINDOW_ORDER_LAST[oi2];
+            var fi = 0;
+            while (fi < len(GUI_WINDOW_REGISTRY))
+            {
+                if (GUI_WINDOW_REGISTRY[fi].id == id)
+                {
+                    w = GUI_WINDOW_REGISTRY[fi];
+                    break;
+                }
+                fi += 1;
+            }
+
+            if (w != nil && w.visible)
+            {
+                var hit_h = GUI_TITLE_H;
+                if (!w.minimized) hit_h = w.h;
+                if (gui_point_in_rect_raw(GUI_MOUSE_X, GUI_MOUSE_Y, w.x, w.y, w.w, hit_h))
+                {
+                    GUI_INPUT_WINDOW_ID = w.id;
+                    break;
+                }
+            }
+            oi2 -= 1;
+        }
+    }
+
+    GUI_INPUT_BLOCKED = false;
+    GUI_INPUT_BLOCK_STACK = [];
+    GUI_CURRENT_WINDOW = nil;
+    GUI_CLIP_ACTIVE = false;
+    GUI_CLIP_X = 0;
+    GUI_CLIP_Y = 0;
+    GUI_CLIP_W = 0;
+    GUI_CLIP_H = 0;
+    GUI_COMBO_POPUP_ACTIVE = false;
+    GUI_COMBO_POPUP_WINDOW_ID = 0;
+    GUI_ITEM_ID = 1;
+    if (!GUI_MOUSE_DOWN)
+    {
+        GUI_CAPTURE_MOVE = false;
+        GUI_ACTIVE_ITEM = 0;
+    }
+    GUI_WINDOW_MOVING = GUI_CAPTURE_MOVE;
+}
+
+def gui_next_item_id()
+{
+    var id = GUI_ITEM_ID;
+    GUI_ITEM_ID += 1;
+    return id;
+}
+
+def gui_clamp(v, min_v, max_v)
+{
+    if (v < min_v) return min_v;
+    if (v > max_v) return max_v;
+    return v;
+}
+
+def gui_text_vcenter_y(y, h, font_size)
+{
+    var ty = y + int((h - font_size) * 0.5);
+    if (ty < y) ty = y;
+    return ty;
+}
+
+def gui_text_align_x(x, w, pad, text, font_size, align)
+{
+    var tx = x + pad;
+    var tw = get_text_width(text, font_size);
+    if (align == GUI_ALIGN_CENTER)
+    {
+        tx = x + int((w - tw) * 0.5);
+    }
+    elif (align == GUI_ALIGN_RIGHT)
+    {
+        tx = x + w - pad - tw;
+    }
+    if (tx < x + 1) tx = x + 1;
+    return tx;
+}
+
+def gui_popup_open(title, message, kind, confirm_buttons)
+{
+    GUI_POPUP_TITLE = format("{}", title);
+    GUI_POPUP_MESSAGE = format("{}", message);
+    GUI_POPUP_KIND = kind;
+    GUI_POPUP_CONFIRM = confirm_buttons;
+    GUI_POPUP_RESULT = GUI_POPUP_NONE;
+    GUI_POPUP_OPEN = true;
+
+    GUI_OPEN_DROPDOWN_ID = 0;
+    GUI_ACTIVE_ITEM = 0;
+    GUI_CAPTURE_MOVE = false;
+    GUI_WINDOW_MOVING = false;
+}
+
+def gui_popup_info(title, message)
+{
+    gui_popup_open(title, message, GUI_POPUP_KIND_INFO, false);
+}
+
+def gui_popup_warn(title, message)
+{
+    gui_popup_open(title, message, GUI_POPUP_KIND_WARN, false);
+}
+
+def gui_popup_error(title, message)
+{
+    gui_popup_open(title, message, GUI_POPUP_KIND_ERROR, false);
+}
+
+def gui_popup_confirm(title, message)
+{
+    gui_popup_open(title, message, GUI_POPUP_KIND_WARN, true);
+}
+
+def gui_popup_close()
+{
+    GUI_POPUP_OPEN = false;
+}
+
+def gui_popup_is_open()
+{
+    return GUI_POPUP_OPEN;
+}
+
+def gui_popup_take_result()
+{
+    var r = GUI_POPUP_RESULT;
+    GUI_POPUP_RESULT = GUI_POPUP_NONE;
+    return r;
+}
+
+def gui_popup_modal(screen_w, screen_h)
+{
+    if (!GUI_POPUP_OPEN) return false;
+
+    var sw = screen_w;
+    var sh = screen_h;
+    if (sw < 120) sw = 120;
+    if (sh < 120) sh = 120;
+
+    var w = GUI_POPUP_W;
+    var h = GUI_POPUP_H;
+    if (w > sw - 20) w = sw - 20;
+    if (h > sh - 20) h = sh - 20;
+    if (w < 220) w = 220;
+    if (h < 120) h = 120;
+
+    var x = int((sw - w) * 0.5);
+    var y = int((sh - h) * 0.5);
+    var title_h = 30;
+
+    set_draw_screen(true);
+
+    set_color(12, 12, 16);
+    draw_rectangle(0, 0, sw, sh, true);
+
+    set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.window_border_r, GUI_THEME.window_border_g, GUI_THEME.window_border_b);
+    draw_rectangle(x, y, w, h, false);
+
+    if (GUI_POPUP_KIND == GUI_POPUP_KIND_ERROR)
+    {
+        set_color(GUI_THEME.close_btn_r, GUI_THEME.close_btn_g, GUI_THEME.close_btn_b);
+    }
+    elif (GUI_POPUP_KIND == GUI_POPUP_KIND_WARN)
+    {
+        set_color(GUI_THEME.min_btn_r, GUI_THEME.min_btn_g, GUI_THEME.min_btn_b);
+    }
+    else
+    {
+        set_color(GUI_THEME.title_bg_r, GUI_THEME.title_bg_g, GUI_THEME.title_bg_b);
+    }
+    draw_rectangle(x, y, w, title_h, true);
+    set_color(GUI_THEME.title_border_r, GUI_THEME.title_border_g, GUI_THEME.title_border_b);
+    draw_rectangle(x, y, w, title_h, false);
+
+    set_color(GUI_THEME.title_text_r, GUI_THEME.title_text_g, GUI_THEME.title_text_b);
+    draw_text(GUI_POPUP_TITLE, x + 10, gui_text_vcenter_y(y, title_h, 16), 16);
+
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(GUI_POPUP_MESSAGE, x + 12, y + title_h + 14, 16);
+
+    var btn_w = 90;
+    var btn_h = 28;
+    var btn_y = y + h - btn_h - 12;
+
+    var clicked_ok = false;
+    var clicked_cancel = false;
+
+    if (GUI_POPUP_CONFIRM)
+    {
+        var cancel_x = x + int(w * 0.5) - btn_w - 6;
+        var ok_x = x + int(w * 0.5) + 6;
+
+        var cancel_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, cancel_x, btn_y, btn_w, btn_h);
+        var cancel_pressed = cancel_hover && GUI_MOUSE_DOWN;
+        clicked_cancel = cancel_hover && GUI_MOUSE_PRESSED;
+
+        if (cancel_pressed) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+        elif (cancel_hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(cancel_x, btn_y, btn_w, btn_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(cancel_x, btn_y, btn_w, btn_h, false);
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        draw_text("Cancel", cancel_x + int((btn_w - get_text_width("Cancel", 14)) * 0.5), gui_text_vcenter_y(btn_y, btn_h, 14), 14);
+
+        var ok_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, ok_x, btn_y, btn_w, btn_h);
+        var ok_pressed = ok_hover && GUI_MOUSE_DOWN;
+        clicked_ok = ok_hover && GUI_MOUSE_PRESSED;
+
+        if (ok_pressed) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+        elif (ok_hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(ok_x, btn_y, btn_w, btn_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(ok_x, btn_y, btn_w, btn_h, false);
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        draw_text("OK", ok_x + int((btn_w - get_text_width("OK", 14)) * 0.5), gui_text_vcenter_y(btn_y, btn_h, 14), 14);
+    }
+    else
+    {
+        var ok_x_single = x + int((w - btn_w) * 0.5);
+        var ok_hover_single = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, ok_x_single, btn_y, btn_w, btn_h);
+        var ok_pressed_single = ok_hover_single && GUI_MOUSE_DOWN;
+        clicked_ok = ok_hover_single && GUI_MOUSE_PRESSED;
+
+        if (ok_pressed_single) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+        elif (ok_hover_single) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(ok_x_single, btn_y, btn_w, btn_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(ok_x_single, btn_y, btn_w, btn_h, false);
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        draw_text("OK", ok_x_single + int((btn_w - get_text_width("OK", 14)) * 0.5), gui_text_vcenter_y(btn_y, btn_h, 14), 14);
+    }
+
+    if (clicked_cancel)
+    {
+        GUI_POPUP_RESULT = GUI_POPUP_CANCEL;
+        GUI_POPUP_OPEN = false;
+    }
+    elif (clicked_ok)
+    {
+        GUI_POPUP_RESULT = GUI_POPUP_OK;
+        GUI_POPUP_OPEN = false;
+    }
+
+    return true;
+}
+
+def gui_menu_close_all()
+{
+    GUI_MENU_OPEN_DEPTH = 0;
+    GUI_MENU_CONTEXT_DEPTH = -1;
+    GUI_MENU_CONTEXT_TOP = 0;
+    var i = 0;
+    while (i < GUI_MENU_MAX_DEPTH)
+    {
+        GUI_MENU_OPEN_IDS[i] = 0;
+        i += 1;
+    }
+}
+
+def gui_menu_is_open()
+{
+    return GUI_MENU_OPEN_DEPTH > 0;
+}
+
+def gui_menu_is_open_at(depth, menu_id)
+{
+    if (depth < 0) return false;
+    if (depth >= GUI_MENU_OPEN_DEPTH) return false;
+    return GUI_MENU_OPEN_IDS[depth] == menu_id;
+}
+
+def gui_menu_open_path(depth, menu_id)
+{
+    if (depth < 0 || depth >= GUI_MENU_MAX_DEPTH) return;
+    GUI_MENU_OPEN_IDS[depth] = menu_id;
+    GUI_MENU_OPEN_DEPTH = depth + 1;
+
+    var i = depth + 1;
+    while (i < GUI_MENU_MAX_DEPTH)
+    {
+        GUI_MENU_OPEN_IDS[i] = 0;
+        i += 1;
+    }
+}
+
+def gui_menu_push_context(depth)
+{
+    if (GUI_MENU_CONTEXT_TOP < GUI_MENU_MAX_DEPTH)
+    {
+        GUI_MENU_CONTEXT_STACK[GUI_MENU_CONTEXT_TOP] = GUI_MENU_CONTEXT_DEPTH;
+        GUI_MENU_CONTEXT_TOP += 1;
+    }
+    GUI_MENU_CONTEXT_DEPTH = depth;
+}
+
+def gui_menu_pop_context()
+{
+    if (GUI_MENU_CONTEXT_TOP > 0)
+    {
+        GUI_MENU_CONTEXT_TOP -= 1;
+        GUI_MENU_CONTEXT_DEPTH = GUI_MENU_CONTEXT_STACK[GUI_MENU_CONTEXT_TOP];
+    }
+    else
+    {
+        GUI_MENU_CONTEXT_DEPTH = -1;
+    }
+}
+
+def gui_menu_draw_popup_bg(depth)
+{
+    if (depth < 0 || depth >= GUI_MENU_MAX_DEPTH) return;
+
+    var px = GUI_MENU_POPUP_X[depth];
+    var py = GUI_MENU_POPUP_Y[depth];
+    var pw = GUI_MENU_POPUP_W[depth];
+    var target_end_y = GUI_MENU_POPUP_END_Y[depth];
+    if (target_end_y < py + 24) target_end_y = py + 24;
+    var ph = target_end_y - py;
+    if (ph < 24) ph = 24;
+
+    var fill_start_y = GUI_MENU_POPUP_DRAWN_END_Y[depth];
+    if (fill_start_y < py) fill_start_y = py;
+    if (fill_start_y > target_end_y) fill_start_y = target_end_y;
+
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    if (target_end_y > fill_start_y)
+    {
+        draw_rectangle(px, fill_start_y, pw, target_end_y - fill_start_y, true);
+    }
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(px, py, pw, ph, false);
+    GUI_MENU_POPUP_DRAWN_END_Y[depth] = target_end_y;
+
+    if (gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, px, py, pw, ph))
+    {
+        GUI_MENU_HIT_ANY = true;
+    }
+}
+
+def gui_menubar_begin()
+{
+    if (GUI_CURRENT_WINDOW == nil) return false;
+
+    GUI_MENU_NEEDS_CLIP_RESTORE = false;
+    if (GUI_CLIP_ACTIVE)
+    {
+        GUI_MENU_PREV_CLIP_X = GUI_CLIP_X;
+        GUI_MENU_PREV_CLIP_Y = GUI_CLIP_Y;
+        GUI_MENU_PREV_CLIP_W = GUI_CLIP_W;
+        GUI_MENU_PREV_CLIP_H = GUI_CLIP_H;
+        clip_end();
+        GUI_CLIP_ACTIVE = false;
+        GUI_CLIP_X = 0;
+        GUI_CLIP_Y = 0;
+        GUI_CLIP_W = 0;
+        GUI_CLIP_H = 0;
+        GUI_MENU_NEEDS_CLIP_RESTORE = true;
+    }
+
+    var base_x = GUI_LAYOUT_BASE_X + GUI_LAYOUT_MARGIN_LEFT;
+    var base_w = GUI_LAYOUT_BASE_W - GUI_LAYOUT_MARGIN_LEFT - GUI_LAYOUT_MARGIN_RIGHT;
+    if (base_w < 8) base_w = 8;
+
+    GUI_WIDGET_X = base_x;
+    GUI_WIDGET_Y = GUI_LAYOUT_Y;
+    GUI_WIDGET_W = base_w;
+    GUI_WIDGET_H = GUI_ROW_H;
+    if (GUI_LAYOUT_MODE == 1)
+    {
+        var gaps = GUI_SPACING * (GUI_LAYOUT_COLS - 1);
+        GUI_WIDGET_W = int((base_w - gaps) / GUI_LAYOUT_COLS);
+        if (GUI_WIDGET_W < 8) GUI_WIDGET_W = 8;
+        GUI_WIDGET_X = base_x + GUI_LAYOUT_COL_INDEX * (GUI_WIDGET_W + GUI_SPACING);
+    }
+
+    GUI_MENU_BAR_X = GUI_WIDGET_X;
+    GUI_MENU_BAR_Y = GUI_WIDGET_Y;
+    GUI_MENU_BAR_W = GUI_WIDGET_W;
+    GUI_MENU_BAR_H = GUI_WIDGET_H;
+    if (GUI_MENU_BAR_H < 20) GUI_MENU_BAR_H = 20;
+
+    GUI_MENU_BAR_CURSOR_X = GUI_MENU_BAR_X + 4;
+    GUI_MENU_HIT_ANY = false;
+    GUI_MENU_IN_BAR = true;
+    GUI_MENU_CONTEXT_DEPTH = -1;
+    GUI_MENU_CONTEXT_TOP = 0;
+
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(GUI_MENU_BAR_X, GUI_MENU_BAR_Y, GUI_MENU_BAR_W, GUI_MENU_BAR_H, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(GUI_MENU_BAR_X, GUI_MENU_BAR_Y, GUI_MENU_BAR_W, GUI_MENU_BAR_H, false);
+
+    if (gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, GUI_MENU_BAR_X, GUI_MENU_BAR_Y, GUI_MENU_BAR_W, GUI_MENU_BAR_H))
+    {
+        GUI_MENU_HIT_ANY = true;
+    }
+    return true;
+}
+
+def gui_menubar_end()
+{
+    if (!GUI_MENU_IN_BAR) return;
+
+    if (GUI_MOUSE_PRESSED && !GUI_MENU_HIT_ANY)
+    {
+        gui_menu_close_all();
+    }
+
+    if (GUI_LAYOUT_MODE == 1)
+    {
+        GUI_LAYOUT_COL_INDEX += 1;
+        if (GUI_LAYOUT_COL_INDEX >= GUI_LAYOUT_COLS)
+        {
+            GUI_LAYOUT_COL_INDEX = 0;
+            GUI_LAYOUT_Y += GUI_MENU_BAR_H + GUI_SPACING;
+        }
+    }
+    else
+    {
+        GUI_LAYOUT_Y += GUI_MENU_BAR_H + GUI_SPACING;
+    }
+
+    GUI_MENU_IN_BAR = false;
+    GUI_MENU_CONTEXT_TOP = 0;
+    GUI_MENU_CONTEXT_DEPTH = -1;
+
+    if (GUI_MENU_NEEDS_CLIP_RESTORE && GUI_CURRENT_WINDOW != nil)
+    {
+        var clip_x = GUI_MENU_PREV_CLIP_X;
+        var clip_y = GUI_MENU_PREV_CLIP_Y;
+        var clip_w = GUI_MENU_PREV_CLIP_W;
+        var clip_h = GUI_MENU_PREV_CLIP_H;
+        if (clip_w > 0 && clip_h > 0)
+        {
+            clip_begin(clip_x, clip_y, clip_w, clip_h);
+            GUI_CLIP_ACTIVE = true;
+            GUI_CLIP_X = clip_x;
+            GUI_CLIP_Y = clip_y;
+            GUI_CLIP_W = clip_w;
+            GUI_CLIP_H = clip_h;
+        }
+    }
+    GUI_MENU_NEEDS_CLIP_RESTORE = false;
+}
+
+def gui_menu_begin(text)
+{
+    if (!GUI_MENU_IN_BAR) return false;
+
+    var id = gui_next_item_id();
+    var x = GUI_MENU_BAR_CURSOR_X;
+    var y = GUI_MENU_BAR_Y + 2;
+    var h = GUI_MENU_BAR_H - 4;
+    var w = get_text_width(text, 14) + 22;
+    if (w < 54) w = 54;
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+
+    var active = gui_menu_is_open_at(0, id);
+    if (hover)
+    {
+        GUI_MENU_HIT_ANY = true;
+        if (GUI_MOUSE_PRESSED)
+        {
+            if (active)
+            {
+                gui_menu_close_all();
+            }
+            else
+            {
+                gui_menu_open_path(0, id);
+            }
+            active = gui_menu_is_open_at(0, id);
+        }
+    }
+
+    if (active) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    elif (hover) set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    else set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(text, x + 8, gui_text_vcenter_y(y, h, 14), 14);
+
+    GUI_MENU_BAR_CURSOR_X = x + w + 4;
+
+    if (!active) return false;
+
+    var popup_x = x;
+    var popup_y = GUI_MENU_BAR_Y + GUI_MENU_BAR_H + 2;
+    var popup_w = 220;
+
+    GUI_MENU_POPUP_X[0] = popup_x;
+    GUI_MENU_POPUP_Y[0] = popup_y;
+    GUI_MENU_POPUP_W[0] = popup_w;
+    GUI_MENU_POPUP_END_Y[0] = popup_y + 24;
+    GUI_MENU_POPUP_DRAWN_END_Y[0] = popup_y;
+    GUI_MENU_POPUP_CURSOR_Y[0] = popup_y + 2;
+    gui_menu_draw_popup_bg(0);
+    gui_menu_push_context(0);
+
+    return true;
+}
+
+def gui_menu_end()
+{
+    gui_menu_pop_context();
+}
+
+def gui_menu_begin_submenu(text)
+{
+    var depth = GUI_MENU_CONTEXT_DEPTH;
+    if (depth < 0) return false;
+    if (depth + 1 >= GUI_MENU_MAX_DEPTH) return false;
+
+    var id = gui_next_item_id();
+    var x = GUI_MENU_POPUP_X[depth];
+    var y = GUI_MENU_POPUP_CURSOR_Y[depth];
+    var w = GUI_MENU_POPUP_W[depth];
+    var h = 22;
+    var end_y = y + h + 2;
+    if (end_y > GUI_MENU_POPUP_END_Y[depth]) GUI_MENU_POPUP_END_Y[depth] = end_y;
+    gui_menu_draw_popup_bg(depth);
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+    if (hover)
+    {
+        GUI_MENU_HIT_ANY = true;
+        if (GUI_MOUSE_PRESSED)
+        {
+            gui_menu_open_path(depth + 1, id);
+        }
+    }
+
+    var open = gui_menu_is_open_at(depth + 1, id);
+
+    if (open) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    elif (hover) set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    else set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(text, x + 8, gui_text_vcenter_y(y, h, 14), 14);
+    draw_text(">", x + w - 14, gui_text_vcenter_y(y, h, 14), 14);
+
+    GUI_MENU_POPUP_CURSOR_Y[depth] = GUI_MENU_POPUP_CURSOR_Y[depth] + h;
+
+    if (!open) return false;
+
+    var child_depth = depth + 1;
+    var child_x = x + w + 2;
+    var child_y = y;
+    var child_w = 220;
+    GUI_MENU_POPUP_X[child_depth] = child_x;
+    GUI_MENU_POPUP_Y[child_depth] = child_y;
+    GUI_MENU_POPUP_W[child_depth] = child_w;
+    GUI_MENU_POPUP_END_Y[child_depth] = child_y + 24;
+    GUI_MENU_POPUP_DRAWN_END_Y[child_depth] = child_y;
+    GUI_MENU_POPUP_CURSOR_Y[child_depth] = child_y + 2;
+    gui_menu_draw_popup_bg(child_depth);
+
+    gui_menu_push_context(child_depth);
+    return true;
+}
+
+def gui_menu_end_submenu()
+{
+    gui_menu_pop_context();
+}
+
+def gui_menu_item(text)
+{
+    var depth = GUI_MENU_CONTEXT_DEPTH;
+    if (depth < 0) return false;
+
+    var x = GUI_MENU_POPUP_X[depth];
+    var y = GUI_MENU_POPUP_CURSOR_Y[depth];
+    var w = GUI_MENU_POPUP_W[depth];
+    var h = 22;
+    var end_y = y + h + 2;
+    if (end_y > GUI_MENU_POPUP_END_Y[depth]) GUI_MENU_POPUP_END_Y[depth] = end_y;
+    gui_menu_draw_popup_bg(depth);
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+    if (hover) GUI_MENU_HIT_ANY = true;
+    var clicked = hover && GUI_MOUSE_PRESSED;
+
+    if (hover) set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    else set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(text, x + 8, gui_text_vcenter_y(y, h, 14), 14);
+
+    GUI_MENU_POPUP_CURSOR_Y[depth] = GUI_MENU_POPUP_CURSOR_Y[depth] + h;
+
+    if (clicked)
+    {
+        gui_menu_close_all();
+        return true;
+    }
+    return false;
+}
+
+def gui_menu_item_check(text, value)
+{
+    var depth = GUI_MENU_CONTEXT_DEPTH;
+    if (depth < 0) return value;
+
+    var mark = "[ ]";
+    if (value) mark = "[x]";
+    var row_text = format("{} {}", mark, text);
+
+    var x = GUI_MENU_POPUP_X[depth];
+    var y = GUI_MENU_POPUP_CURSOR_Y[depth];
+    var w = GUI_MENU_POPUP_W[depth];
+    var h = 22;
+    var end_y = y + h + 2;
+    if (end_y > GUI_MENU_POPUP_END_Y[depth]) GUI_MENU_POPUP_END_Y[depth] = end_y;
+    gui_menu_draw_popup_bg(depth);
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+    if (hover) GUI_MENU_HIT_ANY = true;
+    var clicked = hover && GUI_MOUSE_PRESSED;
+
+    if (hover) set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    else set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(row_text, x + 8, gui_text_vcenter_y(y, h, 14), 14);
+
+    GUI_MENU_POPUP_CURSOR_Y[depth] = GUI_MENU_POPUP_CURSOR_Y[depth] + h;
+
+    if (clicked)
+    {
+        value = !value;
+        gui_menu_close_all();
+    }
+    return value;
+}
+
+def gui_menu_item_radio(text, current_value, item_value)
+{
+    var depth = GUI_MENU_CONTEXT_DEPTH;
+    if (depth < 0) return current_value;
+
+    var mark = "( )";
+    if (current_value == item_value) mark = "(*)";
+    var row_text = format("{} {}", mark, text);
+
+    var x = GUI_MENU_POPUP_X[depth];
+    var y = GUI_MENU_POPUP_CURSOR_Y[depth];
+    var w = GUI_MENU_POPUP_W[depth];
+    var h = 22;
+    var end_y = y + h + 2;
+    if (end_y > GUI_MENU_POPUP_END_Y[depth]) GUI_MENU_POPUP_END_Y[depth] = end_y;
+    gui_menu_draw_popup_bg(depth);
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+    if (hover) GUI_MENU_HIT_ANY = true;
+    var clicked = hover && GUI_MOUSE_PRESSED;
+
+    if (hover) set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    else set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(row_text, x + 8, gui_text_vcenter_y(y, h, 14), 14);
+
+    GUI_MENU_POPUP_CURSOR_Y[depth] = GUI_MENU_POPUP_CURSOR_Y[depth] + h;
+
+    if (clicked)
+    {
+        current_value = item_value;
+        gui_menu_close_all();
+    }
+    return current_value;
+}
+
+class GuiFilePicker
+{
+    var open;
+    var title;
+    var current_dir;
+    var filter_ext;
+    var select_dirs;
+    var save_mode;
+    var save_name;
+    var selected_name;
+    var selected_path;
+    var last_click_path;
+    var last_click_frame;
+    var page;
+    var scroll;
+    var result;
+
+    def init(_title, _start_dir, _filter_ext, _select_dirs)
+    {
+        self.open = false;
+        self.title = _title;
+        self.current_dir = _start_dir;
+        self.filter_ext = _filter_ext;
+        self.select_dirs = _select_dirs;
+        self.save_mode = false;
+        self.save_name = "untitled";
+        self.selected_name = "";
+        self.selected_path = "";
+        self.last_click_path = "";
+        self.last_click_frame = -1000;
+        self.page = 0;
+        self.scroll = 0;
+        self.result = GUI_FILE_PICKER_NONE;
+    }
+}
+
+def gui_filepicker_create(title, start_dir, filter_ext, select_dirs)
+{
+    var dir = start_dir;
+    if (dir == nil || dir == "")
+    {
+        dir = ".";
+    }
+    return GuiFilePicker(title, dir, filter_ext, select_dirs);
+}
+
+def gui_filepicker_open(picker)
+{
+    if (picker == nil) return;
+    if (picker.current_dir == nil || picker.current_dir == "")
+    {
+        picker.current_dir = ".";
+    }
+    picker.open = true;
+    picker.save_mode = false;
+    picker.result = GUI_FILE_PICKER_NONE;
+    picker.selected_name = "";
+    picker.selected_path = "";
+    picker.last_click_path = "";
+    picker.last_click_frame = -1000;
+    picker.page = 0;
+    picker.scroll = 0;
+
+    GUI_OPEN_DROPDOWN_ID = 0;
+    GUI_ACTIVE_ITEM = 0;
+    GUI_CAPTURE_MOVE = false;
+    GUI_WINDOW_MOVING = false;
+}
+
+def gui_filepicker_apply_filter(file_name, filter_ext)
+{
+    var out_name = file_name;
+    if (out_name == nil || out_name == "")
+    {
+        out_name = "untitled";
+    }
+
+    if (filter_ext != nil && filter_ext != "")
+    {
+        if (path.extname(out_name) != filter_ext)
+        {
+            out_name = out_name + filter_ext;
+        }
+    }
+    return out_name;
+}
+
+def gui_filepicker_enter_dir(picker, dir_path)
+{
+    if (picker == nil) return;
+    if (dir_path == nil || dir_path == "") return;
+    if (path.exists(dir_path) && path.isdir(dir_path))
+    {
+        picker.current_dir = dir_path;
+        picker.selected_name = "";
+        picker.selected_path = "";
+        picker.page = 0;
+        picker.scroll = 0;
+        picker.last_click_path = "";
+        picker.last_click_frame = -1000;
+    }
+}
+
+def gui_filepicker_confirm(picker)
+{
+    if (picker == nil) return false;
+
+    if (picker.save_mode)
+    {
+        var save_name = picker.save_name;
+        if (save_name == "")
+        {
+            if (picker.selected_name != "" && picker.selected_path != "" && path.isfile(picker.selected_path))
+            {
+                save_name = picker.selected_name;
+            }
+            else
+            {
+                save_name = "untitled";
+            }
+        }
+
+        save_name = gui_filepicker_apply_filter(save_name, picker.filter_ext);
+        picker.save_name = save_name;
+        picker.selected_name = save_name;
+        picker.selected_path = path.join(picker.current_dir, save_name);
+        picker.result = GUI_FILE_PICKER_OK;
+        picker.open = false;
+        return true;
+    }
+
+    if (picker.select_dirs)
+    {
+        if (picker.selected_path != "" && path.isdir(picker.selected_path))
+        {
+            picker.result = GUI_FILE_PICKER_OK;
+            picker.open = false;
+            return true;
+        }
+        return false;
+    }
+
+    if (picker.selected_path != "" && path.isfile(picker.selected_path))
+    {
+        picker.result = GUI_FILE_PICKER_OK;
+        picker.open = false;
+        return true;
+    }
+    if (picker.selected_path != "" && path.isdir(picker.selected_path))
+    {
+        gui_filepicker_enter_dir(picker, picker.selected_path);
+    }
+    return false;
+}
+
+def gui_filepicker_open_save(picker, default_name, filter_ext)
+{
+    if (picker == nil) return;
+    gui_filepicker_open(picker);
+    picker.select_dirs = false;
+    picker.save_mode = true;
+    if (filter_ext != nil)
+    {
+        picker.filter_ext = filter_ext;
+    }
+    picker.save_name = gui_filepicker_apply_filter(default_name, picker.filter_ext);
+}
+
+def gui_filepicker_take_result(picker)
+{
+    if (picker == nil) return GUI_FILE_PICKER_NONE;
+    var r = picker.result;
+    picker.result = GUI_FILE_PICKER_NONE;
+    return r;
+}
+
+def gui_filepicker_is_open(picker)
+{
+    if (picker == nil) return false;
+    return picker.open;
+}
+
+def gui_modal_button(x, y, w, h, text)
+{
+    var hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    var pressed = hover && GUI_MOUSE_DOWN;
+    var clicked = hover && GUI_MOUSE_PRESSED;
+
+    if (pressed) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    elif (hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    var font_size = 14;
+    draw_text(text, x + int((w - get_text_width(text, font_size)) * 0.5), gui_text_vcenter_y(y, h, font_size), font_size);
+    return clicked;
+}
+
+def gui_filepicker_modal(picker, screen_w, screen_h)
+{
+    if (picker == nil || !picker.open) return false;
+
+    if (picker.current_dir == nil || picker.current_dir == "")
+    {
+        picker.current_dir = ".";
+    }
+    if (!path.exists(picker.current_dir) || !path.isdir(picker.current_dir))
+    {
+        picker.current_dir = ".";
+        picker.page = 0;
+        picker.scroll = 0;
+    }
+
+    var sw = screen_w;
+    var sh = screen_h;
+    if (sw < 160) sw = 160;
+    if (sh < 160) sh = 160;
+
+    var w = int(sw * 0.72);
+    var h = int(sh * 0.74);
+    if (w < 520) w = 520;
+    if (h < 300) h = 300;
+    if (w > sw - 16) w = sw - 16;
+    if (h > sh - 16) h = sh - 16;
+
+    var x = int((sw - w) * 0.5);
+    var y = int((sh - h) * 0.5);
+    var title_h = 30;
+    var top_h = 30;
+    var footer_h = 70;
+
+    var list_x = x + 10;
+    var list_y = y + title_h + top_h + 10;
+    var list_w = w - 20;
+    var list_h = h - title_h - top_h - footer_h - 20;
+    if (list_h < 90) list_h = 90;
+
+    set_draw_screen(true);
+    set_color(10, 10, 14);
+    draw_rectangle(0, 0, sw, sh, true);
+
+    set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.window_border_r, GUI_THEME.window_border_g, GUI_THEME.window_border_b);
+    draw_rectangle(x, y, w, h, false);
+
+    set_color(GUI_THEME.title_bg_r, GUI_THEME.title_bg_g, GUI_THEME.title_bg_b);
+    draw_rectangle(x, y, w, title_h, true);
+    set_color(GUI_THEME.title_border_r, GUI_THEME.title_border_g, GUI_THEME.title_border_b);
+    draw_rectangle(x, y, w, title_h, false);
+    set_color(GUI_THEME.title_text_r, GUI_THEME.title_text_g, GUI_THEME.title_text_b);
+    draw_text(picker.title, x + 10, gui_text_vcenter_y(y, title_h, 16), 16);
+
+    var bar_y = y + title_h + 3;
+    var nav_w = 42;
+    var nav_gap = 4;
+    var nav_group_w = nav_w * 4 + nav_gap * 3;
+    var nav_x = x + w - 10 - nav_group_w;
+    var path_x = x + 10;
+    var path_w = nav_x - path_x - 6;
+    if (path_w < 80) path_w = 80;
+
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(path_x, bar_y, path_w, 24, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(path_x, bar_y, path_w, 24, false);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(picker.current_dir, path_x + 6, gui_text_vcenter_y(bar_y, 24, 13), 13);
+
+    var click_up = gui_modal_button(nav_x, bar_y, nav_w, 24, "Up");
+    var click_prev = gui_modal_button(nav_x + (nav_w + nav_gap), bar_y, nav_w, 24, "<");
+    var click_next = gui_modal_button(nav_x + (nav_w + nav_gap) * 2, bar_y, nav_w, 24, ">");
+    var click_home = gui_modal_button(nav_x + (nav_w + nav_gap) * 3, bar_y, nav_w, 24, ".");
+
+    if (click_up)
+    {
+        var parent = path.dirname(picker.current_dir);
+        if (parent == "") parent = "/";
+        if (parent != picker.current_dir && path.exists(parent) && path.isdir(parent))
+        {
+            picker.current_dir = parent;
+            picker.selected_name = "";
+            picker.selected_path = "";
+            picker.page = 0;
+            picker.scroll = 0;
+        }
+    }
+    if (click_home)
+    {
+        picker.current_dir = ".";
+        picker.selected_name = "";
+        picker.selected_path = "";
+        picker.page = 0;
+        picker.scroll = 0;
+    }
+
+    var raw_entries = fs.list(picker.current_dir);
+    if (raw_entries == nil)
+    {
+        raw_entries = [];
+    }
+
+    var names = [];
+    var is_dirs = [];
+    foreach (entry_name in raw_entries)
+    {
+        var full = path.join(picker.current_dir, entry_name);
+        var is_dir = path.isdir(full);
+        var keep = false;
+        if (is_dir)
+        {
+            keep = true;
+        }
+        else
+        {
+            if (!picker.select_dirs)
+            {
+                if (picker.filter_ext == "")
+                {
+                    keep = true;
+                }
+                else
+                {
+                    keep = path.extname(entry_name) == picker.filter_ext;
+                }
+            }
+        }
+
+        if (picker.select_dirs && !is_dir)
+        {
+            keep = false;
+        }
+
+        if (keep)
+        {
+            names.push(entry_name);
+            is_dirs.push(is_dir);
+        }
+    }
+
+    var item_h = 22;
+    var rows = int(list_h / item_h);
+    if (rows < 1) rows = 1;
+
+    var total_items = len(names);
+    var max_scroll = total_items - rows;
+    if (max_scroll < 0) max_scroll = 0;
+    picker.scroll = int(gui_clamp(picker.scroll, 0, max_scroll));
+
+    if (click_prev) picker.scroll -= rows;
+    if (click_next) picker.scroll += rows;
+
+    var show_scroll = max_scroll > 0;
+    var scroll_bar_w = 0;
+    if (show_scroll) scroll_bar_w = 14;
+    var list_content_w = list_w - scroll_bar_w;
+    if (list_content_w < 20) list_content_w = 20;
+
+    var over_list = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, list_x, list_y, list_content_w, list_h);
+    if (!GUI_WINDOW_MOVING && show_scroll && over_list)
+    {
+        var wheel_y = GUI_MOUSE_WHEEL_Y;
+        if (wheel_y == 0) wheel_y = GUI_MOUSE_WHEEL;
+        if (wheel_y != 0)
+        {
+            picker.scroll -= wheel_y * 3;
+        }
+    }
+
+    var scroll_id = 0;
+    if (!GUI_WINDOW_MOVING && show_scroll)
+    {
+        scroll_id = gui_next_item_id();
+        var track_x = list_x + list_content_w;
+        var track_y = list_y;
+        var track_w = scroll_bar_w;
+        var track_h = list_h;
+        var thumb_h = int((track_h * rows) / total_items);
+        if (thumb_h < 18) thumb_h = 18;
+        if (thumb_h > track_h) thumb_h = track_h;
+        var travel = track_h - thumb_h;
+        var thumb_y = track_y;
+        if (travel > 0 && max_scroll > 0)
+        {
+            thumb_y = track_y + int((picker.scroll * travel) / max_scroll);
+        }
+
+        var over_track = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, track_x, track_y, track_w, track_h);
+        var over_thumb = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, track_x + 1, thumb_y, track_w - 2, thumb_h);
+
+        if (over_thumb && GUI_MOUSE_PRESSED)
+        {
+            GUI_ACTIVE_ITEM = scroll_id;
+        }
+        elif (over_track && GUI_MOUSE_PRESSED)
+        {
+            if (GUI_MOUSE_Y < thumb_y) picker.scroll -= rows;
+            elif (GUI_MOUSE_Y > thumb_y + thumb_h) picker.scroll += rows;
+        }
+
+        if (GUI_ACTIVE_ITEM == scroll_id)
+        {
+            if (!GUI_MOUSE_DOWN)
+            {
+                GUI_ACTIVE_ITEM = 0;
+            }
+            elif (travel > 0)
+            {
+                var pos = GUI_MOUSE_Y - track_y - int(thumb_h * 0.5);
+                picker.scroll = int((pos * max_scroll) / travel);
+            }
+        }
+    }
+
+    picker.scroll = int(gui_clamp(picker.scroll, 0, max_scroll));
+
+    var max_page = 0;
+    if (rows > 0)
+    {
+        max_page = int(max_scroll / rows);
+    }
+    picker.page = 0;
+    if (rows > 0)
+    {
+        picker.page = int(picker.scroll / rows);
+        if (picker.page > max_page) picker.page = max_page;
+    }
+
+    var start_idx = picker.scroll;
+    var end_idx = start_idx + rows;
+    if (end_idx > total_items) end_idx = total_items;
+
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(list_x, list_y, list_w, list_h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(list_x, list_y, list_w, list_h, false);
+
+    if (total_items <= 0)
+    {
+        set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+        draw_text("(empty)", list_x + 8, list_y + 8, 14);
+    }
+    else
+    {
+        var row = 0;
+        var idx = start_idx;
+        while (idx < end_idx)
+        {
+            var name = names[idx];
+            var is_dir = is_dirs[idx];
+            var full_path = path.join(picker.current_dir, name);
+            var row_y = list_y + row * item_h;
+            var hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, list_x + 1, row_y, list_content_w - 2, item_h);
+            var selected = picker.selected_name == name;
+
+            if (selected) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+            elif (hover) set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+            else set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+            draw_rectangle(list_x + 1, row_y, list_content_w - 2, item_h, true);
+
+            if (hover && GUI_MOUSE_PRESSED)
+            {
+                var same_target = picker.last_click_path == full_path;
+                var recent_click = (GUI_FRAME_INDEX - picker.last_click_frame) <= GUI_DOUBLE_CLICK_FRAMES;
+                var is_double_click = same_target && recent_click;
+
+                picker.selected_name = name;
+                picker.selected_path = full_path;
+                if (picker.save_mode && !is_dir)
+                {
+                    picker.save_name = name;
+                }
+
+                picker.last_click_path = full_path;
+                picker.last_click_frame = GUI_FRAME_INDEX;
+
+                if (is_double_click)
+                {
+                    if (is_dir)
+                    {
+                        if (picker.select_dirs)
+                        {
+                            picker.result = GUI_FILE_PICKER_OK;
+                            picker.open = false;
+                        }
+                        else
+                        {
+                            gui_filepicker_enter_dir(picker, full_path);
+                        }
+                    }
+                    elif (!picker.select_dirs)
+                    {
+                        gui_filepicker_confirm(picker);
+                    }
+                }
+            }
+
+            var entry_label = name;
+            if (is_dir)
+            {
+                entry_label = format("[DIR] {}", name);
+            }
+            set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+            draw_text(entry_label, list_x + 6, gui_text_vcenter_y(row_y, item_h, 14), 14);
+
+            row += 1;
+            idx += 1;
+        }
+    }
+
+    if (show_scroll)
+    {
+        var track_x = list_x + list_content_w;
+        var track_y = list_y;
+        var track_w = scroll_bar_w;
+        var track_h = list_h;
+        var thumb_h = int((track_h * rows) / total_items);
+        if (thumb_h < 18) thumb_h = 18;
+        if (thumb_h > track_h) thumb_h = track_h;
+        var travel = track_h - thumb_h;
+        var thumb_y = track_y;
+        if (travel > 0 && max_scroll > 0)
+        {
+            thumb_y = track_y + int((picker.scroll * travel) / max_scroll);
+        }
+
+        set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(track_x, track_y, track_w, track_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(track_x, track_y, track_w, track_h, false);
+
+        var thumb_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, track_x + 1, thumb_y, track_w - 2, thumb_h);
+        if (GUI_ACTIVE_ITEM == scroll_id) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+        elif (thumb_hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(track_x + 1, thumb_y, track_w - 2, thumb_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(track_x + 1, thumb_y, track_w - 2, thumb_h, false);
+    }
+
+    var page_text = format("Page {}/{}  Items: {}", picker.page + 1, max_page + 1, total_items);
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(page_text, x + 12, y + h - footer_h - 2, 13);
+
+    var selected_text = "(no selection)";
+    if (picker.selected_path != "")
+    {
+        selected_text = picker.selected_path;
+    }
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(selected_text, x + 12, y + h - 40, 13);
+
+    if (picker.save_mode)
+    {
+        var save_preview = gui_filepicker_apply_filter(picker.save_name, picker.filter_ext);
+        var save_full = path.join(picker.current_dir, save_preview);
+        set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+        draw_text(format("Save as: {}", save_full), x + 12, y + h - 56, 13);
+    }
+
+    var btn_w = 90;
+    var btn_h = 28;
+    var btn_gap = 6;
+    var btn_y = y + h - btn_h - 8;
+    var cancel_x = x + w - btn_w - 10;
+    var ok_x = cancel_x - btn_w - btn_gap;
+    var open_x = ok_x - btn_w - btn_gap;
+
+    var click_cancel = gui_modal_button(cancel_x, btn_y, btn_w, btn_h, "Cancel");
+    var click_open = gui_modal_button(open_x, btn_y, btn_w, btn_h, "Open Dir");
+    var ok_label = "Select";
+    if (!picker.select_dirs) ok_label = "Open";
+    if (picker.save_mode) ok_label = "Save";
+    var click_ok = gui_modal_button(ok_x, btn_y, btn_w, btn_h, ok_label);
+
+    if (click_cancel)
+    {
+        picker.result = GUI_FILE_PICKER_CANCEL;
+        picker.open = false;
+    }
+
+    if (click_open && picker.selected_path != "" && path.isdir(picker.selected_path))
+    {
+        gui_filepicker_enter_dir(picker, picker.selected_path);
+    }
+
+    if (click_ok)
+    {
+        gui_filepicker_confirm(picker);
+    }
+
+    return true;
+}
+
+def gui_layout_calc_rect()
+{
+    var base_x = GUI_LAYOUT_BASE_X + GUI_LAYOUT_MARGIN_LEFT;
+    var base_w = GUI_LAYOUT_BASE_W - GUI_LAYOUT_MARGIN_LEFT - GUI_LAYOUT_MARGIN_RIGHT;
+    if (base_w < 8) base_w = 8;
+
+    GUI_WIDGET_X = base_x;
+    GUI_WIDGET_Y = GUI_LAYOUT_Y;
+    GUI_WIDGET_W = base_w;
+    GUI_WIDGET_H = GUI_ROW_H;
+
+    if (GUI_LAYOUT_MODE == 1)
+    {
+        var gaps = GUI_SPACING * (GUI_LAYOUT_COLS - 1);
+        GUI_WIDGET_W = int((base_w - gaps) / GUI_LAYOUT_COLS);
+        if (GUI_WIDGET_W < 8) GUI_WIDGET_W = 8;
+        GUI_WIDGET_X = base_x + GUI_LAYOUT_COL_INDEX * (GUI_WIDGET_W + GUI_SPACING);
+    }
+}
+
+def gui_layout_advance(h)
+{
+    if (GUI_LAYOUT_MODE == 1)
+    {
+        GUI_LAYOUT_COL_INDEX += 1;
+        if (GUI_LAYOUT_COL_INDEX >= GUI_LAYOUT_COLS)
+        {
+            GUI_LAYOUT_COL_INDEX = 0;
+            GUI_LAYOUT_Y += h + GUI_SPACING;
+        }
+    }
+    else
+    {
+        GUI_LAYOUT_Y += h + GUI_SPACING;
+    }
+}
+
+def gui_layout_new_line()
+{
+    if (GUI_LAYOUT_MODE == 1 && GUI_LAYOUT_COL_INDEX != 0)
+    {
+        GUI_LAYOUT_COL_INDEX = 0;
+        GUI_LAYOUT_Y += GUI_ROW_H + GUI_SPACING;
+    }
+}
+
+def gui_layout_reset(_row_h, _spacing)
+{
+    gui_layout_new_line();
+    GUI_ROW_H = _row_h;
+    GUI_SPACING = _spacing;
+    GUI_LAYOUT_MODE = 0;
+    GUI_LAYOUT_COLS = 1;
+    GUI_LAYOUT_COL_INDEX = 0;
+    GUI_LAYOUT_X = GUI_LAYOUT_BASE_X;
+    GUI_LAYOUT_W = GUI_LAYOUT_BASE_W;
+}
+
+def gui_layout_columns(cols, row_h, spacing)
+{
+    gui_layout_new_line();
+    if (cols < 1) cols = 1;
+    GUI_ROW_H = row_h;
+    GUI_SPACING = spacing;
+    GUI_LAYOUT_MODE = 1;
+    GUI_LAYOUT_COLS = cols;
+    GUI_LAYOUT_COL_INDEX = 0;
+    GUI_LAYOUT_X = GUI_LAYOUT_BASE_X;
+    GUI_LAYOUT_W = GUI_LAYOUT_BASE_W;
+}
+
+def gui_layout_set_spacing(spacing)
+{
+    if (spacing < 0) spacing = 0;
+    GUI_SPACING = int(spacing);
+}
+
+def gui_layout_set_margins(left, right)
+{
+    if (left < 0) left = 0;
+    if (right < 0) right = 0;
+    GUI_LAYOUT_MARGIN_LEFT = int(left);
+    GUI_LAYOUT_MARGIN_RIGHT = int(right);
+}
+
+def gui_layout_set_margin_all(margin)
+{
+    gui_layout_set_margins(margin, margin);
+}
+
+def gui_layout_clear_margins()
+{
+    GUI_LAYOUT_MARGIN_LEFT = 0;
+    GUI_LAYOUT_MARGIN_RIGHT = 0;
+}
+
+def gui_scroll_begin_mode(state, view_h, content_w, content_h, mode)
+{
+    if (GUI_CURRENT_WINDOW == nil) return false;
+    if (state == nil) return false;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = int(view_h);
+    if (h < 24) h = 24;
+    if (w < 24) w = 24;
+
+    if (content_w < 1) content_w = 1;
+    if (content_h < 1) content_h = 1;
+
+    var bar = GUI_SCROLLBAR_SIZE;
+    var inner_w = w;
+    var inner_h = h;
+
+    var allow_v = (mode == GUI_SCROLL_AUTO || mode == GUI_SCROLL_VERTICAL || mode == GUI_SCROLL_BOTH);
+    var allow_h = (mode == GUI_SCROLL_AUTO || mode == GUI_SCROLL_HORIZONTAL || mode == GUI_SCROLL_BOTH);
+
+    var need_v = false;
+    var need_h = false;
+
+    var changed = true;
+    while (changed)
+    {
+        changed = false;
+
+        if (!need_v && allow_v && content_h > inner_h)
+        {
+            need_v = true;
+            inner_w -= bar;
+            changed = true;
+        }
+
+        if (!need_h && allow_h && content_w > inner_w)
+        {
+            need_h = true;
+            inner_h -= bar;
+            changed = true;
+        }
+    }
+
+    if (inner_w < 8) inner_w = 8;
+    if (inner_h < 8) inner_h = 8;
+
+    var max_x = content_w - inner_w;
+    var max_y = content_h - inner_h;
+    if (max_x < 0) max_x = 0;
+    if (max_y < 0) max_y = 0;
+    state.x = gui_clamp(state.x, 0, max_x);
+    state.y = gui_clamp(state.y, 0, max_y);
+
+    var id_v = gui_next_item_id();
+    var id_h = gui_next_item_id();
+    var over_view = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, inner_w, inner_h);
+    var wheel_step_y = GUI_ROW_H + GUI_SPACING;
+    if (wheel_step_y < 12) wheel_step_y = 12;
+    var wheel_step_x = wheel_step_y * 2;
+
+    if (!GUI_WINDOW_MOVING)
+    {
+        if (over_view && (GUI_MOUSE_WHEEL != 0 || GUI_MOUSE_WHEEL_X != 0 || GUI_MOUSE_WHEEL_Y != 0))
+        {
+            var wheel_y = GUI_MOUSE_WHEEL_Y;
+            if (wheel_y == 0) wheel_y = GUI_MOUSE_WHEEL;
+            if (need_v && max_y > 0 && wheel_y != 0) state.y -= wheel_y * wheel_step_y;
+            if (need_h && max_x > 0 && GUI_MOUSE_WHEEL_X != 0) state.x += GUI_MOUSE_WHEEL_X * wheel_step_x;
+            elif (need_h && max_x > 0 && !need_v && wheel_y != 0) state.x -= wheel_y * wheel_step_x;
+        }
+
+        if (need_v && max_y > 0)
+        {
+            var tx = x + inner_w;
+            var ty = y;
+            var tw = bar;
+            var th = inner_h;
+            var thumb_h = int(th * (inner_h / content_h));
+            if (thumb_h < 18) thumb_h = 18;
+            if (thumb_h > th) thumb_h = th;
+            var travel = th - thumb_h;
+            var thumb_y = ty;
+            if (travel > 0)
+            {
+                thumb_y = ty + int((state.y / max_y) * travel);
+            }
+
+            var over_track = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, tx, ty, tw, th);
+            var over_thumb = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, tx + 1, thumb_y, tw - 2, thumb_h);
+
+            if (over_thumb && GUI_MOUSE_PRESSED)
+            {
+                GUI_ACTIVE_ITEM = id_v;
+            }
+            elif (over_track && GUI_MOUSE_PRESSED)
+            {
+                if (GUI_MOUSE_Y < thumb_y) state.y -= inner_h;
+                elif (GUI_MOUSE_Y > thumb_y + thumb_h) state.y += inner_h;
+            }
+
+            if (GUI_ACTIVE_ITEM == id_v)
+            {
+                if (!GUI_MOUSE_DOWN)
+                {
+                    GUI_ACTIVE_ITEM = 0;
+                }
+                elif (travel > 0)
+                {
+                    var pos = GUI_MOUSE_Y - ty - thumb_h * 0.5;
+                    var t = gui_clamp(pos / travel, 0, 1);
+                    state.y = t * max_y;
+                }
+            }
+        }
+
+        if (need_h && max_x > 0)
+        {
+            var tx = x;
+            var ty = y + inner_h;
+            var tw = inner_w;
+            var th = bar;
+            var thumb_w = int(tw * (inner_w / content_w));
+            if (thumb_w < 18) thumb_w = 18;
+            if (thumb_w > tw) thumb_w = tw;
+            var travel = tw - thumb_w;
+            var thumb_x = tx;
+            if (travel > 0)
+            {
+                thumb_x = tx + int((state.x / max_x) * travel);
+            }
+
+            var over_track = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, tx, ty, tw, th);
+            var over_thumb = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, thumb_x, ty + 1, thumb_w, th - 2);
+
+            if (over_thumb && GUI_MOUSE_PRESSED)
+            {
+                GUI_ACTIVE_ITEM = id_h;
+            }
+            elif (over_track && GUI_MOUSE_PRESSED)
+            {
+                if (GUI_MOUSE_X < thumb_x) state.x -= inner_w;
+                elif (GUI_MOUSE_X > thumb_x + thumb_w) state.x += inner_w;
+            }
+
+            if (GUI_ACTIVE_ITEM == id_h)
+            {
+                if (!GUI_MOUSE_DOWN)
+                {
+                    GUI_ACTIVE_ITEM = 0;
+                }
+                elif (travel > 0)
+                {
+                    var pos = GUI_MOUSE_X - tx - thumb_w * 0.5;
+                    var t = gui_clamp(pos / travel, 0, 1);
+                    state.x = t * max_x;
+                }
+            }
+        }
+    }
+
+    state.x = gui_clamp(state.x, 0, max_x);
+    state.y = gui_clamp(state.y, 0, max_y);
+
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+
+    if (need_v)
+    {
+        var tx = x + inner_w;
+        var ty = y;
+        var tw = bar;
+        var th = inner_h;
+        var thumb_h = int(th * (inner_h / content_h));
+        if (thumb_h < 18) thumb_h = 18;
+        if (thumb_h > th) thumb_h = th;
+        var travel = th - thumb_h;
+        var thumb_y = ty;
+        if (travel > 0 && max_y > 0)
+        {
+            thumb_y = ty + int((state.y / max_y) * travel);
+        }
+
+        set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(tx, ty, tw, th, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(tx, ty, tw, th, false);
+
+        var thumb_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, tx + 1, thumb_y, tw - 2, thumb_h);
+        if (GUI_ACTIVE_ITEM == id_v) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+        elif (thumb_hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(tx + 1, thumb_y, tw - 2, thumb_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(tx + 1, thumb_y, tw - 2, thumb_h, false);
+    }
+
+    if (need_h)
+    {
+        var tx = x;
+        var ty = y + inner_h;
+        var tw = inner_w;
+        var th = bar;
+        var thumb_w = int(tw * (inner_w / content_w));
+        if (thumb_w < 18) thumb_w = 18;
+        if (thumb_w > tw) thumb_w = tw;
+        var travel = tw - thumb_w;
+        var thumb_x = tx;
+        if (travel > 0 && max_x > 0)
+        {
+            thumb_x = tx + int((state.x / max_x) * travel);
+        }
+
+        set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(tx, ty, tw, th, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(tx, ty, tw, th, false);
+
+        var thumb_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, thumb_x, ty + 1, thumb_w, th - 2);
+        if (GUI_ACTIVE_ITEM == id_h) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+        elif (thumb_hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(thumb_x, ty + 1, thumb_w, th - 2, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(thumb_x, ty + 1, thumb_w, th - 2, false);
+    }
+
+    gui_layout_advance(h);
+
+    var ctx = GuiScrollContext();
+    ctx.layout_x = GUI_LAYOUT_X;
+    ctx.layout_y = GUI_LAYOUT_Y;
+    ctx.layout_w = GUI_LAYOUT_W;
+    ctx.layout_base_x = GUI_LAYOUT_BASE_X;
+    ctx.layout_base_w = GUI_LAYOUT_BASE_W;
+    ctx.layout_margin_left = GUI_LAYOUT_MARGIN_LEFT;
+    ctx.layout_margin_right = GUI_LAYOUT_MARGIN_RIGHT;
+    ctx.layout_mode = GUI_LAYOUT_MODE;
+    ctx.layout_cols = GUI_LAYOUT_COLS;
+    ctx.layout_col_index = GUI_LAYOUT_COL_INDEX;
+    ctx.row_h = GUI_ROW_H;
+    ctx.spacing = GUI_SPACING;
+    ctx.had_clip = GUI_CLIP_ACTIVE;
+    ctx.clip_x = GUI_CLIP_X;
+    ctx.clip_y = GUI_CLIP_Y;
+    ctx.clip_w = GUI_CLIP_W;
+    ctx.clip_h = GUI_CLIP_H;
+    GUI_SCROLL_CONTEXTS.push(ctx);
+
+    if (GUI_CLIP_ACTIVE)
+    {
+        clip_end();
+        GUI_CLIP_ACTIVE = false;
+        GUI_CLIP_X = 0;
+        GUI_CLIP_Y = 0;
+        GUI_CLIP_W = 0;
+        GUI_CLIP_H = 0;
+    }
+    clip_begin(x + 1, y + 1, inner_w - 2, inner_h - 2);
+    GUI_CLIP_ACTIVE = true;
+    GUI_CLIP_X = x + 1;
+    GUI_CLIP_Y = y + 1;
+    GUI_CLIP_W = inner_w - 2;
+    GUI_CLIP_H = inner_h - 2;
+
+    GUI_LAYOUT_BASE_X = x - state.x + 1;
+    GUI_LAYOUT_BASE_W = content_w;
+    GUI_LAYOUT_X = GUI_LAYOUT_BASE_X;
+    GUI_LAYOUT_W = GUI_LAYOUT_BASE_W;
+    GUI_LAYOUT_Y = y - state.y + 1;
+    GUI_LAYOUT_MODE = 0;
+    GUI_LAYOUT_COLS = 1;
+    GUI_LAYOUT_COL_INDEX = 0;
+    return true;
+}
+
+def gui_scroll_begin(state, view_h, content_w, content_h)
+{
+    return gui_scroll_begin_mode(state, view_h, content_w, content_h, GUI_SCROLL_AUTO);
+}
+
+def gui_scroll_end()
+{
+    if (len(GUI_SCROLL_CONTEXTS) <= 0) return;
+
+    var ctx = GUI_SCROLL_CONTEXTS.pop();
+
+    if (GUI_CLIP_ACTIVE)
+    {
+        clip_end();
+        GUI_CLIP_ACTIVE = false;
+        GUI_CLIP_X = 0;
+        GUI_CLIP_Y = 0;
+        GUI_CLIP_W = 0;
+        GUI_CLIP_H = 0;
+    }
+
+    if (ctx.had_clip)
+    {
+        var clip_x = ctx.clip_x;
+        var clip_y = ctx.clip_y;
+        var clip_w = ctx.clip_w;
+        var clip_h = ctx.clip_h;
+        if (clip_w > 0 && clip_h > 0)
+        {
+            clip_begin(clip_x, clip_y, clip_w, clip_h);
+            GUI_CLIP_ACTIVE = true;
+            GUI_CLIP_X = clip_x;
+            GUI_CLIP_Y = clip_y;
+            GUI_CLIP_W = clip_w;
+            GUI_CLIP_H = clip_h;
+        }
+    }
+
+    GUI_LAYOUT_X = ctx.layout_x;
+    GUI_LAYOUT_Y = ctx.layout_y;
+    GUI_LAYOUT_W = ctx.layout_w;
+    GUI_LAYOUT_BASE_X = ctx.layout_base_x;
+    GUI_LAYOUT_BASE_W = ctx.layout_base_w;
+    GUI_LAYOUT_MARGIN_LEFT = ctx.layout_margin_left;
+    GUI_LAYOUT_MARGIN_RIGHT = ctx.layout_margin_right;
+    GUI_LAYOUT_MODE = ctx.layout_mode;
+    GUI_LAYOUT_COLS = ctx.layout_cols;
+    GUI_LAYOUT_COL_INDEX = ctx.layout_col_index;
+    GUI_ROW_H = ctx.row_h;
+    GUI_SPACING = ctx.spacing;
+}
+
+def gui_set_resizable(win, enabled)
+{
+    win.resizable = enabled;
+    if (!enabled)
+    {
+        win.resizing = false;
+    }
+}
+
+def gui_set_min_size(win, min_w, min_h)
+{
+    win.min_w = min_w;
+    win.min_h = min_h;
+}
+
+def gui_set_movable(win, enabled)
+{
+    win.movable = enabled;
+    if (!enabled)
+    {
+        win.dragging = false;
+    }
+}
+
+def gui_set_title_buttons(win, show_min_button, show_close_button)
+{
+    win.show_min_button = show_min_button;
+    win.show_close_button = show_close_button;
+    if (!show_min_button)
+    {
+        win.minimized = false;
+    }
+}
+
+def gui_window_begin(win)
+{
+    if (!win.visible)
+    {
+        return false;
+    }
+
+    GUI_WINDOW_ORDER_FRAME.push(win.id);
+
+    var allow_input = true;
+    if (!win.dragging && !win.resizing && GUI_INPUT_WINDOW_ID != 0 && GUI_INPUT_WINDOW_ID != win.id)
+    {
+        allow_input = false;
+    }
+    GUI_INPUT_BLOCK_STACK.push(GUI_INPUT_BLOCKED);
+    GUI_INPUT_BLOCKED = !allow_input;
+
+    var title_x = win.x;
+    var title_y = win.y;
+    var title_w = win.w;
+    var title_h = GUI_TITLE_H;
+
+    var btn_size = GUI_TITLE_H - 6;
+    var btn_y = win.y + 3;
+    var close_x = win.x + win.w - btn_size - 4;
+    var min_x = close_x - btn_size - 4;
+    if (!win.show_close_button && win.show_min_button)
+    {
+        min_x = close_x;
+    }
+    if (!win.show_min_button)
+    {
+        win.minimized = false;
+    }
+
+    var over_title = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, title_x, title_y, title_w, title_h);
+    var over_close = false;
+    if (win.show_close_button)
+    {
+        over_close = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, close_x, btn_y, btn_size, btn_size);
+    }
+    var over_min = false;
+    if (win.show_min_button)
+    {
+        over_min = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, min_x, btn_y, btn_size, btn_size);
+    }
+    var resize_x = win.x + win.w - GUI_RESIZE_HANDLE;
+    var resize_y = win.y + win.h - GUI_RESIZE_HANDLE;
+    var over_resize = false;
+    if (win.resizable && !win.minimized)
+    {
+        over_resize = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, resize_x, resize_y, GUI_RESIZE_HANDLE, GUI_RESIZE_HANDLE);
+    }
+
+    if (GUI_MOUSE_PRESSED && over_close)
+    {
+        win.visible = false;
+        win.dragging = false;
+        win.resizing = false;
+        if (len(GUI_INPUT_BLOCK_STACK) > 0) GUI_INPUT_BLOCKED = GUI_INPUT_BLOCK_STACK.pop();
+        return false;
+    }
+
+    if (GUI_MOUSE_PRESSED && over_min)
+    {
+        win.minimized = !win.minimized;
+        if (win.minimized)
+        {
+            win.resizing = false;
+        }
+    }
+
+    if (GUI_MOUSE_PRESSED && over_resize)
+    {
+        win.resizing = true;
+        win.dragging = false;
+        GUI_CAPTURE_MOVE = true;
+    }
+
+    if (GUI_MOUSE_PRESSED && win.movable && over_title && !over_close && !over_min && !over_resize)
+    {
+        win.dragging = true;
+        win.resizing = false;
+        win.drag_off_x = GUI_MOUSE_X - win.x;
+        win.drag_off_y = GUI_MOUSE_Y - win.y;
+        GUI_CAPTURE_MOVE = true;
+    }
+
+    if (!GUI_MOUSE_DOWN)
+    {
+        win.dragging = false;
+        win.resizing = false;
+    }
+
+    if (!win.movable)
+    {
+        win.dragging = false;
+    }
+
+    if (win.dragging)
+    {
+        win.x = GUI_MOUSE_X - win.drag_off_x;
+        win.y = GUI_MOUSE_Y - win.drag_off_y;
+        GUI_WINDOW_MOVING = true;
+    }
+
+    if (win.resizing)
+    {
+        var new_w = GUI_MOUSE_X - win.x;
+        var new_h = GUI_MOUSE_Y - win.y;
+        if (new_w < win.min_w) new_w = win.min_w;
+        if (new_h < win.min_h) new_h = win.min_h;
+        win.w = new_w;
+        win.h = new_h;
+        GUI_WINDOW_MOVING = true;
+    }
+
+    // Recompute control geometry after drag/resize to avoid one-frame visual lag.
+    btn_y = win.y + 3;
+    close_x = win.x + win.w - btn_size - 4;
+    min_x = close_x - btn_size - 4;
+    if (!win.show_close_button && win.show_min_button)
+    {
+        min_x = close_x;
+    }
+    resize_x = win.x + win.w - GUI_RESIZE_HANDLE;
+    resize_y = win.y + win.h - GUI_RESIZE_HANDLE;
+
+    var draw_over_close = false;
+    if (win.show_close_button)
+    {
+        draw_over_close = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, close_x, btn_y, btn_size, btn_size);
+    }
+    var draw_over_min = false;
+    if (win.show_min_button)
+    {
+        draw_over_min = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, min_x, btn_y, btn_size, btn_size);
+    }
+    var draw_over_resize = false;
+    if (win.resizable && !win.minimized)
+    {
+        draw_over_resize = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, resize_x, resize_y, GUI_RESIZE_HANDLE, GUI_RESIZE_HANDLE);
+    }
+
+    set_draw_screen(true);
+
+    // Body + border
+    if (!win.minimized)
+    {
+        set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+        draw_rectangle(win.x, win.y, win.w, win.h, true);
+        set_color(GUI_THEME.window_border_r, GUI_THEME.window_border_g, GUI_THEME.window_border_b);
+        draw_rectangle(win.x, win.y, win.w, win.h, false);
+    }
+
+    // Title bar
+    set_color(GUI_THEME.title_bg_r, GUI_THEME.title_bg_g, GUI_THEME.title_bg_b);
+    draw_rectangle(win.x, win.y, win.w, GUI_TITLE_H, true);
+    set_color(GUI_THEME.title_border_r, GUI_THEME.title_border_g, GUI_THEME.title_border_b);
+    draw_rectangle(win.x, win.y, win.w, GUI_TITLE_H, false);
+    set_color(GUI_THEME.title_text_r, GUI_THEME.title_text_g, GUI_THEME.title_text_b);
+    draw_text(win.title, win.x + 8, win.y + 4, 16);
+
+    // Min button
+    if (win.show_min_button)
+    {
+        if (draw_over_min) set_color(GUI_THEME.min_btn_hover_r, GUI_THEME.min_btn_hover_g, GUI_THEME.min_btn_hover_b);
+        else set_color(GUI_THEME.min_btn_r, GUI_THEME.min_btn_g, GUI_THEME.min_btn_b);
+        draw_rectangle(min_x, btn_y, btn_size, btn_size, true);
+        set_color(GUI_THEME.min_text_r, GUI_THEME.min_text_g, GUI_THEME.min_text_b);
+        draw_text(GUI_ICON_MIN, min_x + 6, btn_y - 2, 18);
+    }
+
+    // Close button
+    if (win.show_close_button)
+    {
+        if (draw_over_close) set_color(GUI_THEME.close_btn_hover_r, GUI_THEME.close_btn_hover_g, GUI_THEME.close_btn_hover_b);
+        else set_color(GUI_THEME.close_btn_r, GUI_THEME.close_btn_g, GUI_THEME.close_btn_b);
+        draw_rectangle(close_x, btn_y, btn_size, btn_size, true);
+        set_color(GUI_THEME.close_text_r, GUI_THEME.close_text_g, GUI_THEME.close_text_b);
+        draw_text(GUI_ICON_CLOSE, close_x + 5, btn_y - 1, 16);
+    }
+
+    // Resize handle
+    if (win.resizable && !win.minimized)
+    {
+        if (draw_over_resize) set_color(GUI_THEME.resize_hover_r, GUI_THEME.resize_hover_g, GUI_THEME.resize_hover_b);
+        else set_color(GUI_THEME.resize_r, GUI_THEME.resize_g, GUI_THEME.resize_b);
+        draw_rectangle(win.x + win.w - 12, win.y + win.h - 12, 10, 10, false);
+    }
+
+    if (win.minimized)
+    {
+        GUI_CURRENT_WINDOW = nil;
+        if (len(GUI_INPUT_BLOCK_STACK) > 0) GUI_INPUT_BLOCKED = GUI_INPUT_BLOCK_STACK.pop();
+        return false;
+    }
+
+    GUI_CURRENT_WINDOW = win;
+    GUI_LAYOUT_X = win.x + GUI_PADDING;
+    GUI_LAYOUT_Y = win.y + GUI_TITLE_H + GUI_PADDING;
+    GUI_LAYOUT_W = win.w - GUI_PADDING * 2;
+    GUI_LAYOUT_BASE_X = GUI_LAYOUT_X;
+    GUI_LAYOUT_BASE_W = GUI_LAYOUT_W;
+    GUI_LAYOUT_MARGIN_LEFT = 0;
+    GUI_LAYOUT_MARGIN_RIGHT = 0;
+    GUI_LAYOUT_MODE = 0;
+    GUI_LAYOUT_COLS = 1;
+    GUI_LAYOUT_COL_INDEX = 0;
+
+    var clip_x = win.x + GUI_PADDING;
+    var clip_y = win.y + GUI_TITLE_H + GUI_PADDING;
+    var clip_w = win.w - GUI_PADDING * 2;
+    var clip_h = win.h - GUI_TITLE_H - GUI_PADDING * 2;
+    if (clip_w > 0 && clip_h > 0)
+    {
+        clip_begin(clip_x, clip_y, clip_w, clip_h);
+        GUI_CLIP_ACTIVE = true;
+        GUI_CLIP_X = clip_x;
+        GUI_CLIP_Y = clip_y;
+        GUI_CLIP_W = clip_w;
+        GUI_CLIP_H = clip_h;
+    }
+
+    return true;
+}
+
+def gui_draw_combo_popup_for_window(window_id)
+{
+    if (!GUI_COMBO_POPUP_ACTIVE) return;
+    if (GUI_COMBO_POPUP_WINDOW_ID != window_id) return;
+    if (GUI_COMBO_POPUP_COUNT <= 0) return;
+
+    var x = GUI_COMBO_POPUP_X;
+    var y = GUI_COMBO_POPUP_Y;
+    var w = GUI_COMBO_POPUP_W;
+    var item_h = GUI_COMBO_POPUP_ITEM_H;
+    var count = GUI_COMBO_POPUP_COUNT;
+    var item_align = GUI_COMBO_POPUP_ALIGN;
+    var selected = GUI_COMBO_POPUP_SELECTED;
+    var font_size = 14;
+
+    var i = 0;
+    while (i < count)
+    {
+        var iy = y + i * item_h;
+        var item_hover = false;
+        if (!GUI_WINDOW_MOVING)
+        {
+            item_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, iy, w, item_h);
+        }
+
+        if (selected == i) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+        elif (item_hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(x, iy, w, item_h, true);
+
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(x, iy, w, item_h, false);
+
+        var item_text = format("{}", GUI_COMBO_POPUP_OPTIONS[i]);
+        var item_text_y = gui_text_vcenter_y(iy, item_h, font_size);
+        var item_text_x = gui_text_align_x(x, w, 6, item_text, font_size, item_align);
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        draw_text(item_text, item_text_x, item_text_y, font_size);
+        i += 1;
+    }
+}
+
+def gui_window_end()
+{
+    if (GUI_CURRENT_WINDOW != nil)
+    {
+        gui_draw_combo_popup_for_window(GUI_CURRENT_WINDOW.id);
+    }
+
+    if (GUI_CLIP_ACTIVE)
+    {
+        clip_end();
+        GUI_CLIP_ACTIVE = false;
+        GUI_CLIP_X = 0;
+        GUI_CLIP_Y = 0;
+        GUI_CLIP_W = 0;
+        GUI_CLIP_H = 0;
+    }
+    GUI_CURRENT_WINDOW = nil;
+    if (len(GUI_INPUT_BLOCK_STACK) > 0) GUI_INPUT_BLOCKED = GUI_INPUT_BLOCK_STACK.pop();
+    else GUI_INPUT_BLOCKED = false;
+}
+
+def gui_label(text)
+{
+    if (GUI_CURRENT_WINDOW == nil) return;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return;
+    }
+
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(text, x, y + 3, GUI_FONT_SIZE - 2);
+
+    gui_layout_advance(h);
+}
+
+def gui_button(text)
+{
+    if (GUI_CURRENT_WINDOW == nil) return false;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return false;
+    }
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+    var pressed = hover && GUI_MOUSE_DOWN;
+    var clicked = hover && GUI_MOUSE_PRESSED;
+
+    if (pressed) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    elif (hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    draw_rectangle(x, y, w, h, true);
+
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    var tw = get_text_width(text, 16);
+    draw_text(text, x + (w - tw) * 0.5, y + 4, 16);
+
+    gui_layout_advance(h);
+    return clicked;
+}
+
+def gui_toggle(text, value)
+{
+    if (GUI_CURRENT_WINDOW == nil) return value;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return value;
+    }
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+    if (hover && GUI_MOUSE_PRESSED)
+    {
+        value = !value;
+    }
+
+    var track_w = 38;
+    var track_h = h - 8;
+    if (track_h < 14) track_h = 14;
+    var track_x = x;
+    var track_y = y + int((h - track_h) * 0.5);
+    var knob = track_h - 4;
+    var knob_x = track_x + 2;
+    if (value)
+    {
+        knob_x = track_x + track_w - knob - 2;
+    }
+    var knob_y = track_y + 2;
+
+    if (value) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    else set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(track_x, track_y, track_w, track_h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(track_x, track_y, track_w, track_h, false);
+
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_rectangle(knob_x, knob_y, knob, knob, true);
+
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(text, x + track_w + 8, y + 3, GUI_FONT_SIZE - 2);
+
+    gui_layout_advance(h);
+    return value;
+}
+
+def gui_checkbox_align(text, value, item_align)
+{
+    if (GUI_CURRENT_WINDOW == nil) return value;
+    if (item_align < GUI_ALIGN_LEFT || item_align > GUI_ALIGN_RIGHT) item_align = GUI_ALIGN_LEFT;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    var font_size = GUI_FONT_SIZE - 2;
+    if (font_size < 10) font_size = 10;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return value;
+    }
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+    if (hover && GUI_MOUSE_PRESSED)
+    {
+        value = !value;
+    }
+
+    var box = h - 8;
+    if (box < 12) box = 12;
+    var bx = x;
+    var by = y + int((h - box) * 0.5);
+
+    if (value) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    elif (hover) set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    else set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(bx, by, box, box, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(bx, by, box, box, false);
+
+    if (value)
+    {
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        var mark_size = box - 2;
+        if (mark_size > 16) mark_size = 16;
+        if (mark_size < 10) mark_size = 10;
+        var mark_x = bx + int((box - get_text_width("x", mark_size)) * 0.5);
+        var mark_y = gui_text_vcenter_y(by, box, mark_size);
+        draw_text("x", mark_x, mark_y, mark_size);
+    }
+
+    var label_x = x + box + 8;
+    var label_w = w - (box + 8);
+    if (label_w < 8) label_w = 8;
+    var text_y = gui_text_vcenter_y(y, h, font_size);
+    var text_x = gui_text_align_x(label_x, label_w, 0, text, font_size, item_align);
+
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(text, text_x, text_y, font_size);
+
+    gui_layout_advance(h);
+    return value;
+}
+
+def gui_checkbox(text, value)
+{
+    return gui_checkbox_align(text, value, GUI_ALIGN_LEFT);
+}
+
+def gui_checkitem_align(text, value, item_align)
+{
+    return gui_checkbox_align(text, value, item_align);
+}
+
+def gui_checkitem(text, value)
+{
+    return gui_checkbox_align(text, value, GUI_ALIGN_LEFT);
+}
+
+def gui_separator()
+{
+    if (GUI_CURRENT_WINDOW == nil) return;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return;
+    }
+    var ly = y + int(h * 0.5);
+
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_line_ex(x, ly, x + w, ly, 1);
+
+    gui_layout_advance(h);
+}
+
+def gui_tabs_align(tabs, active, tab_align)
+{
+    if (GUI_CURRENT_WINDOW == nil) return active;
+    if (tab_align < GUI_ALIGN_LEFT || tab_align > GUI_ALIGN_RIGHT) tab_align = GUI_ALIGN_CENTER;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    var count = len(tabs);
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return active;
+    }
+
+    if (count <= 0)
+    {
+        gui_layout_advance(h);
+        return active;
+    }
+
+    // Tab strip background to visually group tab buttons.
+    var strip_y = y + int(h * 0.5);
+    var strip_h = h - int(h * 0.5) + 1;
+    if (strip_h < 8) strip_h = 8;
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(x, strip_y, w, strip_h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, strip_y, w, strip_h, false);
+
+    var tab_min_w = 72;
+    var tab_max_w = 180;
+    var gap = GUI_SPACING;
+    if (gap < 2) gap = 2;
+
+    var widths = [];
+    var used_w = 0;
+    var i = 0;
+    while (i < count)
+    {
+        var tab_text = format("{}", tabs[i]);
+        var tw = get_text_width(tab_text, 14) + 24;
+        if (tw < tab_min_w) tw = tab_min_w;
+        if (tw > tab_max_w) tw = tab_max_w;
+        widths.push(tw);
+        used_w += tw;
+        i += 1;
+    }
+
+    var total_w = used_w + gap * (count - 1);
+    while (total_w > w && gap > 1)
+    {
+        gap -= 1;
+        total_w = used_w + gap * (count - 1);
+    }
+
+    if (total_w > w)
+    {
+        var overflow = total_w - w;
+        while (overflow > 0)
+        {
+            var changed = false;
+            i = 0;
+            while (i < count && overflow > 0)
+            {
+                if (widths[i] > tab_min_w)
+                {
+                    widths[i] = widths[i] - 1;
+                    overflow -= 1;
+                    changed = true;
+                }
+                i += 1;
+            }
+            if (!changed) break;
+        }
+
+        used_w = 0;
+        i = 0;
+        while (i < count)
+        {
+            used_w += widths[i];
+            i += 1;
+        }
+        total_w = used_w + gap * (count - 1);
+    }
+
+    if (total_w > w)
+    {
+        var even_w = int((w - gap * (count - 1)) / count);
+        if (even_w < 20) even_w = 20;
+        used_w = 0;
+        i = 0;
+        while (i < count)
+        {
+            widths[i] = even_w;
+            used_w += even_w;
+            i += 1;
+        }
+        total_w = used_w + gap * (count - 1);
+    }
+
+    var start_x = x;
+    if (tab_align == GUI_ALIGN_CENTER)
+    {
+        start_x = x + int((w - total_w) * 0.5);
+    }
+    elif (tab_align == GUI_ALIGN_RIGHT)
+    {
+        start_x = x + (w - total_w);
+    }
+    if (start_x < x) start_x = x;
+
+    i = 0;
+    var tx = start_x;
+    var tab_drop = 4;
+    while (i < count)
+    {
+        var tab_y = y;
+        var tab_h = h;
+        if (active != i)
+        {
+            tab_y = y + tab_drop;
+            tab_h = h - tab_drop;
+            if (tab_h < 12) tab_h = 12;
+        }
+
+        var hover = false;
+        if (!GUI_WINDOW_MOVING)
+        {
+            hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, tx, tab_y, widths[i], tab_h);
+        }
+        if (hover && GUI_MOUSE_PRESSED)
+        {
+            active = i;
+        }
+
+        if (active == i) set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+        elif (hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(tx, tab_y, widths[i], tab_h, true);
+
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(tx, tab_y, widths[i], tab_h, false);
+
+        // Active tab merges into content panel by hiding the bottom edge.
+        if (active == i)
+        {
+            set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+            draw_line_ex(tx + 1, tab_y + tab_h - 1, tx + widths[i] - 2, tab_y + tab_h - 1, 2);
+        }
+
+        var tab_text = format("{}", tabs[i]);
+        var tw = get_text_width(tab_text, 14);
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        draw_text(tab_text, tx + int((widths[i] - tw) * 0.5), gui_text_vcenter_y(tab_y, tab_h, 14), 14);
+        tx += widths[i] + gap;
+        i += 1;
+    }
+
+    gui_layout_advance(h);
+    return active;
+}
+
+def gui_tabs(tabs, active)
+{
+    return gui_tabs_align(tabs, active, GUI_ALIGN_CENTER);
+}
+
+def gui_radio_align(text, selected_value, item_value, item_align)
+{
+    if (GUI_CURRENT_WINDOW == nil) return selected_value;
+    if (item_align < GUI_ALIGN_LEFT || item_align > GUI_ALIGN_RIGHT) item_align = GUI_ALIGN_LEFT;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    var font_size = GUI_FONT_SIZE - 2;
+    if (font_size < 10) font_size = 10;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return selected_value;
+    }
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+    if (hover && GUI_MOUSE_PRESSED)
+    {
+        selected_value = item_value;
+    }
+
+    var selected = selected_value == item_value;
+    var r = int((h - 8) * 0.5);
+    if (r < 5) r = 5;
+    var cx = x + r + 2;
+    var cy = y + int(h * 0.5);
+
+    if (selected) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    elif (hover) set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    else set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_circle(cx, cy, r, true);
+
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_circle(cx, cy, r, false);
+
+    if (selected)
+    {
+        var ir = r - 3;
+        if (ir < 2) ir = 2;
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        draw_circle(cx, cy, ir, true);
+    }
+
+    var mark_w = r * 2 + 10;
+    var label_x = x + mark_w;
+    var label_w = w - mark_w;
+    if (label_w < 8) label_w = 8;
+    var text_x = gui_text_align_x(label_x, label_w, 0, text, font_size, item_align);
+    var text_y = gui_text_vcenter_y(y, h, font_size);
+
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(text, text_x, text_y, font_size);
+
+    gui_layout_advance(h);
+    return selected_value;
+}
+
+def gui_radio(text, selected_value, item_value)
+{
+    return gui_radio_align(text, selected_value, item_value, GUI_ALIGN_LEFT);
+}
+
+def gui_stepper(text, value, min_v, max_v, step)
+{
+    if (GUI_CURRENT_WINDOW == nil) return value;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return value;
+    }
+
+    var btn_w = h;
+    if (btn_w < 18) btn_w = 18;
+    var value_w = 58;
+
+    var plus_x = x + w - btn_w;
+    var minus_x = plus_x - btn_w - 4;
+    var value_x = minus_x - value_w - 4;
+    if (value_x < x + 96) value_x = x + 96;
+
+    var over_minus = false;
+    var over_plus = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        over_minus = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, minus_x, y, btn_w, h);
+        over_plus = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, plus_x, y, btn_w, h);
+    }
+
+    if (over_minus && GUI_MOUSE_PRESSED) value -= step;
+    if (over_plus && GUI_MOUSE_PRESSED) value += step;
+    if (value < min_v) value = min_v;
+    if (value > max_v) value = max_v;
+
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(text, x, y + 3, GUI_FONT_SIZE - 2);
+
+    // Value box
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(value_x, y, value_w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(value_x, y, value_w, h, false);
+    var value_text = format("{}", int(value));
+    var tw = get_text_width(value_text, 14);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(value_text, value_x + (value_w - tw) * 0.5, y + 4, 14);
+
+    // Minus button
+    if (over_minus) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    draw_rectangle(minus_x, y, btn_w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(minus_x, y, btn_w, h, false);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text("-", minus_x + int(btn_w * 0.35), y + 2, 18);
+
+    // Plus button
+    if (over_plus) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    draw_rectangle(plus_x, y, btn_w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(plus_x, y, btn_w, h, false);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text("+", plus_x + int(btn_w * 0.30), y + 2, 18);
+
+    gui_layout_advance(h);
+    return value;
+}
+
+def gui_list_item_align(text, selected, item_align)
+{
+    if (GUI_CURRENT_WINDOW == nil) return selected;
+    if (item_align < GUI_ALIGN_LEFT || item_align > GUI_ALIGN_RIGHT) item_align = GUI_ALIGN_LEFT;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    var font_size = 14;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return selected;
+    }
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+    if (hover && GUI_MOUSE_PRESSED)
+    {
+        selected = !selected;
+    }
+
+    if (selected) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    elif (hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+
+    var mark = "[ ]";
+    if (selected) mark = "[x]";
+    var row_text = format("{} {}", mark, text);
+    var text_y = gui_text_vcenter_y(y, h, font_size);
+    var text_x = gui_text_align_x(x, w, 6, row_text, font_size, item_align);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(row_text, text_x, text_y, font_size);
+
+    gui_layout_advance(h);
+    return selected;
+}
+
+def gui_list_item(text, selected)
+{
+    return gui_list_item_align(text, selected, GUI_ALIGN_LEFT);
+}
+
+def gui_collapsing_header(text, open)
+{
+    var arrow = ">";
+    if (open) arrow = "v";
+    var header_text = format("{} {}", arrow, text);
+    if (gui_button(header_text))
+    {
+        open = !open;
+    }
+    return open;
+}
+
+def gui_combo_align(text, options, selected, item_align)
+{
+    if (GUI_CURRENT_WINDOW == nil) return selected;
+    if (item_align < GUI_ALIGN_LEFT || item_align > GUI_ALIGN_RIGHT) item_align = GUI_ALIGN_LEFT;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    var id = gui_next_item_id();
+    var count = len(options);
+    var font_size = 14;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return selected;
+    }
+
+    if (count <= 0)
+    {
+        gui_layout_advance(h);
+        return selected;
+    }
+
+    if (selected < 0) selected = 0;
+    if (selected >= count) selected = count - 1;
+
+    var over_header = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        over_header = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+
+    var open = GUI_OPEN_DROPDOWN_ID == id;
+    if (over_header && GUI_MOUSE_PRESSED)
+    {
+        if (open)
+        {
+            GUI_OPEN_DROPDOWN_ID = 0;
+            open = false;
+        }
+        else
+        {
+            GUI_OPEN_DROPDOWN_ID = id;
+            open = true;
+        }
+    }
+
+    if (GUI_WINDOW_MOVING)
+    {
+        if (open)
+        {
+            GUI_OPEN_DROPDOWN_ID = 0;
+            open = false;
+        }
+    }
+
+    if (over_header) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+
+    var title_text = format("{}:", text);
+    var current_text = format("{}", options[selected]);
+    var text_y = gui_text_vcenter_y(y, h, font_size);
+    var title_w = get_text_width(title_text, font_size);
+    var arrow_text = "v";
+    if (open) arrow_text = "^";
+    var arrow_w = get_text_width(arrow_text, font_size);
+    var arrow_x = x + w - arrow_w - 8;
+    var value_x = x + 8 + title_w + 4;
+    var value_w = arrow_x - value_x - 4;
+    if (value_w < 20)
+    {
+        value_x = x + 6;
+        value_w = arrow_x - value_x - 4;
+    }
+    if (value_w < 8) value_w = 8;
+    var value_text_x = gui_text_align_x(value_x, value_w, 2, current_text, font_size, item_align);
+
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(title_text, x + 6, text_y, font_size);
+    draw_text(current_text, value_text_x, text_y, font_size);
+    draw_text(arrow_text, arrow_x, text_y, font_size);
+
+    if (open)
+    {
+        var item_h = h;
+        if (item_h < 18) item_h = 18;
+        var list_x = x;
+        var list_y = y + h + 2;
+        var list_h = item_h * count;
+
+        var over_list = false;
+        if (!GUI_WINDOW_MOVING)
+        {
+            over_list = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, list_x, list_y, w, list_h);
+        }
+        if (GUI_MOUSE_PRESSED && !over_header && !over_list)
+        {
+            GUI_OPEN_DROPDOWN_ID = 0;
+            open = false;
+        }
+
+        if (open)
+        {
+            var i = 0;
+            while (i < count)
+            {
+                var iy = list_y + i * item_h;
+                var item_hover = false;
+                if (!GUI_WINDOW_MOVING)
+                {
+                    item_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, list_x, iy, w, item_h);
+                }
+
+                if (item_hover && GUI_MOUSE_PRESSED)
+                {
+                    selected = i;
+                    GUI_OPEN_DROPDOWN_ID = 0;
+                    open = false;
+                    break;
+                }
+                i += 1;
+            }
+        }
+
+        if (open)
+        {
+            GUI_COMBO_POPUP_ACTIVE = true;
+            GUI_COMBO_POPUP_WINDOW_ID = GUI_CURRENT_WINDOW.id;
+            GUI_COMBO_POPUP_X = list_x;
+            GUI_COMBO_POPUP_Y = list_y;
+            GUI_COMBO_POPUP_W = w;
+            GUI_COMBO_POPUP_ITEM_H = item_h;
+            GUI_COMBO_POPUP_COUNT = count;
+            GUI_COMBO_POPUP_ALIGN = item_align;
+            GUI_COMBO_POPUP_SELECTED = selected;
+            GUI_COMBO_POPUP_OPTIONS = options;
+        }
+    }
+
+    gui_layout_advance(h);
+    return selected;
+}
+
+def gui_combo(text, options, selected)
+{
+    return gui_combo_align(text, options, selected, GUI_ALIGN_LEFT);
+}
+
+def gui_dropdown_align(text, options, selected, item_align)
+{
+    return gui_combo_align(text, options, selected, item_align);
+}
+
+def gui_dropdown(text, options, selected)
+{
+    return gui_combo(text, options, selected);
+}
+
+def gui_listbox_align(title_text, items, selected, visible_rows, item_align)
+{
+    if (GUI_CURRENT_WINDOW == nil) return selected;
+    if (item_align < GUI_ALIGN_LEFT || item_align > GUI_ALIGN_RIGHT) item_align = GUI_ALIGN_LEFT;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    var count = len(items);
+    var font_size = 14;
+
+    if (count <= 0)
+    {
+        gui_layout_advance(h);
+        return selected;
+    }
+    if (selected < 0) selected = 0;
+    if (selected >= count) selected = count - 1;
+
+    if (visible_rows < 1) visible_rows = 1;
+    var rows = visible_rows;
+    if (rows > count) rows = count;
+
+    var item_h = h - 4;
+    if (item_h < 16) item_h = 16;
+    var header_h = h;
+    var list_h = rows * item_h;
+    var total_h = header_h + 2 + list_h;
+    if (!gui_rect_intersects_clip(x, y, w, total_h))
+    {
+        gui_layout_advance(total_h);
+        return selected;
+    }
+
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(x, y, w, header_h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, header_h, false);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(title_text, x + 6, gui_text_vcenter_y(y, header_h, font_size), font_size);
+
+    var list_y = y + header_h + 2;
+    var i = 0;
+    while (i < rows)
+    {
+        var item_idx = i;
+        var iy = list_y + i * item_h;
+        var item_hover = false;
+        if (!GUI_WINDOW_MOVING)
+        {
+            item_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, iy, w, item_h);
+        }
+        if (item_hover && GUI_MOUSE_PRESSED)
+        {
+            selected = item_idx;
+        }
+
+        if (selected == item_idx) set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+        elif (item_hover) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(x, iy, w, item_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(x, iy, w, item_h, false);
+
+        var entry_text = format("{}", items[item_idx]);
+        var entry_text_x = gui_text_align_x(x, w, 6, entry_text, font_size, item_align);
+        var entry_text_y = gui_text_vcenter_y(iy, item_h, font_size);
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        draw_text(entry_text, entry_text_x, entry_text_y, font_size);
+        i += 1;
+    }
+
+    gui_layout_advance(total_h);
+    return selected;
+}
+
+def gui_listbox(title_text, items, selected, visible_rows)
+{
+    return gui_listbox_align(title_text, items, selected, visible_rows, GUI_ALIGN_LEFT);
+}
+
+def gui_widget_list(items, selected, visible_rows)
+{
+    return gui_listbox("Widgets", items, selected, visible_rows);
+}
+
+def gui_widget_list_align(items, selected, visible_rows, item_align)
+{
+    return gui_listbox_align("Widgets", items, selected, visible_rows, item_align);
+}
+
+def gui_slider(text, value, min_v, max_v)
+{
+    if (GUI_CURRENT_WINDOW == nil) return value;
+    if (max_v <= min_v) return min_v;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    var id = gui_next_item_id();
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return value;
+    }
+
+    var hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, x, y, w, h);
+    }
+
+    if (hover && GUI_MOUSE_PRESSED)
+    {
+        GUI_ACTIVE_ITEM = id;
+    }
+
+    var knob_w = 12;
+    var track_h = 6;
+    var track_x = x;
+    var track_w = w;
+    var track_y = y + h - 8;
+    if (track_w < knob_w + 2) track_w = knob_w + 2;
+
+    if (GUI_ACTIVE_ITEM == id)
+    {
+        if (!GUI_MOUSE_DOWN)
+        {
+            GUI_ACTIVE_ITEM = 0;
+        }
+        else
+        {
+            var pos = GUI_MOUSE_X - track_x - knob_w * 0.5;
+            var range = track_w - knob_w;
+            if (range < 1) range = 1;
+            var t = gui_clamp(pos / range, 0, 1);
+            value = min_v + t * (max_v - min_v);
+        }
+    }
+
+    var ratio = gui_clamp((value - min_v) / (max_v - min_v), 0, 1);
+    var fill_w = int(ratio * track_w);
+    var knob_x = int(track_x + ratio * (track_w - knob_w));
+
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(text, x, y + 1, 14);
+    var value_text = format("{}", int(value));
+    var tw = get_text_width(value_text, 14);
+    draw_text(value_text, x + w - tw, y + 1, 14);
+
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(track_x, track_y, track_w, track_h, true);
+    set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    draw_rectangle(track_x, track_y, fill_w, track_h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(track_x, track_y, track_w, track_h, false);
+
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_rectangle(knob_x, track_y - 3, knob_w, track_h + 6, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(knob_x, track_y - 3, knob_w, track_h + 6, false);
+
+    gui_layout_advance(h);
+    return value;
+}
+
+def gui_progress(text, value, min_v, max_v)
+{
+    if (GUI_CURRENT_WINDOW == nil) return;
+    if (max_v <= min_v) return;
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+    if (!gui_rect_intersects_clip(x, y, w, h))
+    {
+        gui_layout_advance(h);
+        return;
+    }
+
+    var ratio = gui_clamp((value - min_v) / (max_v - min_v), 0, 1);
+    var fill_w = int(ratio * w);
+
+    set_color(GUI_THEME.button_pressed_r, GUI_THEME.button_pressed_g, GUI_THEME.button_pressed_b);
+    draw_rectangle(x, y, w, h, true);
+    set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+    draw_rectangle(x, y, fill_w, h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, h, false);
+
+    var pct = int(ratio * 100);
+    var caption = format("{} {}%", text, pct);
+    var tw = get_text_width(caption, 14);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(caption, x + (w - tw) * 0.5, y + 3, 14);
+
+    gui_layout_advance(h);
+}
+
+// Property inspector helpers (Tiled-style editor panels).
+def gui_property_section(title_text)
+{
+    gui_separator();
+    gui_label(title_text);
+}
+
+def gui_property_bool(name, value)
+{
+    return gui_checkbox_align(name, value, GUI_ALIGN_LEFT);
+}
+
+def gui_property_int(name, value, min_v, max_v, step)
+{
+    return gui_stepper(name, value, min_v, max_v, step);
+}
+
+def gui_property_float(name, value, min_v, max_v)
+{
+    return gui_slider(name, value, min_v, max_v);
+}
+
+def gui_property_vec2(name, x_value, y_value, min_v, max_v)
+{
+    gui_label(name);
+
+    var old_row_h = GUI_ROW_H;
+    var old_spacing = GUI_SPACING;
+    gui_layout_columns(2, old_row_h, 4);
+    x_value = gui_slider("X", x_value, min_v, max_v);
+    y_value = gui_slider("Y", y_value, min_v, max_v);
+    gui_layout_reset(old_row_h, old_spacing);
+
+    var result = [x_value, y_value];
+    return result;
+}
+
+def gui_hsv_to_rgb(h, s, v)
+{
+    while (h < 0) h += 360;
+    while (h >= 360) h -= 360;
+    s = gui_clamp(s, 0, 1);
+    v = gui_clamp(v, 0, 1);
+
+    if (s <= 0.0001)
+    {
+        var g = int(v * 255);
+        return (g, g, g);
+    }
+
+    var hp = h / 60.0;
+    var i = int(hp);
+    var f = hp - i;
+    var p = v * (1.0 - s);
+    var q = v * (1.0 - s * f);
+    var t = v * (1.0 - s * (1.0 - f));
+
+    var r = 0.0;
+    var g = 0.0;
+    var b = 0.0;
+
+    if (i == 0)
+    {
+        r = v; g = t; b = p;
+    }
+    elif (i == 1)
+    {
+        r = q; g = v; b = p;
+    }
+    elif (i == 2)
+    {
+        r = p; g = v; b = t;
+    }
+    elif (i == 3)
+    {
+        r = p; g = q; b = v;
+    }
+    elif (i == 4)
+    {
+        r = t; g = p; b = v;
+    }
+    else
+    {
+        r = v; g = p; b = q;
+    }
+
+    var rr = int(gui_clamp(r * 255.0, 0, 255));
+    var gg = int(gui_clamp(g * 255.0, 0, 255));
+    var bb = int(gui_clamp(b * 255.0, 0, 255));
+    return (rr, gg, bb);
+}
+
+def gui_color_panel_uv(title_text, hue, sat, val)
+{
+    if (GUI_CURRENT_WINDOW == nil) return (hue, sat, val, false, 255, 255, 255);
+
+    hue = gui_clamp(hue, 0, 360);
+    sat = gui_clamp(sat, 0, 1);
+    val = gui_clamp(val, 0, 1);
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+
+    var title_h = 16;
+    var panel_h = 128;
+    if (panel_h < h * 3) panel_h = h * 3;
+    var hue_w = 16;
+    var gap = 8;
+    var panel_w = w - hue_w - gap;
+    if (panel_w < 48) panel_w = 48;
+
+    var panel_x = x;
+    var panel_y = y + title_h + 2;
+    var hue_x = panel_x + panel_w + gap;
+    var hue_y = panel_y;
+    var preview_y = panel_y + panel_h + 4;
+    var preview_h = 18;
+    var total_h = title_h + 2 + panel_h + 4 + preview_h;
+
+    if (!gui_rect_intersects_clip(x, y, w, total_h))
+    {
+        gui_layout_advance(total_h);
+        var (skip_r,skip_g,skip_b) = gui_hsv_to_rgb(hue, sat, val);
+        return (hue, sat, val, false, skip_r,skip_g,skip_b);
+    }
+
+    var id_uv = gui_next_item_id();
+    var id_hue = gui_next_item_id();
+    var changed = false;
+
+    var uv_hover = false;
+    var hue_hover = false;
+    if (!GUI_WINDOW_MOVING)
+    {
+        uv_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, panel_x, panel_y, panel_w, panel_h);
+        hue_hover = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, hue_x, hue_y, hue_w, panel_h);
+    }
+
+    if (GUI_MOUSE_PRESSED)
+    {
+        if (uv_hover) GUI_ACTIVE_ITEM = id_uv;
+        elif (hue_hover) GUI_ACTIVE_ITEM = id_hue;
+    }
+
+    if (GUI_ACTIVE_ITEM == id_uv)
+    {
+        if (!GUI_MOUSE_DOWN)
+        {
+            GUI_ACTIVE_ITEM = 0;
+        }
+        else
+        {
+            var px = gui_clamp(GUI_MOUSE_X, panel_x, panel_x + panel_w);
+            var py = gui_clamp(GUI_MOUSE_Y, panel_y, panel_y + panel_h);
+            sat = gui_clamp((px - panel_x) / panel_w, 0, 1);
+            val = 1.0 - gui_clamp((py - panel_y) / panel_h, 0, 1);
+            changed = true;
+        }
+    }
+    elif (GUI_ACTIVE_ITEM == id_hue)
+    {
+        if (!GUI_MOUSE_DOWN)
+        {
+            GUI_ACTIVE_ITEM = 0;
+        }
+        else
+        {
+            var hy = gui_clamp(GUI_MOUSE_Y, hue_y, hue_y + panel_h);
+            hue = gui_clamp(((hy - hue_y) / panel_h) * 360.0, 0, 360);
+            changed = true;
+        }
+    }
+
+    set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+    draw_text(title_text, x, y, 14);
+
+    var cells_x = 20;
+    var cells_y = 16;
+    var cy = 0;
+    while (cy < cells_y)
+    {
+        var y0 = panel_y + int((cy * panel_h) / cells_y);
+        var y1 = panel_y + int(((cy + 1) * panel_h) / cells_y);
+        var rh = y1 - y0;
+        if (rh < 1) rh = 1;
+        var pv = 1.0 - (cy + 0.5) / cells_y;
+
+        var cx = 0;
+        while (cx < cells_x)
+        {
+            var x0 = panel_x + int((cx * panel_w) / cells_x);
+            var x1 = panel_x + int(((cx + 1) * panel_w) / cells_x);
+            var rw = x1 - x0;
+            if (rw < 1) rw = 1;
+
+            var ps = (cx + 0.5) / cells_x;
+            var (cell_r,cell_g,cell_b) = gui_hsv_to_rgb(hue, ps, pv);
+            set_color(cell_r,cell_g,cell_b);
+            draw_rectangle(x0, y0, rw, rh, true);
+            cx += 1;
+        }
+        cy += 1;
+    }
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(panel_x, panel_y, panel_w, panel_h, false);
+
+    var hsteps = 24;
+    var hi = 0;
+    while (hi < hsteps)
+    {
+        var hy0 = hue_y + int((hi * panel_h) / hsteps);
+        var hy1 = hue_y + int(((hi + 1) * panel_h) / hsteps);
+        var hh = hy1 - hy0;
+        if (hh < 1) hh = 1;
+        var hhue = (hi + 0.5) / hsteps * 360.0;
+        var (hr,hg,hb) = gui_hsv_to_rgb(hhue, 1.0, 1.0);
+        set_color(hr,hg,hb);
+        draw_rectangle(hue_x, hy0, hue_w, hh, true);
+        hi += 1;
+    }
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(hue_x, hue_y, hue_w, panel_h, false);
+
+    var cur_x = panel_x + int(sat * panel_w);
+    var cur_y = panel_y + int((1.0 - val) * panel_h);
+    set_color(255, 255, 255);
+    draw_rectangle(cur_x - 3, cur_y - 3, 6, 6, false);
+    set_color(0, 0, 0);
+    draw_rectangle(cur_x - 2, cur_y - 2, 4, 4, false);
+
+    var hue_mark_y = hue_y + int((hue / 360.0) * panel_h);
+    set_color(255, 255, 255);
+    draw_rectangle(hue_x - 2, hue_mark_y - 2, hue_w + 4, 4, false);
+
+    var (r,g,b) = gui_hsv_to_rgb(hue, sat, val);
+    set_color(r,g,b);
+    draw_rectangle(x, preview_y, w, preview_h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, preview_y, w, preview_h, false);
+
+    var info = format("h:{} s:{} v:{}   rgb({}, {}, {})",
+                      int(hue), int(sat * 100), int(val * 100),
+                      r,g,b);
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(info, x + 6, gui_text_vcenter_y(preview_y, preview_h, 13), 13);
+
+    gui_layout_advance(total_h);
+    return (hue, sat, val, changed, r,g,b);
+}
+
+def gui_property_color(name, r, g, b, a)
+{
+    if (r < 0) r = 0; if (r > 255) r = 255;
+    if (g < 0) g = 0; if (g > 255) g = 255;
+    if (b < 0) b = 0; if (b > 255) b = 255;
+    if (a < 0) a = 0; if (a > 255) a = 255;
+
+    gui_label(name);
+
+    var old_row_h = GUI_ROW_H;
+    var old_spacing = GUI_SPACING;
+    gui_layout_columns(2, old_row_h, 4);
+    r = gui_stepper("R", int(r), 0, 255, 1);
+    g = gui_stepper("G", int(g), 0, 255, 1);
+    b = gui_stepper("B", int(b), 0, 255, 1);
+    a = gui_stepper("A", int(a), 0, 255, 1);
+    gui_layout_reset(old_row_h, old_spacing);
+
+    gui_layout_calc_rect();
+    var x = GUI_WIDGET_X;
+    var y = GUI_WIDGET_Y;
+    var w = GUI_WIDGET_W;
+    var h = GUI_WIDGET_H;
+
+    var preview_h = h;
+    if (preview_h < 18) preview_h = 18;
+    set_color(r, g, b);
+    draw_rectangle(x, y, w, preview_h, true);
+    set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+    draw_rectangle(x, y, w, preview_h, false);
+
+    var txt = format("rgba({}, {}, {}, {})", int(r), int(g), int(b), int(a));
+    set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+    draw_text(txt, x + 6, gui_text_vcenter_y(y, preview_h, 14), 14);
+
+    gui_layout_advance(preview_h);
+
+    var result = [int(r), int(g), int(b), int(a)];
+    return result;
+}
+
+def gui_space(px)
+{
+    if (GUI_CURRENT_WINDOW == nil) return;
+    gui_layout_new_line();
+    GUI_LAYOUT_Y += px;
+}

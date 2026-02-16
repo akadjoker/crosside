@@ -1,0 +1,30 @@
+// Test: JSON module parse/stringify
+
+import json;
+
+var parsed = json.parse("{\"name\":\"bu\",\"ok\":true,\"n\":42,\"arr\":[1,2,3],\"inner\":{\"x\":7},\"none\":null}");
+if (parsed["name"] != "bu") { throw "json.parse name"; }
+if (!parsed["ok"]) { throw "json.parse bool"; }
+if (parsed["n"] != 42) { throw "json.parse int"; }
+if (parsed["arr"][2] != 3) { throw "json.parse array"; }
+if (parsed["inner"]["x"] != 7) { throw "json.parse object"; }
+if (parsed["none"] != nil) { throw "json.parse null"; }
+
+var num = json.parse("{\"value\":1.5e2}");
+if (num["value"] != 150) { throw "json.parse exponent"; }
+
+var plain = json.stringify(parsed);
+if (!plain.contains("\"name\"")) { throw "json.stringify key"; }
+if (!plain.contains("\"arr\"")) { throw "json.stringify array key"; }
+if (!plain.contains("null")) { throw "json.stringify null"; }
+
+var pretty = json.stringify({a: 1, b: [true, false, nil]}, 2);
+if (!pretty.contains("\n")) { throw "json.stringify pretty newline"; }
+if (!pretty.contains("  \"a\"") && !pretty.contains("  \"b\"")) { throw "json.stringify pretty indent"; }
+
+var escaped = json.stringify({"q": "a\"b\\c\n"});
+var round = json.parse(escaped);
+if (round["q"] != "a\"b\\c\n") { throw "json escape roundtrip"; }
+
+var uni = json.parse("{\"letter\":\"\\u0041\"}");
+if (uni["letter"] != "A") { throw "json unicode"; }

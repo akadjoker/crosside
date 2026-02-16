@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="@apppkg@"
+          android:versionCode="1"
+          android:versionName="1.0">
+
+    <uses-sdk
+        android:compileSdkVersion="30"
+        android:minSdkVersion="16"
+        android:targetSdkVersion="23" />
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@applbl@"
+        android:hasCode="true">
+
+        <activity
+            android:name="@appact@"
+            android:label="@applbl@"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:screenOrientation="landscape"
+            android:launchMode="singleTask"
+            android:clearTaskOnLaunch="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

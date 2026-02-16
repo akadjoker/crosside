@@ -1,0 +1,47 @@
+// Test: if/elif/else, while, for, do-while, loop-break
+// if/elif/else
+var r = 0;
+var x = 15;
+if (x < 10) { r = 1; }
+elif (x < 20) { r = 2; }
+else { r = 3; }
+if (r != 2) { throw "elif"; }
+
+// while
+var sum = 0;
+var i = 1;
+while (i <= 10) {
+    sum += i;
+    i++;
+}
+if (sum != 55) { throw "while"; }
+
+// for
+sum = 0;
+for (var j = 0; j < 5; j++) {
+    sum += j;
+}
+if (sum != 10) { throw "for"; }
+
+// do-while
+var count = 0;
+do {
+    count++;
+} while (count < 3);
+if (count != 3) { throw "do-while"; }
+
+// break
+var breakVal = 0;
+for (var k = 0; k < 100; k++) {
+    if (k == 7) { break; }
+    breakVal = k;
+}
+if (breakVal != 6) { throw "break"; }
+
+// continue
+sum = 0;
+for (var m = 0; m < 10; m++) {
+    if (m % 2 == 0) { continue; }
+    sum += m;
+}
+if (sum != 25) { throw "continue"; }

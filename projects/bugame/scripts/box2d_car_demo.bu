@@ -1,0 +1,176 @@
+print("Box2D Car Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+var KEY_A = 65;
+var KEY_D = 68;
+var KEY_SPACE = 32;
+var KEY_R = 82;
+
+var MOUSE_LEFT = 0;
+var MOUSE_RIGHT = 1;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D Car Demo");
+create_world(0, 9.8);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16);
+
+// World bounds + track
+var ground_def = create_bodydef(BODY_STATIC);
+ground_def.set_position(640, 690);
+var ground_fx = create_fixture_def();
+ground_fx.set_friction(0.9);
+ground_fx.set_box_shape(640, 20);
+var ground = create_body(ground_def);
+ground.add_fixture(ground_fx);
+
+var left_wall_def = create_bodydef(BODY_STATIC);
+left_wall_def.set_position(10, 360);
+var left_wall_fx = create_fixture_def();
+left_wall_fx.set_box_shape(10, 380);
+var left_wall = create_body(left_wall_def);
+left_wall.add_fixture(left_wall_fx);
+
+var right_wall_def = create_bodydef(BODY_STATIC);
+right_wall_def.set_position(1270, 360);
+var right_wall_fx = create_fixture_def();
+right_wall_fx.set_box_shape(10, 380);
+var right_wall = create_body(right_wall_def);
+right_wall.add_fixture(right_wall_fx);
+
+var track_def = create_bodydef(BODY_STATIC);
+track_def.set_position(0, 0);
+var track = create_body(track_def);
+track.add_edge(100, 650, 260, 610);
+track.add_edge(260, 610, 480, 610);
+track.add_edge(760, 620, 1020, 580);
+track.add_edge(1020, 580, 1180, 620);
+
+// Car chassis
+var chassis_def = create_bodydef(BODY_DYNAMIC);
+chassis_def.set_position(360, 540);
+chassis_def.set_angular_damping(2.0);
+chassis_def.set_linear_damping(0.3);
+var chassis_fx = create_fixture_def();
+chassis_fx.set_density(1.2);
+chassis_fx.set_friction(0.7);
+chassis_fx.set_restitution(0.0);
+chassis_fx.set_box_shape(68, 16);
+var chassis = create_body(chassis_def);
+chassis.add_fixture(chassis_fx);
+
+// Wheels
+var wheel_fx = create_fixture_def();
+wheel_fx.set_density(1.1);
+wheel_fx.set_friction(1.8);
+wheel_fx.set_restitution(0.0);
+wheel_fx.set_circle_shape(20);
+
+var rear_def = create_bodydef(BODY_DYNAMIC);
+rear_def.set_position(300, 575);
+rear_def.set_angular_damping(0.4);
+var rear_wheel = create_body(rear_def);
+rear_wheel.add_fixture(wheel_fx);
+
+var front_def = create_bodydef(BODY_DYNAMIC);
+front_def.set_position(420, 575);
+front_def.set_angular_damping(0.4);
+var front_wheel = create_body(front_def);
+front_wheel.add_fixture(wheel_fx);
+
+// Suspension + motor
+var rear_jd = WheelJointDef();
+rear_jd.initialize(chassis, rear_wheel, 300, 575, 0, 1);
+rear_jd.set_enable_motor(true);
+rear_jd.set_max_motor_torque(90000);
+rear_jd.set_motor_speed(0);
+rear_jd.set_stiffness(28);
+rear_jd.set_damping(5.5);
+rear_jd.set_collide_connected(false);
+var rear_joint = WheelJoint(rear_jd);
+
+var front_jd = WheelJointDef();
+front_jd.initialize(chassis, front_wheel, 420, 575, 0, 1);
+front_jd.set_enable_motor(true);
+front_jd.set_max_motor_torque(30000);
+front_jd.set_motor_speed(0);
+front_jd.set_stiffness(28);
+front_jd.set_damping(5.5);
+front_jd.set_collide_connected(false);
+var front_joint = WheelJoint(front_jd);
+
+var DRIVE_SPEED = 0;
+
+loop
+{
+    var dt = delta();
+
+    DRIVE_SPEED = 0;
+    if (key_down(KEY_RIGHT) || key_down(KEY_D)) DRIVE_SPEED = -540;
+    if (key_down(KEY_LEFT) || key_down(KEY_A)) DRIVE_SPEED = 540;
+
+    rear_joint.set_motor_speed(DRIVE_SPEED);
+    front_joint.set_motor_speed(DRIVE_SPEED);
+
+    if (key_down(KEY_SPACE))
+    {
+        rear_joint.set_motor_speed(0);
+        front_joint.set_motor_speed(0);
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        chassis.set_transform(360, 540, 0);
+        chassis.set_linear_velocity(0, 0);
+        chassis.set_angular_velocity(0);
+        rear_wheel.set_linear_velocity(0, 0);
+        rear_wheel.set_angular_velocity(0);
+        front_wheel.set_linear_velocity(0, 0);
+        front_wheel.set_angular_velocity(0);
+    }
+
+    if (mouse_pressed(MOUSE_LEFT))
+    {
+        var drop_def = create_bodydef(BODY_DYNAMIC);
+        drop_def.set_position(get_mouse_x(), get_mouse_y());
+        var drop_fx = create_fixture_def();
+        drop_fx.set_density(1.0);
+        drop_fx.set_friction(0.45);
+        drop_fx.set_restitution(0.08);
+        drop_fx.set_box_shape(16, 16);
+        var drop = create_body(drop_def);
+        drop.add_fixture(drop_fx);
+    }
+
+    if (mouse_pressed(MOUSE_RIGHT))
+    {
+        var drop_c_def = create_bodydef(BODY_DYNAMIC);
+        drop_c_def.set_position(get_mouse_x(), get_mouse_y());
+        var drop_c_fx = create_fixture_def();
+        drop_c_fx.set_density(1.0);
+        drop_c_fx.set_friction(0.4);
+        drop_c_fx.set_restitution(0.12);
+        drop_c_fx.set_circle_shape(14);
+        var drop_c = create_body(drop_c_def);
+        drop_c.add_fixture(drop_c_fx);
+    }
+
+    update_world(dt);
+
+    var (cx, cy) = chassis.get_position();
+    draw_text("Car Demo: A/D or Arrows drive | SPACE brake | R reset", 20, 20, 20);
+    draw_text("LMB spawn box | RMB spawn ball", 20, 44, 20);
+    draw_text("Chassis: " + str(cx) + ", " + str(cy), 20, 68, 20);
+    draw_text("Bodies: " + str(get_body_count()), 20, 92, 20);
+    draw_fps(20, 116);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}

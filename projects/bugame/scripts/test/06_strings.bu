@@ -1,0 +1,20 @@
+// Test: String operations
+var s = "hello";
+if (len(s) != 5) { throw "len"; }
+if (s + " world" != "hello world") { throw "concat"; }
+
+// Methods
+if (s.upper() != "HELLO") { throw "upper"; }
+if ("HELLO".lower() != "hello") { throw "lower"; }
+if (s.sub(0, 3) != "hel") { throw "sub"; }
+if (s.contains("ell") != true) { throw "contains"; }
+if (s.indexof("ll") != 2) { throw "indexof"; }
+
+// Escape sequences
+var nl = "a\nb";
+if (len(nl) != 3) { throw "escape newline"; }
+var tab = "a\tb";
+if (len(tab) != 3) { throw "escape tab"; }
+
+// String repeat
+if ("ab".repeat(3) != "ababab") { throw "repeat"; }

@@ -1,0 +1,785 @@
+print("Load Main");
+import math;
+
+
+var KEY_RIGHT           = 262;
+var KEY_LEFT            = 263;
+var KEY_DOWN            = 264;
+var KEY_UP              = 265;
+var KEY_SPACE           = 32;
+var KEY_ESCAPE          = 256;
+var KEY_RETURN          = 257;
+var KEY_Q = 81;
+
+var WINDOW_WIDTH = 800;
+var WINDOW_HEIGHT = 600;
+
+var GAME_MENU = 0;
+var GAME_PLAY = 1;
+var GAME_CREDITS = 2;
+var GAME_EXIT = 3;
+
+var game_state = GAME_MENU;
+
+var WHITE = Color(255, 255, 255, 255);
+var RED = Color(255, 0, 0, 255);
+var GREEN = Color(0, 255, 0, 255);
+var BLUE = Color(0, 0, 255, 255);
+var BLACK = Color(0, 0, 0, 255);
+var YELLOW = Color(255, 255, 0, 255);
+var CYAN = Color(0, 255, 255, 255);
+var MAGENTA = Color(255, 0, 255, 255);
+var PARTICLE =20;
+
+
+process enemy(start_x, start_y, patrol_dist, dir)
+{
+    graph = 25;
+    x = start_x;
+    y = start_y;
+    
+    var health = 3;
+    var velocity_y = 0;
+    var gravity = 800;
+    var move_speed = 50;
+    var direction = dir;
+    var patrol_center = x;
+    var is_grounded = false;
+    var has_landed = false;
+    
+    set_rect_shape(0, 5, 40, 20); 
+    loop
+    {
+        frame;
+    }
+}
+
+
+process box (x, y)
+{
+    graph = 23;
+    set_rect_shape(0, 0, 16, 16); 
+    size = 200;
+    
+    var pushable = true; 
+    var velocity_y = 0;
+    var gravity = 800;
+    var touch_floor = false;
+    
+    loop
+    {
+        var delta_frame = delta();
+ 
+        
+  
+        var is_grounded = !place_free(x, y + 1);
+        
+        if (!is_grounded)
+        {
+            velocity_y += gravity * delta_frame;
+            touch_floor = false;
+        }
+        else
+        {
+            velocity_y = 0;
+        }
+
+        if(is_grounded && !touch_floor)
+        {
+            start_camera_shake(-2,-2,20,30);
+            touch_floor = true;
+        }
+        
+        // Aplicar velocidade vertical
+        if (velocity_y != 0)
+        {
+            var new_y = y + velocity_y * delta_frame;
+            
+            if (place_free(x, new_y))
+            {
+                y = new_y;
+            }
+            else
+            {
+                // Ajustar posição
+                var step = math.sign(velocity_y);
+                while (!place_free(x, y))
+                {
+                    y = y - step;
+                }
+                velocity_y = 0;
+            }
+        }
+        
+        frame;
+    }
+}
+
+process bullet (x,y, _face)
+{
+    graph=20;
+    set_rect_shape(-4, -2, 6, 4);
+
+    if (_face > 0) 
+    {
+        flip_horizontal(false);
+    } else 
+    {
+        flip_horizontal(true);
+    }
+    var speed = _face;
+    loop
+    {
+        advance(speed);
+
+
+     
+         if (!place_free(x+_face, y))
+         {
+            if (_face > 0) 
+            {
+                create_wall_impact(x+10, y,PARTICLE,true,20.0,0.5);
+            } else 
+            {
+                create_wall_impact(x-10, y,PARTICLE,false,20.0,0.5);
+            }
+            break;
+         }
+        frame;
+    }
+}
+ 
+process player ()
+{
+    graph=3;
+    x=240;
+    y=200;
+    
+    var state="idle";
+    var image=0;
+    var frames_idle=[1,2,3,4];
+    var frames_walk=[6,7,8,9,10];
+    var frames_jump=[11,12,13];
+    var frames_crouch=[15,16,17];
+    var current_frames = frames_idle;
+    var anim_timer = 0;
+    var anim_speed = 0.2;
+    
+    var camera_x = 0;
+    var camera_y = 0;
+    var level_width = 24 * 32;
+    var level_height = 124 * 20;
+    
+    // Variáveis de física
+    var velocity_y = 0;
+    var gravity = 800;
+    var jump_force = -650;
+    var is_grounded = false;
+    var move_speed = 150;
+    var is_flipped = false;
+    var jump_count = 0;
+    var has_landed = false;
+    var is_crouching = false;  
+    var off_y = 0; // Deslocamento vertical para o sprite
+    
+    set_rect_shape(0,0, 20, 32);
+    
+    loop
+    {
+        var delta_frame = delta();
+        
+        // Aplicar gravidade
+        velocity_y += gravity * delta_frame;
+        
+        // Movimento horizontal
+        var move_x = 0;
+        if (key_down(KEY_LEFT))
+        {
+            move_x = -move_speed * delta_frame;
+            flip_horizontal(true);
+            is_flipped = true;
+            is_crouching = false;  
+            off_y=1;
+        } 
+        elif (key_down(KEY_RIGHT))
+        {
+            move_x = move_speed * delta_frame;
+            flip_horizontal(false);
+            is_flipped = false;
+            is_crouching = false;   
+            off_y=1;
+        }
+        
+        // Tentar mover horizontalmente
+        if (move_x != 0)
+        {
+            if (place_free(x + move_x, y))
+            {
+                x = x + move_x;
+            }
+        }
+
+        is_grounded = !place_free(x, y + 1);
+        
+        if (!is_grounded) 
+        {
+            velocity_y += gravity * delta_frame;
+            has_landed = false;
+            is_crouching = false;  
+        } 
+        else 
+        {
+            velocity_y = 0;
+            jump_count = 0;
+            if (!has_landed) 
+            {
+                create_landing_dust(x+math.rand(-8,8), y+30, PARTICLE, is_flipped);
+                has_landed = true;
+            }
+        }
+ 
+        if (key_pressed(KEY_SPACE)) 
+        {
+            if(is_flipped) 
+            {
+                bullet(x-20, y-off_y, -8);
+                create_muzzle_flash(x-10, y-off_y, PARTICLE, Vec2(5,11));
+            } 
+            else 
+            {
+                bullet(x+20, y-off_y, 8);
+                create_muzzle_flash(x+28, y-off_y, PARTICLE, Vec2(5,1));
+            }
+        }
+        
+     
+        if (key_pressed(KEY_UP) && (is_grounded || jump_count < 2)) 
+        {
+            velocity_y = jump_force;
+            jump_count += 1;
+            is_crouching = false;  
+            off_y=1;
+        }
+
+      
+        if (key_pressed(KEY_DOWN) && is_grounded && move_x == 0 && !is_crouching) 
+        {
+            is_crouching = true;
+            off_y=-6;
+        } 
+       
+        // Aplicar velocidade vertical
+        if (velocity_y != 0) 
+        {
+            var new_y = y + velocity_y * delta_frame;
+            
+            if (place_free(x, new_y)) 
+            {
+                y = new_y;
+            } 
+            else 
+            {
+                while (!place_free(x, y + 1)) 
+                {
+                    y = y - 1;
+                }
+                velocity_y = 0;
+            }
+        }
+
+        if(is_grounded)
+        {
+            var hit = place_meeting(x + move_x, y);
+            if(hit != -1)
+            {
+                var b = proc(hit);
+                b.x = b.x + move_x;
+            }
+        }
+
+        // Definir estado da animação
+        if (!is_grounded)
+        {
+            state = "jump";
+            current_frames = frames_jump;
+            anim_speed = 0.1;
+        } 
+        elif (is_crouching)  
+        {
+            state = "crouch";
+            current_frames = frames_crouch;
+            anim_speed = 0.1;
+        }
+        elif (move_x != 0)
+        {
+            state = "walk";
+            current_frames = frames_walk;
+            anim_speed = 0.15;
+        } 
+        else
+        {
+            state = "idle";
+            current_frames = frames_idle;
+            anim_speed = 0.2;
+        }
+        
+        // Animação
+        anim_timer += delta_frame;
+        if (anim_timer >= anim_speed)
+        {
+            if (state == "crouch")
+            {
+                image = 0;
+            }
+            else
+            {
+                anim_timer -= anim_speed;
+                image = (image + 1) % len(current_frames);
+             }
+            graph = current_frames[image];
+        }
+        
+        // Câmera suave
+        var lerp_speed = 8.0;
+        camera_x += (x - camera_x) * lerp_speed * delta_frame;
+        camera_y += (y - camera_y) * lerp_speed * delta_frame;
+        
+        camera_x = math.max(490, math.min(595, camera_x));
+        camera_y = math.max(275, math.min(290, camera_y));
+        
+        set_camera_target(camera_x, camera_y);
+
+        set_color(255,0,0);
+   
+        draw_text("state: " + state, 20 ,20,12);
+        draw_circle(x,y, 2, true);
+        
+        frame;
+
+    }
+}
+
+
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Bu Game - Ship Example");
+init_collision(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+set_color(0,0,0);
+
+load_atlas("assets/Gunner_Red_Idle.png",5,1);
+load_atlas("assets/Gunner_Red_Run.png",6,1);
+load_atlas("assets/Gunner_Red_Jump.png",2,1);
+load_atlas("assets/Gunner_Red_Crouch.png",3,1);
+load_atlas("assets/Gunner_Red_Crouch.png",3,1);
+load_atlas("assets/props_16x16.png",4,1);
+PARTICLE = load_graph("assets/texture.png");
+
+load_atlas("assets/enemy_large.png",8,2);
+
+
+print("Atlas index: " + PARTICLE);
+
+set_camera_zoom(1.3);
+
+
+
+ 
+import_tilemap("assets/shooter.tmx"); 
+set_tile_map_free(0, 6);
+set_tile_map_free(0, 0);
+set_tile_map_free(0, 4);
+//set_tile_debug(0,false,true);
+set_tile_map_color(0,Color(200,200,200,255));
+set_tile_map_visible(0,false);
+set_tile_map_visible(1,false);
+
+
+var menu_state=0;
+var POPUP_NONE = 0;
+var POPUP_BACK_TO_MENU = 1;
+var popup_state = POPUP_NONE;
+var popup_title = "";
+var popup_msg = "";
+var popup_just_opened = false;
+var POPUP_ACTION_NONE = 0;
+var POPUP_ACTION_BACK_TO_MENU = 1;
+var popup_action = POPUP_ACTION_NONE;
+var popup_anim = 0.0;
+var popup_anim_dir = 0;
+var credits_scroll_y = WINDOW_HEIGHT + 140;
+var credits_speed = 1.2;
+
+    loop
+    {
+        
+        set_color(255, 255, 255);
+        var py=WINDOW_HEIGHT/2-20;
+
+        
+
+        switch (game_state)
+        {
+            case GAME_MENU:
+            {
+                draw_text("STATE: MENU", WINDOW_WIDTH/2-100, 20, 28);
+             
+
+                set_color(45,45,45);
+                draw_rectangle(0,0,WINDOW_WIDTH,WINDOW_HEIGHT, true);
+
+
+                set_color(65,65,65);
+
+                var mx = get_mouse_x();
+                var my = get_mouse_y();
+
+                var btn_x = WINDOW_WIDTH/2-100;
+                var btn_w = 240;
+                var btn_h = 22;
+                var play_y = py-40;
+                var credits_y = py;
+                var exit_y = py+40;
+
+                var hover_item = -1;
+                if (mx >= btn_x && mx <= btn_x + btn_w && my >= play_y && my <= play_y + btn_h)
+                {
+                    hover_item = 0;
+                }
+                if (mx >= btn_x && mx <= btn_x + btn_w && my >= credits_y && my <= credits_y + btn_h)
+                {
+                    hover_item = 1;
+                }
+                if (mx >= btn_x && mx <= btn_x + btn_w && my >= exit_y && my <= exit_y + btn_h)
+                {
+                    hover_item = 2;
+                }
+
+                if (hover_item != -1)
+                {
+                    menu_state = hover_item;
+                }
+
+                if (key_pressed(KEY_UP))
+                {
+                    menu_state -= 1;
+                    if (menu_state < 0) menu_state = 2;
+                }
+                if (key_pressed(KEY_DOWN))
+                {
+                    menu_state += 1;
+                    if (menu_state > 2) menu_state = 0;
+                }
+
+                var menu_activate = key_pressed(KEY_RETURN);
+                if (mouse_pressed(0) && hover_item != -1)
+                {
+                    menu_state = hover_item;
+                    menu_activate = true;
+                }
+
+                switch(menu_state)
+                {
+                    case 0: 
+                    {
+                        draw_rectangle(WINDOW_WIDTH/2-100, py-40, 240, 20, true);
+                        if (menu_activate)
+                        {
+                            fade_in(0.5);
+                            set_tile_map_visible(0,true);
+                            enemy(300, 270, 100, 1);
+                            box(240, 240);
+                            player();
+                            game_state = GAME_PLAY;
+                        }
+                    }
+                    case 1:
+                    {
+                        draw_rectangle(WINDOW_WIDTH/2-100, py, 240, 20, true);
+                        if (menu_activate)
+                        {
+                            fade_in(0.5);
+                            credits_scroll_y = WINDOW_HEIGHT + 140;
+                            game_state = GAME_CREDITS;
+                        }
+                    }
+                    case 2: 
+                    {
+                        draw_rectangle(WINDOW_WIDTH/2-100, py+40, 240, 20, true);
+                        if (menu_activate)
+                        {
+                            set_color(0,0,0);
+                            start_fade(0.5,0.9);
+                            game_state = GAME_EXIT;
+                        }
+                    }
+                }
+                
+
+                
+                set_color(255,255,255);
+                draw_text("Play",    WINDOW_WIDTH/2, py-40, 20);
+                draw_text("Credits", WINDOW_WIDTH/2-15, py,    20);
+                draw_text("Exit",    WINDOW_WIDTH/2, py+40, 20);
+
+            }
+            case GAME_PLAY:
+            {  
+                if (key_pressed(KEY_ESCAPE) && popup_state == POPUP_NONE && popup_anim <= 0)
+                {
+                    popup_state = POPUP_BACK_TO_MENU;
+                    popup_title = "Confirm";
+                    popup_msg = "Voltar ao menu? ";
+                    popup_just_opened = true;
+                    popup_action = POPUP_ACTION_NONE;
+                    popup_anim = 0;
+                    popup_anim_dir = 1;
+                }
+             }
+            case GAME_CREDITS:
+            {
+                set_color(4, 4, 10);
+                draw_rectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, true);
+
+                set_color(255, 220, 70);
+                draw_text("BU WARS", WINDOW_WIDTH/2-75, 28, 36);
+
+                credits_scroll_y -= credits_speed;
+                var y0 = credits_scroll_y;
+                var gap = 42;
+
+                set_color(170, 190, 255);
+                draw_text("A long time ago in a terminal far away...", WINDOW_WIDTH/2-220, y0, 24);
+
+                set_color(255, 235, 120);
+                draw_text("BU LANG", WINDOW_WIDTH/2-90, y0 + gap * 2, 34);
+                draw_text("by Luis Santos", WINDOW_WIDTH/2-70, y0 + gap * 4, 26);
+                draw_text("AKA Luis Santos", WINDOW_WIDTH/2-120, y0 + gap * 3, 24);
+
+                set_color(230, 230, 230);
+                draw_text("A tiny language. Big game vibes.", WINDOW_WIDTH/2-190, y0 + gap * 6, 24);
+                draw_text("Processes, collisions, tilemaps, particles.", WINDOW_WIDTH/2-235, y0 + gap * 7, 22);
+                draw_text("Menu, gameplay and tools in one flow.", WINDOW_WIDTH/2-220, y0 + gap * 8, 22);
+                draw_text("Code. Build. Play. Repeat.", WINDOW_WIDTH/2-145, y0 + gap * 9, 24);
+
+                if (y0 + gap * 9 < -120)
+                {
+                    credits_scroll_y = WINDOW_HEIGHT + 160;
+                }
+
+                set_color(255, 255, 255);
+                draw_text("ESC = voltar ao menu", WINDOW_WIDTH/2-120, WINDOW_HEIGHT - 32, 20);
+
+                if (key_pressed(KEY_ESCAPE)) 
+                {
+                    set_color(0,0,0);
+                    fade_in(0.5);
+                    game_state = GAME_MENU;
+                }
+            }
+            case GAME_EXIT:
+            {    
+                set_color(45,45,45);
+                draw_rectangle(0,0,WINDOW_WIDTH,WINDOW_HEIGHT, true);
+                set_color(65,65,65);
+                switch(menu_state)
+                {
+                    case 0: 
+                    {
+                        draw_rectangle(WINDOW_WIDTH/2-100, py-40, 240, 20, true);
+                    }
+                    case 1:
+                    {
+                        draw_rectangle(WINDOW_WIDTH/2-100, py, 240, 20, true);
+                    }
+                    case 2: 
+                    {
+                        draw_rectangle(WINDOW_WIDTH/2-100, py+40, 240, 20, true);
+                        
+                    }
+                }
+                set_color(255,255,255);
+                draw_text("Play",    WINDOW_WIDTH/2, py-40, 20);
+                draw_text("Credits", WINDOW_WIDTH/2-15, py,    20);
+                draw_text("Exit",    WINDOW_WIDTH/2, py+40, 20);
+      
+                if(get_fade_progress()>0.99)
+                 {
+                     close_window();
+                 }
+             
+             
+            }
+          
+        }
+
+        if (popup_state != POPUP_NONE || popup_anim > 0)
+        {
+            var popup_speed = 0.04;
+            if (popup_anim_dir != 0)
+            {
+                popup_anim += popup_anim_dir * popup_speed;
+
+                if (popup_anim >= 1)
+                {
+                    popup_anim = 1;
+                    popup_anim_dir = 0;
+                }
+
+                if (popup_anim <= 0)
+                {
+                    popup_anim = 0;
+                    popup_anim_dir = 0;
+
+                    if (popup_action == POPUP_ACTION_BACK_TO_MENU)
+                    {
+                        set_color(0,0,0);
+                        signal(-1, SKILL);
+                        fade_in(0.5);
+                        game_state = GAME_MENU;
+                    }
+
+                    popup_action = POPUP_ACTION_NONE;
+                    popup_state = POPUP_NONE;
+                    popup_just_opened = false;
+                }
+            }
+
+          
+        if (popup_state != POPUP_NONE || popup_anim > 0)
+        {
+            var t = popup_anim;
+            var eased = t;
+
+            if (popup_anim_dir >= 0)
+            {
+                // Entrada com bounce/overshoot
+                eased = ease_bounce_out(t);
+            }
+            else
+            {
+                // Saída limpa
+                eased = ease_back_out(t);
+            }
+
+            var overlay_t = eased;
+            if (overlay_t < 0) overlay_t = 0;
+            if (overlay_t > 1) overlay_t = 1;
+            
+
+
+            set_color(0, 0, 0);
+            set_alpha(int(170 * overlay_t));
+            draw_rectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, true);
+            set_alpha(255);
+
+            var box_w = 460;
+            var box_h = 150;
+            var box_x = WINDOW_WIDTH / 2 - box_w / 2;
+            var box_start_y = -box_h - 40;
+            var box_end_y = WINDOW_HEIGHT / 2 - box_h / 2;
+            var box_y = box_start_y + (box_end_y - box_start_y) * eased;
+
+            set_color(35, 35, 35);
+            draw_rectangle(box_x, box_y, box_w, box_h, true);
+            set_color(220, 220, 220);
+            draw_rectangle(box_x, box_y, box_w, box_h, false);
+
+            set_color(255, 255, 255);
+            draw_text(popup_title, box_x + 20, box_y + 18, 26);
+            draw_text(popup_msg, box_x + 20, box_y + 62, 18);
+
+            var mx = get_mouse_x();
+            var my = get_mouse_y();
+
+            var btn_w = 150;
+            var btn_h = 34;
+            var btn_y = box_y + box_h - 50;
+            var yes_x = box_x + 30;
+            var no_x = box_x + box_w - btn_w - 30;
+
+            var over_yes = (mx >= yes_x) && (mx <= yes_x + btn_w) && (my >= btn_y) && (my <= btn_y + btn_h);
+            var over_no = (mx >= no_x) && (mx <= no_x + btn_w) && (my >= btn_y) && (my <= btn_y + btn_h);
+
+            if (over_yes)
+            {
+                set_color(70, 120, 70);
+            }
+            else
+            {
+                set_color(55, 90, 55);
+            }
+            draw_rectangle(yes_x, btn_y, btn_w, btn_h, true);
+
+            if (over_no)
+            {
+                set_color(140, 70, 70);
+            }
+            else
+            {
+                set_color(95, 55, 55);
+            }
+            draw_rectangle(no_x, btn_y, btn_w, btn_h, true);
+
+            set_color(240, 240, 240);
+            draw_rectangle(yes_x, btn_y, btn_w, btn_h, false);
+            draw_rectangle(no_x, btn_y, btn_w, btn_h, false);
+
+            set_color(255, 255, 255);
+            draw_text("SIM", yes_x + 52, btn_y + 7, 20);
+            draw_text("CANCELAR", no_x + 24, btn_y + 7, 20);
+            
+
+            var popup_confirm = false;
+            var popup_cancel = false;
+
+            if (popup_anim_dir == 0)
+            {
+                if (popup_just_opened)
+                {
+                    popup_just_opened = false;
+                }
+                else
+                {
+                    if (key_pressed(KEY_RETURN))
+                    {
+                        popup_confirm = true;
+                    }
+
+                    if (key_pressed(KEY_ESCAPE))
+                    {
+                        popup_cancel = true;
+                    }
+
+                    if (mouse_pressed(0))
+                    {
+                        if (over_yes)
+                        {
+                            popup_confirm = true;
+                        }
+                        else if (over_no)
+                        {
+                            popup_cancel = true;
+                        }
+                    }
+                }
+            }
+
+            if (popup_confirm)
+            {
+                if (popup_state == POPUP_BACK_TO_MENU)
+                {
+                    popup_action = POPUP_ACTION_BACK_TO_MENU;
+                }
+                popup_anim_dir = -1;
+            }
+
+            if (popup_cancel)
+            {
+                popup_action = POPUP_ACTION_NONE;
+                popup_anim_dir = -1;
+            }
+            }
+        }
+        frame;
+    
+    }

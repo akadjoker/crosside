@@ -1,0 +1,155 @@
+print("Box2D MotorJoint Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_R = 82;
+
+var MOUSE_LEFT = 0;
+var MOUSE_RIGHT = 1;
+var MOUSE_MIDDLE = 2;
+var DRAG_JOINT = nil;
+var DRAG_ACTIVE = false;
+var DRAG_ID = -1;
+var DRAG_JOINT = nil;
+var DRAG_ACTIVE = false;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D MotorJoint Demo");
+create_world(0, 0);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16);
+
+var floor_def = create_bodydef(BODY_STATIC);
+floor_def.set_position(640, 700);
+var floor_fx = create_fixture_def();
+floor_fx.set_box_shape(640, 20);
+var world_floor = create_body(floor_def);
+world_floor.add_fixture(floor_fx);
+
+var base_def = create_bodydef(BODY_STATIC);
+base_def.set_position(640, 360);
+var base_fx = create_fixture_def();
+base_fx.set_box_shape(10, 10);
+var base = create_body(base_def);
+base.add_fixture(base_fx);
+
+var box_def = create_bodydef(BODY_DYNAMIC);
+box_def.set_position(640, 360);
+box_def.set_angular_damping(1.2);
+box_def.set_linear_damping(0.6);
+var box_fx = create_fixture_def();
+box_fx.set_density(1.2);
+box_fx.set_friction(0.4);
+box_fx.set_box_shape(54, 34);
+var mover = create_body(box_def);
+mover.add_fixture(box_fx);
+
+var jd = MotorJointDef();
+jd.initialize(base, mover);
+jd.set_max_force(120000);
+jd.set_max_torque(90000);
+jd.set_correction_factor(0.85);
+jd.set_collide_connected(false);
+var motor = MotorJoint(jd);
+
+var target_x = -220;
+var target_dir = 1;
+var angle_deg = -25;
+var angle_dir = 1;
+
+loop
+{
+    var dt = delta();
+    if (dt > 0.033) { dt = 0.033; }
+
+    target_x = target_x + target_dir * 220 * dt;
+    if (target_x > 220)
+    {
+        target_x = 220;
+        target_dir = -1;
+    }
+    if (target_x < -220)
+    {
+        target_x = -220;
+        target_dir = 1;
+    }
+
+    angle_deg = angle_deg + angle_dir * 55 * dt;
+    if (angle_deg > 25)
+    {
+        angle_deg = 25;
+        angle_dir = -1;
+    }
+    if (angle_deg < -25)
+    {
+        angle_deg = -25;
+        angle_dir = 1;
+    }
+
+    motor.set_linear_offset(target_x, 0);
+    motor.set_angular_offset(angle_deg);
+
+    if (key_pressed(KEY_R))
+    {
+        mover.set_transform(640, 360, 0);
+        mover.set_linear_velocity(0, 0);
+        mover.set_angular_velocity(0);
+    }
+
+       if (!DRAG_ACTIVE && mouse_pressed(MOUSE_LEFT))
+    {
+        var (hit_id, hit_body) = physics_overlap_point(get_mouse_x(), get_mouse_y(), false);
+        if (  hit_body != nil)
+        {
+            
+            
+            
+                var mj = MouseJointDef();
+                mj.set_body_a(base);
+                mj.set_body_b(hit_body);
+                mj.set_target(get_mouse_x(), get_mouse_y());
+                mj.set_max_force(2500000);
+                mj.set_stiffness(12);
+                mj.set_damping(1.2);
+                mj.set_collide_connected(false);
+
+                DRAG_JOINT = MouseJoint(mj);
+                DRAG_ID = hit_id;
+                DRAG_ACTIVE = true;
+             
+        }
+    }
+
+    if (DRAG_ACTIVE)
+    {
+        if (!mouse_down(MOUSE_LEFT))
+        {
+            if (DRAG_JOINT != nil)
+            {
+                DRAG_JOINT.destroy();
+            }
+            DRAG_JOINT = nil;
+            DRAG_ID = -1;
+            DRAG_ACTIVE = false;
+        }
+        elif (DRAG_JOINT != nil)
+        {
+            DRAG_JOINT.set_target(get_mouse_x(), get_mouse_y());
+        }
+    }
+ 
+
+    update_world(dt);
+
+    draw_text("MotorJoint demo", 20, 20, 20);
+    draw_text("Auto move + rotate target offset | R reset | ESC close", 20, 44, 20);
+    draw_text("Target X: " + str(target_x), 20, 68, 20);
+    draw_text("Target Angle: " + str(angle_deg), 20, 92, 20);
+    draw_fps(20, 116);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+    frame;
+}

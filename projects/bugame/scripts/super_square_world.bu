@@ -1,0 +1,1059 @@
+// === SUPER SQUARE WORLD ===
+// Plataforma em mundo quadrado com double jump + FX de partículas.
+
+import math;
+
+var W = 960;
+var H = 540;
+var CELL = 32;
+var WORLD_W = 3200;
+var WORLD_H = 900;
+
+var KEY_A = 65;
+var KEY_D = 68;
+var KEY_W = 87;
+var KEY_S = 83;
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+var KEY_UP = 265;
+var KEY_SPACE = 32;
+var KEY_SHIFT = 340;
+var KEY_R = 82;
+var KEY_ESCAPE = 256;
+
+var STATE_PLAY = 0;
+var STATE_WIN = 1;
+var STATE_DEAD = 2;
+
+var GAME_STATE = STATE_PLAY;
+var SCORE = 0;
+var HP_MAX = 4;
+var HP = 4;
+var PLAYER_ID = -1;
+var CAM_X = 0.0;
+var CAM_Y = 0.0;
+var RESPAWN_X = 96;
+var RESPAWN_Y = 420;
+
+def draw_backdrop(_camx, _camy)
+{
+    // Gradient em faixas para dar "céu" sem texture.
+    var i = 0;
+    var bands = 12;
+    while (i < bands)
+    {
+        var t = i / bands;
+        var rr = 18 + int(16 * t);
+        var gg = 24 + int(22 * t);
+        var bb = 38 + int(30 * t);
+        set_color(rr, gg, bb);
+        draw_rectangle(_camx, _camy + i * (H / bands), W, (H / bands) + 2, true);
+        i += 1;
+    }
+
+    // Layer distante: megablocos lentos.
+    var start_a = int(_camx / 280) - 3;
+    var end_a = start_a + 12;
+    var k = start_a;
+    while (k < end_a)
+    {
+        var bx = _camx * 0.78 + k * 280;
+        var by = _camy + 90 + ((k * 37) % 3) * 42;
+        set_color(34, 44, 70);
+        draw_rectangle(bx, by, 220, 34, true);
+        set_color(52, 66, 98);
+        draw_rectangle(bx + 8, by + 7, 90, 10, true);
+        k += 1;
+    }
+
+    // Layer média: blocos mais vivos.
+    var start_b = int(_camx / 220) - 3;
+    var end_b = start_b + 14;
+    var j = start_b;
+    while (j < end_b)
+    {
+        var mx = _camx * 0.60 + j * 220;
+        var my = _camy + 170 + ((j * 17) % 4) * 20;
+        set_color(46, 62, 98);
+        draw_rectangle(mx, my, 170, 24, true);
+        set_color(78, 102, 150);
+        draw_rectangle(mx + 14, my + 6, 36, 8, true);
+        draw_rectangle(mx + 74, my + 6, 52, 8, true);
+        j += 1;
+    }
+
+    // Glow no horizonte.
+    set_alpha(90);
+    set_color(90, 130, 210);
+    draw_rectangle(_camx, _camy + H - 180, W, 140, true);
+    set_alpha(255);
+}
+
+def fx_burst(px, py, n, r, g, b, force, life)
+{
+    var i = 0;
+    while (i < n)
+    {
+        var a = math.rand(0, 360);
+        var sp = math.rand(force * 0.35, force);
+        var vx = get_distx(a, sp);
+        var vy = get_disty(a, sp);
+        fx_particle(px, py, vx, vy, life, r, g, b, math.rand(2, 5), 700);
+        i += 1;
+    }
+}
+
+process fx_particle(px, py, vx, vy, life, r, g, b, size, grav)
+{
+    x = px;
+    y = py;
+    var t = life;
+    var max_t = life;
+
+    loop
+    {
+        var dt = delta();
+        t -= dt;
+        if (t <= 0) break;
+
+        vx *= (1.0 - dt * 1.2);
+        vy += grav * dt;
+        x += vx * dt;
+        y += vy * dt;
+
+        var k = t / max_t;
+        set_alpha(int(255 * k));
+        set_color(r, g, b);
+        draw_circle(x, y, size * k, true);
+        set_alpha(255);
+        frame;
+    }
+}
+
+process solid_tile(px, py, w, h, r, g, b)
+{
+    x = px;
+    y = py;
+    set_rect_shape(0, 0, w, h);
+    set_collision_layer(1);
+    set_collision_mask(2);
+
+    loop
+    {
+        // Base
+        set_color(r - 18, g - 18, b - 18);
+        draw_rectangle(x - w / 2, y - h / 2, w, h, true);
+        // Face
+        set_color(r, g, b);
+        draw_rectangle(x - w / 2 + 2, y - h / 2 + 2, w - 4, h - 4, true);
+        // Highlight superior
+        set_color(r + 22, g + 22, b + 20);
+        draw_rectangle(x - w / 2 + 3, y - h / 2 + 3, w - 6, 4, true);
+        // Outline
+        set_color(22, 26, 36);
+        draw_rectangle(x - w / 2, y - h / 2, w, h, false);
+        frame;
+    }
+}
+
+process moving_tile(px, py, w, h, range, speed)
+{
+    x = px;
+    y = py;
+    xold = x;
+    yold = y;
+
+    set_rect_shape(0, 0, w, h);
+    set_collision_layer(1);
+    set_collision_mask(2);
+
+    var base = py;
+    var t = 0.0;
+    var dir = 1;
+
+    loop
+    {
+        var dt = delta();
+        xold = x;
+        yold = y;
+
+        t += dir * speed * dt;
+        if (t > range)
+        {
+            t = range;
+            dir = -1;
+        }
+        elif (t < -range)
+        {
+            t = -range;
+            dir = 1;
+        }
+        y = base + t;
+
+        set_color(96, 116, 156);
+        draw_rectangle(x - w / 2, y - h / 2, w, h, true);
+        set_color(122, 145, 190);
+        draw_rectangle(x - w / 2 + 2, y - h / 2 + 2, w - 4, h - 4, true);
+        set_color(180, 206, 255);
+        draw_rectangle(x - w / 2 + 6, y - h / 2 + 4, w - 12, 3, true);
+        set_color(30, 38, 54);
+        draw_rectangle(x - w / 2, y - h / 2, w, h, false);
+        frame;
+    }
+}
+
+process jump_pad(px, py)
+{
+    x = px;
+    y = py;
+    set_rect_shape(0, 0, 30, 10);
+    set_collision_layer(1);
+    set_collision_mask(2);
+
+    loop
+    {
+        var pulse = 3 + sin(time() * 14) * 2;
+        set_alpha(70);
+        set_color(255, 120, 120);
+        draw_rectangle(x - 18, y - 8, 36, 16, true);
+        set_alpha(255);
+        set_color(252, 120, 120);
+        draw_rectangle(x - 15, y - 5, 30, 10, true);
+        set_color(255, 205, 205);
+        draw_rectangle(x - 15 + pulse, y - 3, 8, 6, true);
+        set_color(90, 30, 30);
+        draw_rectangle(x - 15, y - 5, 30, 10, false);
+        frame;
+    }
+}
+
+process spike(px, py)
+{
+    x = px;
+    y = py;
+    set_rect_shape(0, 0, 24, 20);
+    set_collision_layer(2);
+    set_collision_mask(0);
+
+    loop
+    {
+        var wob = sin(time() * 9 + x * 0.04) * 1.5;
+        set_color(180, 58, 68);
+        draw_rectangle(x - 12, y - 10 + wob, 24, 20, true);
+        set_color(255, 180, 180);
+        draw_line(x - 10, y + 8 + wob, x - 4, y - 8 + wob);
+        draw_line(x - 2, y + 8 + wob, x + 4, y - 8 + wob);
+        draw_line(x + 6, y + 8 + wob, x + 10, y - 8 + wob);
+        frame;
+    }
+}
+
+process cube_coin(px, py)
+{
+    x = px;
+    y = py;
+    life = 1;
+    set_rect_shape(0, 0, 14, 14);
+    set_collision_layer(3);
+    set_collision_mask(0);
+
+    var base = py;
+    loop
+    {
+        if (life <= 0) break;
+        var tt = time() * 5 + x * 0.01;
+        y = base + sin(tt) * 5;
+        var s = 14 + sin(tt * 1.7) * 2;
+
+        set_alpha(70);
+        set_color(255, 220, 92);
+        draw_rectangle(x - s / 2, y - s / 2, s, s, true);
+        set_alpha(255);
+        set_color(255, 224, 92);
+        draw_rectangle(x - 7, y - 7, 14, 14, true);
+        set_color(255, 245, 172);
+        draw_rectangle(x - 3, y - 3, 6, 6, true);
+        set_color(140, 108, 40);
+        draw_rectangle(x - 7, y - 7, 14, 14, false);
+        frame;
+    }
+}
+
+process finish_gate(px, py)
+{
+    x = px;
+    y = py;
+    set_rect_shape(0, 0, 34, 80);
+    set_collision_layer(4);
+    set_collision_mask(0);
+
+    loop
+    {
+        var wave = sin(time() * 8) * 3;
+        set_color(76, 220, 142);
+        draw_rectangle(x - 2, y - 40, 4, 80, true);
+        set_color(140, 255, 190);
+        draw_rectangle(x + 2, y - 34 + wave, 28, 16, true);
+        set_color(24, 66, 48);
+        draw_rectangle(x + 2, y - 34 + wave, 28, 16, false);
+        frame;
+    }
+}
+
+process enemy_bolt(px, py, vx, vy)
+{
+    x = px;
+    y = py;
+    set_circle_shape(6);
+    set_collision_layer(2);
+    set_collision_mask(0);
+
+    var life = 3.5;
+    var wob = math.rand(0.0, 6.28318);
+
+    loop
+    {
+        var dt = delta();
+        life -= dt;
+        if (life <= 0) break;
+
+        wob += dt * 10;
+        x += vx * dt + sin(wob) * 10 * dt;
+        y += vy * dt;
+        vy += 38 * dt;
+
+        if (x < -40 || x > WORLD_W + 40 || y < -40 || y > WORLD_H + 40)
+        {
+            break;
+        }
+
+        var wall = collision(type solid_tile, x, y);
+        if (!wall) wall = collision(type moving_tile, x, y);
+        if (!wall) wall = collision(type jump_pad, x, y);
+        if (wall)
+        {
+            fx_burst(x, y, 6, 255, 145, 145, 120, 0.14);
+            break;
+        }
+
+        set_alpha(95);
+        set_color(255, 100, 110);
+        draw_circle(x, y, 10, true);
+        set_alpha(255);
+        set_color(255, 190, 190);
+        draw_circle(x, y, 6, true);
+        frame;
+    }
+}
+
+process enemy_turret(px, py)
+{
+    x = px;
+    y = py;
+    set_rect_shape(0, 0, 28, 24);
+    set_collision_layer(2);
+    set_collision_mask(0);
+
+    var timer = math.rand(0.3, 1.0);
+    var aim = 0.0;
+    var hp = 5;
+    var hit_flash = 0.0;
+
+    loop
+    {
+        var dt = delta();
+        if (hit_flash > 0) hit_flash -= dt;
+
+        if (state > 0)
+        {
+            hp -= state;
+            state = 0;
+            hit_flash = 0.12;
+            fx_burst(x, y, 6, 255, 150, 150, 140, 0.16);
+            if (hp <= 0)
+            {
+                fx_burst(x, y, 14, 255, 175, 175, 200, 0.20);
+                break;
+            }
+        }
+
+        if (GAME_STATE != STATE_PLAY)
+        {
+            frame;
+            continue;
+        }
+
+        timer -= dt;
+        var p = nil;
+        if (PLAYER_ID != -1) p = proc(PLAYER_ID);
+        if (p)
+        {
+            aim = get_angle(x, y, p.x, p.y);
+        }
+
+        if (timer <= 0 && p)
+        {
+            timer = math.rand(1.1, 1.8);
+            var shot_angle = aim + math.rand(-8, 8);
+            var shot_speed = math.rand(240, 320);
+            enemy_bolt(x + get_distx(shot_angle, 18), y + get_disty(shot_angle, 18),
+                       get_distx(shot_angle, shot_speed), get_disty(shot_angle, shot_speed));
+            fx_burst(x, y, 8, 255, 175, 175, 130, 0.16);
+        }
+
+        if (hit_flash > 0) set_color(200, 90, 110);
+        else set_color(120, 72, 82);
+        draw_rectangle(x - 14, y - 12, 28, 24, true);
+        if (hit_flash > 0) set_color(238, 125, 145);
+        else set_color(168, 92, 102);
+        draw_rectangle(x - 10, y - 8, 20, 16, true);
+        set_color(255, 205, 205);
+        draw_line(x, y, x + get_distx(aim, 14), y + get_disty(aim, 14));
+
+        set_color(35, 24, 24);
+        draw_rectangle(x - 12, y - 18, 24, 4, true);
+        set_color(255, 120, 120);
+        draw_rectangle(x - 12, y - 18, 24 * (hp / 5), 4, true);
+        frame;
+    }
+}
+
+process enemy_hopper(px, py)
+{
+    x = px;
+    y = py;
+    set_rect_shape(0, 0, 20, 20);
+    set_collision_layer(2);
+    set_collision_mask(2);
+
+    var vx = 0.0;
+    var vy = 0.0;
+    var grav = 1600;
+    var jump_timer = math.rand(0.5, 1.3);
+    var face = 1;
+    var hp = 3;
+    var hit_flash = 0.0;
+
+    loop
+    {
+        if (GAME_STATE != STATE_PLAY)
+        {
+            frame;
+            continue;
+        }
+
+        var dt = delta();
+        if (hit_flash > 0) hit_flash -= dt;
+
+        if (state > 0)
+        {
+            hp -= state;
+            state = 0;
+            hit_flash = 0.12;
+            fx_burst(x, y, 6, 255, 150, 150, 140, 0.16);
+            if (hp <= 0)
+            {
+                fx_burst(x, y, 12, 255, 175, 175, 180, 0.18);
+                break;
+            }
+        }
+        jump_timer -= dt;
+        var grounded = !place_free(x, y + 1);
+
+        if (grounded && jump_timer <= 0)
+        {
+            jump_timer = math.rand(0.9, 1.6);
+            var p = nil;
+            if (PLAYER_ID != -1) p = proc(PLAYER_ID);
+            if (p)
+            {
+                face = math.sign(p.x - x);
+                if (face == 0) face = 1;
+            }
+            vx = face * math.rand(120, 220);
+            vy = -math.rand(300, 460);
+            fx_burst(x, y + 10, 6, 255, 165, 140, 120, 0.14);
+        }
+
+        vy += grav * dt;
+        if (vy > 700) vy = 700;
+        vx *= (1.0 - dt * 0.6);
+
+        var nx = x + vx * dt;
+        if (place_free(nx, y))
+        {
+            x = nx;
+        }
+        else
+        {
+            vx = -vx * 0.35;
+            face = -face;
+        }
+
+        var ny = y + vy * dt;
+        if (place_free(x, ny))
+        {
+            y = ny;
+        }
+        else
+        {
+            var sy = math.sign(vy);
+            while (place_free(x, y + sy))
+            {
+                y += sy;
+            }
+            vy = 0;
+        }
+
+        if (hit_flash > 0) set_color(220, 105, 125);
+        else set_color(188, 95, 110);
+        draw_rectangle(x - 10, y - 10, 20, 20, true);
+        set_color(255, 205, 215);
+        draw_circle(x + face * 4, y - 2, 2, true);
+        set_color(35, 24, 24);
+        draw_rectangle(x - 10, y - 16, 20, 3, true);
+        set_color(255, 120, 120);
+        draw_rectangle(x - 10, y - 16, 20 * (hp / 3), 3, true);
+        frame;
+    }
+}
+
+process player_bullet(px, py, ang)
+{
+    x = px;
+    y = py;
+    set_circle_shape(4);
+    set_collision_layer(3);
+    set_collision_mask(0);
+
+    var speed = 860;
+    var life = 1.05;
+
+    loop
+    {
+        var dt = delta();
+        life -= dt;
+        if (life <= 0) break;
+
+        x += get_distx(ang, speed) * dt;
+        y += get_disty(ang, speed) * dt;
+
+        if (x < -40 || x > WORLD_W + 40 || y < -40 || y > WORLD_H + 40)
+        {
+            break;
+        }
+
+        var eh = collision(type enemy_hopper, x, y);
+        if (eh)
+        {
+            eh.state += 1;
+            fx_burst(x, y, 7, 255, 220, 135, 150, 0.14);
+            break;
+        }
+
+        var et = collision(type enemy_turret, x, y);
+        if (et)
+        {
+            et.state += 1;
+            fx_burst(x, y, 7, 255, 220, 135, 150, 0.14);
+            break;
+        }
+
+        var wall = collision(type solid_tile, x, y);
+        if (!wall) wall = collision(type moving_tile, x, y);
+        if (wall)
+        {
+            fx_burst(x, y, 5, 255, 200, 120, 110, 0.10);
+            break;
+        }
+
+        set_alpha(92);
+        set_color(255, 220, 110);
+        draw_circle(x, y, 8, true);
+        set_alpha(255);
+        set_color(255, 245, 190);
+        draw_circle(x, y, 4, true);
+        frame;
+    }
+}
+
+process player(px, py)
+{
+    x = px;
+    y = py;
+    xold = x;
+    yold = y;
+    set_rect_shape(0, 0, 22, 30);
+    set_collision_layer(1);
+    set_collision_mask(2);
+
+    velx = 0.0;
+    vely = 0.0;
+    var face = 1;
+    angle = 0.0;
+
+    var run = 260;
+    var grav = 1750;
+    var max_fall = 760;
+    var jump_v = -560;
+    var jumps_left = 2;
+
+    var coyote = 0.0;
+    var jump_buffer = 0.0;
+    var dash_t = 0.0;
+    var dash_cd = 0.0;
+    var hurt_cd = 0.0;
+    var fire_cd = 0.0;
+    var grounded = false;
+    var trail_x = [x, x, x, x];
+    var trail_y = [y, y, y, y];
+    var arm_len = 18;
+    var arm_w = 26;
+    var arm_h = 8;
+    var arm_angle = 0.0;
+
+    loop
+    {
+        if (GAME_STATE != STATE_PLAY)
+        {
+            set_color(110, 168, 255);
+            draw_rectangle(x - 11, y - 15, 22, 30, true);
+            frame;
+            continue;
+        }
+
+        var dt = delta();
+        xold = x;
+        yold = y;
+
+        // Anti-stuck guard (especialmente teto/plataforma móvel).
+        var unstuck = 0;
+        while (!place_free(x, y) && unstuck < 20)
+        {
+            y += 1;
+            unstuck += 1;
+        }
+
+        trail_x[3] = trail_x[2];
+        trail_y[3] = trail_y[2];
+        trail_x[2] = trail_x[1];
+        trail_y[2] = trail_y[1];
+        trail_x[1] = trail_x[0];
+        trail_y[1] = trail_y[0];
+        trail_x[0] = x;
+        trail_y[0] = y;
+
+        if (jump_buffer > 0) jump_buffer -= dt;
+        if (coyote > 0) coyote -= dt;
+        if (dash_t > 0) dash_t -= dt;
+        if (dash_cd > 0) dash_cd -= dt;
+        if (hurt_cd > 0) hurt_cd -= dt;
+        if (fire_cd > 0) fire_cd -= dt;
+
+        var h = 0;
+        if (key_down(KEY_LEFT) || key_down(KEY_A)) h -= 1;
+        if (key_down(KEY_RIGHT) || key_down(KEY_D)) h += 1;
+        if (h != 0) face = h;
+
+        // Mira em world-space (input + scroll da scene).
+        var mx = get_mouse_x() + CAM_X;
+        var my = get_mouse_y() + CAM_Y;
+        arm_angle = get_angle(x, y - 4, mx, my);
+        angle = 0;
+
+        if (mouse_down(0) && fire_cd <= 0)
+        {
+            fire_cd = 0.09;
+            var muzzle_x = x + get_distx(arm_angle, arm_len + 12);
+            var muzzle_y = y - 4 + get_disty(arm_angle, arm_len + 12);
+            player_bullet(muzzle_x, muzzle_y, arm_angle);
+            fx_burst(muzzle_x, muzzle_y, 2, 255, 235, 170, 120, 0.08);
+        }
+
+        if (key_pressed(KEY_SPACE) || key_pressed(KEY_UP) || key_pressed(KEY_W))
+        {
+            jump_buffer = 0.12;
+        }
+
+        grounded = !place_free(x, y + 1);
+        if (grounded)
+        {
+            coyote = 0.09;
+            jumps_left = 2;
+        }
+
+        if ((key_pressed(KEY_SHIFT) || key_pressed(KEY_S)) && dash_cd <= 0)
+        {
+            dash_t = 0.10;
+            dash_cd = 0.45;
+            velx = face * 640;
+            vely *= 0.25;
+            fx_burst(x, y, 9, 255, 238, 120, 220, 0.20);
+            start_camera_shake(-2, -2, 20, 12);
+        }
+
+        if (jump_buffer > 0)
+        {
+            if (coyote > 0)
+            {
+                jump_buffer = 0;
+                coyote = 0;
+                jumps_left = 1;
+                vely = jump_v;
+                fx_burst(x, y + 10, 8, 170, 210, 255, 180, 0.18);
+            }
+            elif (jumps_left > 0)
+            {
+                jump_buffer = 0;
+                jumps_left -= 1;
+                vely = jump_v * 0.90;
+                fx_burst(x, y + 10, 10, 255, 210, 135, 220, 0.20);
+            }
+        }
+
+        if (key_released(KEY_SPACE) && vely < 0)
+        {
+            vely *= 0.42;
+        }
+
+        if (dash_t <= 0)
+        {
+            var target_vx = h * run;
+            var acc = 13.0;
+            if (!grounded) acc = 7.5;
+            velx += (target_vx - velx) * math.min(1.0, dt * acc);
+        }
+
+        if (dash_t <= 0) vely += grav * dt;
+        if (vely > max_fall) vely = max_fall;
+        speed = abs(velx);
+
+        var nx = x + velx * dt;
+        if (place_free(nx, y))
+        {
+            x = nx;
+        }
+        else
+        {
+            var sx = math.sign(velx);
+            while (place_free(x + sx, y))
+            {
+                x += sx;
+            }
+            velx = 0;
+        }
+
+        var ny = y + vely * dt;
+        if (place_free(x, ny))
+        {
+            y = ny;
+        }
+        else
+        {
+            var sy = math.sign(vely);
+            while (place_free(x, y + sy))
+            {
+                y += sy;
+            }
+            // Se bateu por baixo, força sair para baixo para não colar no teto/plataforma.
+            if (vely < 0)
+            {
+                var push_out = 0;
+                while (!place_free(x, y) && push_out < 16)
+                {
+                    y += 1;
+                    push_out += 1;
+                }
+            }
+            if (vely > 0) grounded = true;
+            if (vely > 120) fx_burst(x, y + 14, 7, 160, 200, 255, 120, 0.16);
+            vely = 0;
+        }
+
+        if (grounded)
+        {
+            var plat = collision(type moving_tile, x, y + 1);
+            if (plat)
+            {
+                x += (plat.x - plat.xold);
+                y += (plat.y - plat.yold);
+            }
+        }
+
+        var pad = collision(type jump_pad, x, y + 16);
+        if (pad && vely >= 0)
+        {
+            vely = -700;
+            jumps_left = 1;
+            fx_burst(x, y + 12, 12, 255, 150, 150, 260, 0.22);
+            start_camera_shake(-2, -2, 24, 14);
+        }
+
+        var c = collision(type cube_coin, x, y);
+        if (c)
+        {
+            c.life = 0;
+            SCORE += 1;
+            fx_burst(c.x, c.y, 8, 255, 225, 120, 170, 0.18);
+        }
+
+        var sp = collision(type spike, x, y + 4);
+        var eh = collision(type enemy_hopper, x, y + 3);
+        if (!eh) eh = collision(type enemy_turret, x, y + 3);
+        if (!eh) eh = collision(type enemy_bolt, x, y + 3);
+
+        if ((sp || eh) && hurt_cd <= 0)
+        {
+            hurt_cd = 0.8;
+            HP -= 1;
+            fx_burst(x, y, 16, 255, 120, 120, 240, 0.24);
+            start_camera_shake(-3, -3, 26, 18);
+
+            x = RESPAWN_X;
+            y = RESPAWN_Y;
+            velx = 0;
+            vely = 0;
+            jumps_left = 2;
+
+            if (HP <= 0) GAME_STATE = STATE_DEAD;
+        }
+
+        var end = collision(type finish_gate, x, y);
+        if (end)
+        {
+            GAME_STATE = STATE_WIN;
+            fx_burst(x, y, 24, 170, 255, 190, 280, 0.30);
+        }
+
+        if (grounded && abs(velx) > 80 && math.rand(0.0, 1.0) < 0.12)
+        {
+            fx_particle(x - face * 6, y + 12, -velx * 0.08, -math.rand(40, 100), 0.14, 170, 210, 255, 3, 900);
+        }
+
+        var cr = 110;
+        var cg = 168;
+        var cb = 255;
+        if (dash_t > 0) { cr = 255; cg = 236; cb = 120; }
+        if (hurt_cd > 0) { cr = 255; cg = 120; cb = 120; }
+
+        // Trail
+        var ti = 0;
+        while (ti < 4)
+        {
+            set_alpha(95 - ti * 18);
+            set_color(cr, cg, cb);
+            draw_rectangle(trail_x[ti] - 9, trail_y[ti] - 12, 18, 24, true);
+            ti += 1;
+        }
+        set_alpha(255);
+
+        set_color(cr, cg, cb);
+        draw_rectangle(x - 11, y - 15, 22, 30, true);
+        set_color(24, 30, 48);
+        draw_rectangle(x - 11, y - 15, 22, 30, false);
+        // Braco/arma retangular apontado ao rato.
+        var arm_x = x + get_distx(arm_angle, 8);
+        var arm_y = y - 4 + get_disty(arm_angle, 8);
+        set_color(75, 86, 112);
+        draw_rotated_rectangle_ex(arm_x, arm_y - arm_h / 2, arm_w, arm_h, -arm_angle, true, 0, arm_h / 2);
+        set_color(22, 28, 40);
+        draw_rotated_rectangle_ex(arm_x, arm_y - arm_h / 2, arm_w, arm_h, -arm_angle, false, 0, arm_h / 2);
+        set_color(255, 238, 188);
+        draw_circle(arm_x + get_distx(arm_angle, arm_w + 2), arm_y + get_disty(arm_angle, arm_w + 2), 2, true);
+
+        // Crosshair estilo rect_mouse_shooter.
+        set_color(255, 230, 160);
+        draw_circle(mx, my, 8, false);
+        draw_line(mx - 12, my, mx - 4, my);
+        draw_line(mx + 4, my, mx + 12, my);
+        draw_line(mx, my - 12, mx, my - 4);
+        draw_line(mx, my + 4, mx, my + 12);
+
+        set_color(255, 255, 255);
+        draw_circle(x + face * 4, y - 4, 2, true);
+
+        frame;
+    }
+}
+
+def build_world()
+{
+    // Floor strip
+    var i = 0;
+    while (i < int(WORLD_W / CELL))
+    {
+        solid_tile(i * CELL + CELL / 2, H - 16, CELL, CELL, 85, 96, 114);
+        i += 1;
+    }
+
+    // Square-ish chunks
+    solid_tile(200, 450, 192, 24, 102, 120, 144);
+    solid_tile(470, 390, 224, 24, 102, 120, 144);
+    solid_tile(810, 340, 192, 24, 102, 120, 144);
+    solid_tile(1120, 300, 224, 24, 102, 120, 144);
+    solid_tile(1440, 260, 192, 24, 102, 120, 144);
+
+    moving_tile(1710, 360, 128, 20, 120, 110);
+    solid_tile(1960, 290, 192, 24, 102, 120, 144);
+    moving_tile(2210, 330, 128, 20, 90, 130);
+    solid_tile(2470, 270, 160, 24, 102, 120, 144);
+    solid_tile(2740, 240, 160, 24, 102, 120, 144);
+
+    // Mais plataformas altas para mundo ficar mais "quadrado" e vertical.
+    solid_tile(340, 260, 128, 22, 102, 120, 144);
+    solid_tile(460, 200, 128, 22, 102, 120, 144);
+    solid_tile(600, 145, 128, 22, 102, 120, 144);
+    solid_tile(760, 100, 128, 22, 102, 120, 144);
+    solid_tile(980, 150, 160, 22, 102, 120, 144);
+    moving_tile(1250, 165, 120, 18, 80, 130);
+    solid_tile(1540, 145, 160, 22, 102, 120, 144);
+    solid_tile(1820, 105, 160, 22, 102, 120, 144);
+    moving_tile(2100, 135, 120, 18, 90, 145);
+    solid_tile(2380, 110, 160, 22, 102, 120, 144);
+    solid_tile(2650, 90, 160, 22, 102, 120, 144);
+    solid_tile(2920, 120, 160, 22, 102, 120, 144);
+
+    jump_pad(1140, 285);
+    jump_pad(2480, 255);
+    jump_pad(1860, 95);
+
+    // Hazards
+    spike(640, H - 30);
+    spike(675, H - 30);
+    spike(1510, H - 30);
+    spike(1545, H - 30);
+    spike(2280, H - 30);
+    spike(2315, H - 30);
+
+    // Enemies
+    enemy_hopper(880, 316);
+    enemy_hopper(2060, 250);
+    enemy_turret(1330, 236);
+    enemy_turret(2620, 176);
+    enemy_hopper(1540, 110);
+    enemy_turret(2380, 75);
+
+    // Coins
+    cube_coin(200, 410);
+    cube_coin(470, 350);
+    cube_coin(530, 350);
+    cube_coin(810, 300);
+    cube_coin(1120, 260);
+    cube_coin(1400, 220);
+    cube_coin(1710, 320);
+    cube_coin(1960, 250);
+    cube_coin(2210, 290);
+    cube_coin(2470, 230);
+    cube_coin(2740, 200);
+    cube_coin(460, 160);
+    cube_coin(600, 105);
+    cube_coin(760, 60);
+    cube_coin(980, 110);
+    cube_coin(1540, 105);
+    cube_coin(1820, 65);
+    cube_coin(2380, 70);
+    cube_coin(2650, 50);
+
+    finish_gate(3020, 420);
+}
+
+def start_run()
+{
+    GAME_STATE = STATE_PLAY;
+    SCORE = 0;
+    HP = HP_MAX;
+    CAM_X = 0;
+    CAM_Y = 0;
+    PLAYER_ID = -1;
+
+    let_me_alone();
+    build_world();
+
+    var p = player(RESPAWN_X, RESPAWN_Y);
+    if (p) PLAYER_ID = p.id;
+}
+
+set_window_size(W, H);
+set_window_title("Bu Super Square World");
+set_design_resolution(W, H);
+set_virtual_screen_enabled(true);
+set_screen_scale_mode(0);
+init_collision(0, 0, WORLD_W, WORLD_H);
+
+start_run();
+
+loop
+{
+    var dt = delta();
+    var p = nil;
+
+    if (PLAYER_ID != -1) p = proc(PLAYER_ID);
+    if (!p && GAME_STATE == STATE_PLAY)
+    {
+        PLAYER_ID = get_id(type player);
+        if (PLAYER_ID != -1) p = proc(PLAYER_ID);
+    }
+
+    if (p)
+    {
+        var tx = p.x - W * 0.5;
+        var ty = p.y - H * 0.5;
+        tx = math.clamp(tx, 0, WORLD_W - W);
+        ty = math.clamp(ty, 0, WORLD_H - H);
+        CAM_X += (tx - CAM_X) * math.min(1.0, dt * 6.0);
+        CAM_Y += (ty - CAM_Y) * math.min(1.0, dt * 6.0);
+    }
+    set_scroll(CAM_X, CAM_Y);
+
+    draw_backdrop(CAM_X, CAM_Y);
+
+    // UI
+    set_draw_screen(true);
+    set_alpha(178);
+    set_color(14, 18, 28);
+    draw_rectangle(12, 10, 460, 124, true);
+    set_alpha(255);
+    set_color(76, 104, 162);
+    draw_rectangle(12, 10, 460, 124, false);
+
+    set_color(245, 245, 250);
+    draw_text("SUPER SQUARE WORLD", 24, 16, 26);
+    draw_text(format("Coins: {}", SCORE), 24, 48, 18);
+    draw_text(format("HP: {}/{}", HP, HP_MAX), 24, 68, 18);
+    draw_text("Move: A/D  Jump: SPACE  Dash: SHIFT  Shoot: Mouse", 24, 90, 16);
+    draw_text("Double jump + particle FX + gun arm", 24, 108, 16);
+
+    var hp_ratio = HP / HP_MAX;
+    set_color(26, 26, 34);
+    draw_rectangle(150, 68, 140, 14, true);
+    set_color(255, 92, 110);
+    draw_rectangle(150, 68, 140 * hp_ratio, 14, true);
+    set_color(255, 190, 200);
+    draw_rectangle(150, 68, 140, 14, false);
+
+    if (GAME_STATE == STATE_WIN)
+    {
+        set_color(170, 255, 190);
+        draw_text("LEVEL CLEAR! Press R", 350, 250, 32);
+    }
+    elif (GAME_STATE == STATE_DEAD)
+    {
+        set_color(255, 130, 130);
+        draw_text("YOU DIED! Press R", 360, 250, 32);
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        start_run();
+    }
+
+    if (key_pressed(KEY_ESCAPE))
+    {
+        set_draw_screen(false);
+        let_me_alone();
+        break;
+    }
+
+    set_draw_screen(false);
+    frame;
+}

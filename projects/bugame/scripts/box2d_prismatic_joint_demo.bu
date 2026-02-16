@@ -1,0 +1,82 @@
+print("Box2D PrismaticJoint Demo");
+
+var KEY_ESCAPE = 256;
+var KEY_R = 82;
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+var KEY_A = 65;
+var KEY_D = 68;
+
+set_window_size(1280, 720);
+set_window_title("Bu Box2D PrismaticJoint Demo");
+create_world(0, 0);
+set_physics_debug(true);
+set_physics_debug_flags(1 + 2 + 16);
+
+var floor_def = create_bodydef(BODY_STATIC);
+floor_def.set_position(640, 700);
+var floor_fx = create_fixture_def();
+floor_fx.set_box_shape(640, 20);
+var world_floor = create_body(floor_def);
+world_floor.add_fixture(floor_fx);
+
+var rail_def = create_bodydef(BODY_STATIC);
+rail_def.set_position(640, 360);
+var rail_fx = create_fixture_def();
+rail_fx.set_box_shape(260, 12);
+var rail = create_body(rail_def);
+rail.add_fixture(rail_fx);
+
+var slider_def = create_bodydef(BODY_DYNAMIC);
+slider_def.set_position(640, 360);
+slider_def.set_linear_damping(1.0);
+slider_def.set_angular_damping(2.0);
+var slider_fx = create_fixture_def();
+slider_fx.set_density(1.0);
+slider_fx.set_friction(0.4);
+slider_fx.set_box_shape(42, 24);
+var slider = create_body(slider_def);
+slider.add_fixture(slider_fx);
+
+var jd = PrismaticJointDef();
+jd.initialize(rail, slider, 640, 360, 1, 0);
+jd.set_enable_limit(true);
+jd.set_limits(-220, 220);
+jd.set_enable_motor(true);
+jd.set_max_motor_force(16000);
+jd.set_motor_speed(0);
+jd.set_collide_connected(false);
+var joint = PrismaticJoint(jd);
+
+loop
+{
+    var dt = delta();
+    if (dt > 0.033) { dt = 0.033; }
+
+    var speed = 0;
+    if (key_down(KEY_LEFT) || key_down(KEY_A)) speed = -260;
+    if (key_down(KEY_RIGHT) || key_down(KEY_D)) speed = 260;
+    joint.set_motor_speed(speed);
+
+    if (key_pressed(KEY_R))
+    {
+        slider.set_transform(640, 360, 0);
+        slider.set_linear_velocity(0, 0);
+        slider.set_angular_velocity(0);
+    }
+
+    update_world(dt);
+
+    draw_text("PrismaticJoint demo", 20, 20, 20);
+    draw_text("A/D or Arrows move slider | R reset | ESC close", 20, 44, 20);
+    draw_text("Translation: " + str(joint.get_joint_translation()), 20, 68, 20);
+    draw_text("Speed: " + str(joint.get_joint_speed()), 20, 92, 20);
+    draw_fps(20, 116);
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+    frame;
+}

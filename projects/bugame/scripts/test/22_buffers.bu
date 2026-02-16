@@ -1,0 +1,24 @@
+// Test: Buffer operations (cursor-based API, camelCase methods)
+var buf = @(10, 0);  // 10 bytes, type UINT8
+
+// Write at cursor (starts at 0, auto-advances)
+buf.writeByte(42);
+buf.writeByte(255);
+
+// Read back - use seek() to reset cursor
+buf.seek(0);
+var b0 = buf.readByte();
+var b1 = buf.readByte();
+
+if (b0 != 42) { throw "writeByte/readByte 0"; }
+if (b1 != 255) { throw "writeByte/readByte 1"; }
+if (buf.length() != 10) { throw "buffer length"; }
+
+// Test seek
+buf.seek(0);
+buf.writeByte(99);
+buf.seek(0);
+var b2 = buf.readByte();
+if (b2 != 99) { throw "seek + overwrite"; }
+
+free(buf);

@@ -1,0 +1,30 @@
+// Test: Functions, return, recursion
+def add(a, b) { return a + b; }
+if (add(3, 4) != 7) { throw "basic func"; }
+
+// No return value
+var side = 0;
+def setVar(v) { side = v; }
+setVar(42);
+if (side != 42) { throw "void func"; }
+
+// Recursion
+def fib(n) {
+    if (n <= 1) { return n; }
+    return fib(n - 1) + fib(n - 2);
+}
+if (fib(10) != 55) { throw "recursion"; }
+
+// Nested functions
+def outer() {
+    def inner(x) { return x * 2; }
+    return inner(5);
+}
+if (outer() != 10) { throw "nested func"; }
+
+// Multi-return
+def swap(a, b) {
+    return (b, a);
+}
+var (x, y) = swap(1, 2);
+if (x != 2 || y != 1) { throw "multi-return"; }

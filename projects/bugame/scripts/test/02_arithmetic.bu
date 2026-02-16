@@ -1,0 +1,15 @@
+// Test: Arithmetic operators
+if (2 + 3 != 5) { throw "add"; }
+if (10 - 4 != 6) { throw "sub"; }
+if (3 * 7 != 21) { throw "mul"; }
+if (15 / 3 != 5) { throw "div"; }
+if (17 % 5 != 2) { throw "mod"; }
+if (-5 != 0 - 5) { throw "negate"; }
+
+// Mixed int/float
+var x = 10 + 0.5;
+if (x < 10.4 || x > 10.6) { throw "mixed add"; }
+
+// Precedence
+if (2 + 3 * 4 != 14) { throw "precedence"; }
+if ((2 + 3) * 4 != 20) { throw "grouping"; }

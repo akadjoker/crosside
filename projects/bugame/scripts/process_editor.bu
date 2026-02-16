@@ -1,0 +1,2206 @@
+include "gui_lib.bu";
+import json;
+
+var KEY_ESCAPE = 256;
+var W = 1280;
+var H = 920;
+
+var EDITOR_TAB = 0;
+var EDITOR_PICKER = gui_filepicker_create("Load Graph Image", ".", "", false);
+var EDITOR_SCENE_PICKER = gui_filepicker_create("Load Scene JSON", ".", ".json", false);
+var EDITOR_STATUS = "Ready";
+var EDITOR_LAST_GRAPH_ID = -1;
+
+var EDITOR_GRAPH_IDS = [];
+var EDITOR_GRAPH_PATHS = [];
+var EDITOR_GRAPH_SELECTED = -1;
+var EDITOR_GRAPH_TAB_SCROLL = gui_scroll_state();
+var EDITOR_GRAPH_SCROLL = gui_scroll_state();
+var EDITOR_GRAPH_PREVIEW_SCROLL = gui_scroll_state();
+var EDITOR_PREVIEW_LAST_GRAPH = -9999;
+var EDITOR_SUBGRAPH_COUNTER = 0;
+var EDITOR_SUB_HAS_RECT = false;
+var EDITOR_SUB_MODE = 0; // 0=idle, 1=drawing new rect, 2..5=drag handle TL/TR/BR/BL
+var EDITOR_SUB_PARENT = -1; // graph id owning current rect
+var EDITOR_SUB_START_X = 0; // rect x0 (normalized)
+var EDITOR_SUB_START_Y = 0; // rect y0 (normalized)
+var EDITOR_SUB_CUR_X = 0;   // rect x1 (normalized)
+var EDITOR_SUB_CUR_Y = 0;   // rect y1 (normalized)
+var EDITOR_SUB_DRAG_ANCHOR_X = 0;
+var EDITOR_SUB_DRAG_ANCHOR_Y = 0;
+var EDITOR_SUB_MENU_OPEN = false;
+var EDITOR_SUB_MENU_X = 0;
+var EDITOR_SUB_MENU_Y = 0;
+var EDITOR_SUB_MENU_PARENT = -1;
+var EDITOR_GRID_SHOW = true;
+var EDITOR_GRID_SNAP = true;
+var EDITOR_GRID_SIZE_INDEX = 1;
+var EDITOR_GRID_SIZE_OPTIONS = ["8", "16", "32", "64"];
+var EDITOR_PICK_MODE_LOAD = 0;
+var EDITOR_PICK_MODE_SAVE = 1;
+var EDITOR_SCENE_PICKER_MODE = EDITOR_PICK_MODE_LOAD;
+var EDITOR_SCENE_PATH = "";
+var EDITOR_SCENE_BRUSH_GRAPH_ID = -1;
+var EDITOR_GRAPH_PICKER_OPEN = false;
+var EDITOR_GRAPH_PICKER_SELECTED = -1;
+var EDITOR_GRAPH_PICKER_SCROLL = gui_scroll_state();
+var EDITOR_GRAPH_OPTIONS = ["None"];
+var EDITOR_GRAPH_OPTION_IDS = [-1];
+
+var EDITOR_SCENE_INSTANCES = [];
+var EDITOR_SCENE_SELECTED = -1;
+var EDITOR_SCENE_CANVAS_SCROLL = gui_scroll_state();
+var EDITOR_INSPECTOR_SCROLL = gui_scroll_state();
+var EDITOR_SCENE_WORLD_W = 2200;
+var EDITOR_SCENE_WORLD_H = 1400;
+var EDITOR_SCN_X = 320;
+var EDITOR_SCN_Y = 180;
+var EDITOR_SCN_SIZE = 32;
+var EDITOR_SCN_ANGLE = 0;
+var EDITOR_SCN_GRAPH_ID = -1;
+var EDITOR_SCENE_DRAGGING = false;
+var EDITOR_SCENE_SCALING = false;
+var EDITOR_SCENE_ROTATING = false;
+var EDITOR_SCENE_PANNING = false;
+var EDITOR_SCENE_DRAG_OFFSET_X = 0;
+var EDITOR_SCENE_DRAG_OFFSET_Y = 0;
+var EDITOR_SCENE_SCALE_START_DIST = 1;
+var EDITOR_SCENE_SCALE_START_SIZE = 32;
+var EDITOR_SCENE_ROTATE_OFFSET = 0;
+var EDITOR_SCENE_PAN_LAST_X = 0;
+var EDITOR_SCENE_PAN_LAST_Y = 0;
+var WIN_EDITOR = nil;
+var WIN_GRAPH_PICKER = nil;
+
+class ObjectInstance
+{
+    var process_name;
+    var x;
+    var y;
+    var size;
+    var angle;
+    var graph_id;
+
+    def init(_process_name, _x, _y, _size, _angle, _graph_id)
+    {
+        self.process_name = _process_name;
+        self.x = _x;
+        self.y = _y;
+        self.size = _size;
+        self.angle = _angle;
+        self.graph_id = _graph_id;
+    }
+}
+
+def editor_str_starts_with(text, prefix)
+{
+    if (text == nil || prefix == nil) return false;
+    if (len(text) < len(prefix)) return false;
+    return text.sub(0, len(prefix)) == prefix;
+}
+
+def editor_str_last_index_of(text, token)
+{
+    if (text == nil || token == nil) return -1;
+    var tlen = len(text);
+    var klen = len(token);
+    if (klen <= 0 || tlen < klen) return -1;
+
+    var i = tlen - klen;
+    while (i >= 0)
+    {
+        if (text.sub(i, i + klen) == token) return i;
+        i -= 1;
+    }
+    return -1;
+}
+
+def editor_resolve_graph_path(raw_path)
+{
+    if (raw_path == nil || raw_path == "") return raw_path;
+    if (path.exists(raw_path)) return raw_path;
+
+    var p = raw_path;
+    if (editor_str_starts_with(p, "/"))
+    {
+        var abs_bin = "bin" + p;
+        if (path.exists(abs_bin)) return abs_bin;
+    }
+
+    var with_bin = "bin/" + p;
+    if (path.exists(with_bin)) return with_bin;
+
+    if (editor_str_starts_with(p, "bin/"))
+    {
+        var without_bin = p.sub(4, len(p));
+        if (path.exists(without_bin)) return without_bin;
+    }
+
+    return raw_path;
+}
+
+def editor_clear_graphs()
+{
+    EDITOR_GRAPH_IDS = [];
+    EDITOR_GRAPH_PATHS = [];
+    EDITOR_GRAPH_SELECTED = -1;
+    EDITOR_GRAPH_TAB_SCROLL.x = 0;
+    EDITOR_GRAPH_TAB_SCROLL.y = 0;
+    EDITOR_GRAPH_SCROLL.x = 0;
+    EDITOR_GRAPH_SCROLL.y = 0;
+    EDITOR_SUB_HAS_RECT = false;
+    EDITOR_SUB_MODE = 0;
+    EDITOR_SUB_PARENT = -1;
+    EDITOR_SUB_MENU_OPEN = false;
+    EDITOR_SUB_MENU_PARENT = -1;
+    EDITOR_GRAPH_OPTIONS = ["None"];
+    EDITOR_GRAPH_OPTION_IDS = [-1];
+    EDITOR_SCENE_BRUSH_GRAPH_ID = -1;
+    EDITOR_GRAPH_PICKER_OPEN = false;
+    EDITOR_GRAPH_PICKER_SELECTED = -1;
+    EDITOR_GRAPH_PICKER_SCROLL.x = 0;
+    EDITOR_GRAPH_PICKER_SCROLL.y = 0;
+}
+
+def editor_sub_rect_clear()
+{
+    EDITOR_SUB_HAS_RECT = false;
+    EDITOR_SUB_MODE = 0;
+    EDITOR_SUB_PARENT = -1;
+}
+
+def editor_sub_rect_has_for(graph_id)
+{
+    return EDITOR_SUB_HAS_RECT && EDITOR_SUB_PARENT == graph_id;
+}
+
+def editor_sub_rect_set(graph_id, x0, y0, x1, y1, max_w, max_h)
+{
+    if (max_w < 1 || max_h < 1) return;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 < 0) x1 = 0;
+    if (y1 < 0) y1 = 0;
+    if (x0 >= max_w) x0 = max_w - 1;
+    if (x1 >= max_w) x1 = max_w - 1;
+    if (y0 >= max_h) y0 = max_h - 1;
+    if (y1 >= max_h) y1 = max_h - 1;
+    if (x1 < x0)
+    {
+        var tx = x0;
+        x0 = x1;
+        x1 = tx;
+    }
+    if (y1 < y0)
+    {
+        var ty = y0;
+        y0 = y1;
+        y1 = ty;
+    }
+    EDITOR_SUB_PARENT = graph_id;
+    EDITOR_SUB_HAS_RECT = true;
+    EDITOR_SUB_START_X = int(x0);
+    EDITOR_SUB_START_Y = int(y0);
+    EDITOR_SUB_CUR_X = int(x1);
+    EDITOR_SUB_CUR_Y = int(y1);
+}
+
+def editor_sub_rect_hit_handle(mouse_x, mouse_y, draw_x, draw_y)
+{
+    if (!EDITOR_SUB_HAS_RECT) return -1;
+    var hs = 10;
+    var h = int(hs * 0.5);
+    var hx0 = draw_x + EDITOR_SUB_START_X;
+    var hy0 = draw_y + EDITOR_SUB_START_Y;
+    var hx1 = draw_x + EDITOR_SUB_CUR_X;
+    var hy1 = draw_y + EDITOR_SUB_CUR_Y;
+
+    if (gui_point_in_rect(mouse_x, mouse_y, hx0 - h, hy0 - h, hs, hs)) return 0; // TL
+    if (gui_point_in_rect(mouse_x, mouse_y, hx1 - h, hy0 - h, hs, hs)) return 1; // TR
+    if (gui_point_in_rect(mouse_x, mouse_y, hx1 - h, hy1 - h, hs, hs)) return 2; // BR
+    if (gui_point_in_rect(mouse_x, mouse_y, hx0 - h, hy1 - h, hs, hs)) return 3; // BL
+    return -1;
+}
+
+def editor_grid_size()
+{
+    if (EDITOR_GRID_SIZE_INDEX == 0) return 8;
+    if (EDITOR_GRID_SIZE_INDEX == 1) return 16;
+    if (EDITOR_GRID_SIZE_INDEX == 2) return 32;
+    if (EDITOR_GRID_SIZE_INDEX == 3) return 64;
+    return 16;
+}
+
+def editor_snap_start(v, max_v)
+{
+    if (max_v < 1) return 0;
+    var out_v = int(v);
+    if (EDITOR_GRID_SNAP)
+    {
+        var g = editor_grid_size();
+        if (g < 1) g = 1;
+        out_v = int(out_v / g) * g;
+    }
+    if (out_v < 0) out_v = 0;
+    if (out_v >= max_v) out_v = max_v - 1;
+    return out_v;
+}
+
+def editor_snap_end(v, max_v)
+{
+    if (max_v < 1) return 0;
+    var out_v = int(v);
+    if (EDITOR_GRID_SNAP)
+    {
+        var g = editor_grid_size();
+        if (g < 1) g = 1;
+        out_v = int(out_v / g) * g + g - 1;
+    }
+    if (out_v < 0) out_v = 0;
+    if (out_v >= max_v) out_v = max_v - 1;
+    return out_v;
+}
+
+def editor_add_graph(image_path)
+{
+    if (image_path == nil || image_path == "")
+    {
+        EDITOR_STATUS = "Invalid image path";
+        return false;
+    }
+
+    var graph_id = load_graph(image_path);
+    if (graph_id < 0)
+    {
+        EDITOR_STATUS = format("Failed to load image: {}", image_path);
+        return false;
+    }
+
+    EDITOR_GRAPH_IDS.push(graph_id);
+    EDITOR_GRAPH_PATHS.push(image_path);
+    EDITOR_GRAPH_SELECTED = len(EDITOR_GRAPH_IDS) - 1;
+    if (EDITOR_SCENE_BRUSH_GRAPH_ID < 0) EDITOR_SCENE_BRUSH_GRAPH_ID = graph_id;
+    EDITOR_LAST_GRAPH_ID = graph_id;
+    EDITOR_STATUS = format("Loaded graph {} from {}", graph_id, image_path);
+    return true;
+}
+
+def editor_remove_selected_graph()
+{
+    var idx = EDITOR_GRAPH_SELECTED;
+    var count = len(EDITOR_GRAPH_IDS);
+    if (idx < 0 || idx >= count)
+    {
+        EDITOR_STATUS = "No selected graph";
+        return false;
+    }
+
+    var removed_id = EDITOR_GRAPH_IDS[idx];
+    var last = count - 1;
+    if (idx != last)
+    {
+        EDITOR_GRAPH_IDS[idx] = EDITOR_GRAPH_IDS[last];
+        EDITOR_GRAPH_PATHS[idx] = EDITOR_GRAPH_PATHS[last];
+    }
+
+    EDITOR_GRAPH_IDS.pop();
+    EDITOR_GRAPH_PATHS.pop();
+
+    if (len(EDITOR_GRAPH_IDS) <= 0)
+    {
+        EDITOR_GRAPH_SELECTED = -1;
+        EDITOR_SCENE_BRUSH_GRAPH_ID = -1;
+    }
+    else
+    {
+        if (idx >= len(EDITOR_GRAPH_IDS)) idx = len(EDITOR_GRAPH_IDS) - 1;
+        EDITOR_GRAPH_SELECTED = idx;
+        if (EDITOR_SCENE_BRUSH_GRAPH_ID == removed_id)
+        {
+            EDITOR_SCENE_BRUSH_GRAPH_ID = EDITOR_GRAPH_IDS[EDITOR_GRAPH_SELECTED];
+        }
+    }
+
+    EDITOR_STATUS = "Removed from editor list (graph stays loaded in engine)";
+    return true;
+}
+
+def editor_cancel_subgraph_mode()
+{
+    EDITOR_SUB_MODE = 0;
+    EDITOR_SUB_MENU_OPEN = false;
+    if (!EDITOR_SUB_HAS_RECT) EDITOR_SUB_PARENT = -1;
+}
+
+def editor_create_subgraph(parent_graph_id, from_x, from_y, to_x, to_y, source_label)
+{
+    if (parent_graph_id < 0)
+    {
+        EDITOR_STATUS = "Invalid subgraph parent";
+        return false;
+    }
+
+    var x0 = from_x;
+    var y0 = from_y;
+    var x1 = to_x;
+    var y1 = to_y;
+    if (x1 < x0)
+    {
+        var t = x0;
+        x0 = x1;
+        x1 = t;
+    }
+    if (y1 < y0)
+    {
+        var t2 = y0;
+        y0 = y1;
+        y1 = t2;
+    }
+
+    var pw = get_graph_width(parent_graph_id);
+    var ph = get_graph_height(parent_graph_id);
+    if (pw <= 0 || ph <= 0)
+    {
+        EDITOR_STATUS = "Parent graph has invalid size";
+        return false;
+    }
+
+    x0 = int(gui_clamp(x0, 0, pw - 1));
+    y0 = int(gui_clamp(y0, 0, ph - 1));
+    x1 = int(gui_clamp(x1, 0, pw - 1));
+    y1 = int(gui_clamp(y1, 0, ph - 1));
+    if (x1 < x0)
+    {
+        var t3 = x0;
+        x0 = x1;
+        x1 = t3;
+    }
+    if (y1 < y0)
+    {
+        var t4 = y0;
+        y0 = y1;
+        y1 = t4;
+    }
+
+    var rw = x1 - x0 + 1;
+    var rh = y1 - y0 + 1;
+    if (rw < 1 || rh < 1)
+    {
+        EDITOR_STATUS = "Subgraph rect is empty";
+        return false;
+    }
+
+    EDITOR_SUBGRAPH_COUNTER += 1;
+    var sub_name = format("sub_{}_{}", parent_graph_id, EDITOR_SUBGRAPH_COUNTER);
+    var sub_id = load_subgraph(parent_graph_id, sub_name, x0, y0, rw, rh);
+    if (sub_id < 0)
+    {
+        EDITOR_STATUS = format("Failed to create subgraph {} from id {}", sub_name, parent_graph_id);
+        return false;
+    }
+
+    if (source_label == nil || source_label == "")
+    {
+        source_label = format("id={}", parent_graph_id);
+    }
+    var graph_info = format("{} [sub:{} rect={} {} {}x{}]", source_label, sub_name, x0, y0, rw, rh);
+    EDITOR_GRAPH_IDS.push(sub_id);
+    EDITOR_GRAPH_PATHS.push(graph_info);
+    EDITOR_GRAPH_SELECTED = len(EDITOR_GRAPH_IDS) - 1;
+    EDITOR_STATUS = format("Created subgraph id {} from parent {} ({},{} {}x{})", sub_id, parent_graph_id, x0, y0, rw, rh);
+    return true;
+}
+
+def editor_scene_clear()
+{
+    EDITOR_SCENE_INSTANCES = [];
+    EDITOR_SCENE_SELECTED = -1;
+    EDITOR_SCENE_CANVAS_SCROLL.x = 0;
+    EDITOR_SCENE_CANVAS_SCROLL.y = 0;
+    EDITOR_INSPECTOR_SCROLL.x = 0;
+    EDITOR_INSPECTOR_SCROLL.y = 0;
+    EDITOR_SCENE_DRAGGING = false;
+    EDITOR_SCENE_SCALING = false;
+    EDITOR_SCENE_ROTATING = false;
+    EDITOR_SCENE_PANNING = false;
+}
+
+def editor_graph_rebuild_options()
+{
+    EDITOR_GRAPH_OPTIONS = ["None"];
+    EDITOR_GRAPH_OPTION_IDS = [-1];
+
+    var i = 0;
+    while (i < len(EDITOR_GRAPH_IDS))
+    {
+        var gid = EDITOR_GRAPH_IDS[i];
+        var gw = get_graph_width(gid);
+        var gh = get_graph_height(gid);
+        var opt_text = format("#{} id={} {}x{} {}", i, gid, gw, gh, EDITOR_GRAPH_PATHS[i]);
+        EDITOR_GRAPH_OPTIONS.push(opt_text);
+        EDITOR_GRAPH_OPTION_IDS.push(gid);
+        i += 1;
+    }
+}
+
+def editor_graph_combo_index(graph_id)
+{
+    var i = 0;
+    while (i < len(EDITOR_GRAPH_OPTION_IDS))
+    {
+        if (EDITOR_GRAPH_OPTION_IDS[i] == graph_id)
+        {
+            return i;
+        }
+        i += 1;
+    }
+    return 0;
+}
+
+def editor_graph_label(graph_id)
+{
+    if (graph_id < 0) return "None";
+    var i = 0;
+    while (i < len(EDITOR_GRAPH_IDS))
+    {
+        if (EDITOR_GRAPH_IDS[i] == graph_id)
+        {
+            return format("id={} {}", graph_id, EDITOR_GRAPH_PATHS[i]);
+        }
+        i += 1;
+    }
+    return format("id={}", graph_id);
+}
+
+def editor_graph_path_by_id(graph_id)
+{
+    if (graph_id < 0) return "";
+    var i = 0;
+    while (i < len(EDITOR_GRAPH_IDS))
+    {
+        if (EDITOR_GRAPH_IDS[i] == graph_id) return EDITOR_GRAPH_PATHS[i];
+        i += 1;
+    }
+    return "";
+}
+
+def editor_process_name_from_graph_path(graph_path)
+{
+    if (graph_path == nil || graph_path == "") return "process";
+
+    var clean = graph_path;
+    var meta_idx = editor_str_last_index_of(clean, " [");
+    if (meta_idx >= 0) clean = clean.sub(0, meta_idx);
+
+    var slash_idx = editor_str_last_index_of(clean, "/");
+    var backslash_idx = editor_str_last_index_of(clean, "\\");
+    if (backslash_idx > slash_idx) slash_idx = backslash_idx;
+    if (slash_idx >= 0) clean = clean.sub(slash_idx + 1, len(clean));
+
+    var dot_idx = editor_str_last_index_of(clean, ".");
+    if (dot_idx > 0) clean = clean.sub(0, dot_idx);
+
+    if (clean == nil || clean == "") clean = "process";
+    return clean;
+}
+
+def editor_process_name_from_graph_id(graph_id)
+{
+    return editor_process_name_from_graph_path(editor_graph_path_by_id(graph_id));
+}
+
+def editor_graph_index_by_id(graph_id)
+{
+    var i = 0;
+    while (i < len(EDITOR_GRAPH_IDS))
+    {
+        if (EDITOR_GRAPH_IDS[i] == graph_id) return i;
+        i += 1;
+    }
+    return -1;
+}
+
+def editor_graph_default_size(graph_id)
+{
+    var out_size = 32;
+    if (graph_id >= 0)
+    {
+        var gw = get_graph_width(graph_id);
+        var gh = get_graph_height(graph_id);
+        if (gw > out_size) out_size = gw;
+        if (gh > out_size) out_size = gh;
+    }
+    if (out_size < 1) out_size = 1;
+    return out_size;
+}
+
+def editor_scene_set_brush_graph(graph_id)
+{
+    EDITOR_SCENE_BRUSH_GRAPH_ID = graph_id;
+    EDITOR_SCN_GRAPH_ID = graph_id;
+    if (EDITOR_SCENE_SELECTED < 0)
+    {
+        EDITOR_SCN_SIZE = editor_graph_default_size(graph_id);
+    }
+}
+
+def editor_scene_open_graph_picker()
+{
+    EDITOR_GRAPH_PICKER_OPEN = true;
+    EDITOR_GRAPH_PICKER_SELECTED = editor_graph_index_by_id(EDITOR_SCENE_BRUSH_GRAPH_ID);
+    if (EDITOR_GRAPH_PICKER_SELECTED < 0 && len(EDITOR_GRAPH_IDS) > 0) EDITOR_GRAPH_PICKER_SELECTED = 0;
+}
+
+def editor_scene_defaults()
+{
+    EDITOR_SCN_X = 320;
+    EDITOR_SCN_Y = 180;
+    EDITOR_SCN_ANGLE = 0;
+    EDITOR_SCN_SIZE = 32;
+    EDITOR_SCN_GRAPH_ID = -1;
+
+    if (EDITOR_SCENE_BRUSH_GRAPH_ID >= 0)
+    {
+        EDITOR_SCN_GRAPH_ID = EDITOR_SCENE_BRUSH_GRAPH_ID;
+        EDITOR_SCN_SIZE = editor_graph_default_size(EDITOR_SCENE_BRUSH_GRAPH_ID);
+    }
+}
+
+def editor_scene_clamp_values()
+{
+    if (EDITOR_SCN_SIZE < 1) EDITOR_SCN_SIZE = 1;
+    if (EDITOR_SCN_SIZE > 4096) EDITOR_SCN_SIZE = 4096;
+}
+
+def editor_scene_clamp_settings()
+{
+    if (EDITOR_SCENE_WORLD_W < 256) EDITOR_SCENE_WORLD_W = 256;
+    if (EDITOR_SCENE_WORLD_W > 32768) EDITOR_SCENE_WORLD_W = 32768;
+    if (EDITOR_SCENE_WORLD_H < 256) EDITOR_SCENE_WORLD_H = 256;
+    if (EDITOR_SCENE_WORLD_H > 32768) EDITOR_SCENE_WORLD_H = 32768;
+}
+
+def editor_scene_open_load()
+{
+    EDITOR_SCENE_PICKER.title = "Select Scene JSON";
+    EDITOR_SCENE_PICKER.filter_ext = ".json";
+    EDITOR_SCENE_PICKER.select_dirs = false;
+    EDITOR_SCENE_PICKER_MODE = EDITOR_PICK_MODE_LOAD;
+    gui_filepicker_open(EDITOR_SCENE_PICKER);
+}
+
+def editor_scene_open_save_as()
+{
+    EDITOR_SCENE_PICKER.title = "Save Scene JSON";
+    EDITOR_SCENE_PICKER.filter_ext = ".json";
+    EDITOR_SCENE_PICKER.select_dirs = false;
+    EDITOR_SCENE_PICKER_MODE = EDITOR_PICK_MODE_SAVE;
+    gui_filepicker_open_save(EDITOR_SCENE_PICKER, "process_editor_scene.json", ".json");
+}
+
+def editor_scene_load(index)
+{
+    if (index < 0 || index >= len(EDITOR_SCENE_INSTANCES)) return false;
+    var s = EDITOR_SCENE_INSTANCES[index];
+    if (s.process_name == nil || s.process_name == "")
+    {
+        s.process_name = editor_process_name_from_graph_id(s.graph_id);
+    }
+    EDITOR_SCENE_SELECTED = index;
+    EDITOR_SCN_X = s.x;
+    EDITOR_SCN_Y = s.y;
+    EDITOR_SCN_SIZE = s.size;
+    EDITOR_SCN_ANGLE = s.angle;
+    EDITOR_SCN_GRAPH_ID = s.graph_id;
+    editor_scene_clamp_values();
+    return true;
+}
+
+def editor_scene_apply(index)
+{
+    if (index < 0 || index >= len(EDITOR_SCENE_INSTANCES))
+    {
+        EDITOR_STATUS = "No selected scene instance";
+        return false;
+    }
+    editor_scene_clamp_values();
+    var s = EDITOR_SCENE_INSTANCES[index];
+    s.x = EDITOR_SCN_X;
+    s.y = EDITOR_SCN_Y;
+    s.size = EDITOR_SCN_SIZE;
+    s.angle = EDITOR_SCN_ANGLE;
+    s.graph_id = EDITOR_SCN_GRAPH_ID;
+    s.process_name = editor_process_name_from_graph_id(EDITOR_SCN_GRAPH_ID);
+    EDITOR_STATUS = format("Updated scene instance #{}", index);
+    return true;
+}
+
+def editor_scene_add_from_graph_at(graph_id, pos_x, pos_y)
+{
+    if (graph_id < 0)
+    {
+        EDITOR_STATUS = "Select a graph first";
+        return false;
+    }
+
+    var x = int(pos_x);
+    var y = int(pos_y);
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x >= EDITOR_SCENE_WORLD_W) x = EDITOR_SCENE_WORLD_W - 1;
+    if (y >= EDITOR_SCENE_WORLD_H) y = EDITOR_SCENE_WORLD_H - 1;
+
+    var gsize = editor_graph_default_size(graph_id);
+    var proc_name = editor_process_name_from_graph_id(graph_id);
+    var s = ObjectInstance(proc_name, x, y, gsize, 0, graph_id);
+    EDITOR_SCENE_INSTANCES.push(s);
+    EDITOR_SCENE_SELECTED = len(EDITOR_SCENE_INSTANCES) - 1;
+    editor_scene_load(EDITOR_SCENE_SELECTED);
+    EDITOR_STATUS = format("Added scene instance #{} [{}] from graph {} at ({}, {})",
+                           EDITOR_SCENE_SELECTED, proc_name, graph_id, x, y);
+    return true;
+}
+
+def editor_scene_add_from_graph(graph_id)
+{
+    return editor_scene_add_from_graph_at(graph_id, 320, 180);
+}
+
+def editor_scene_delete_selected()
+{
+    var idx = EDITOR_SCENE_SELECTED;
+    var count = len(EDITOR_SCENE_INSTANCES);
+    if (idx < 0 || idx >= count)
+    {
+        EDITOR_STATUS = "No selected scene instance";
+        return false;
+    }
+
+    var last = count - 1;
+    if (idx != last)
+    {
+        EDITOR_SCENE_INSTANCES[idx] = EDITOR_SCENE_INSTANCES[last];
+    }
+    EDITOR_SCENE_INSTANCES.pop();
+
+    if (len(EDITOR_SCENE_INSTANCES) <= 0)
+    {
+        EDITOR_SCENE_SELECTED = -1;
+        editor_scene_defaults();
+    }
+    else
+    {
+        if (idx >= len(EDITOR_SCENE_INSTANCES)) idx = len(EDITOR_SCENE_INSTANCES) - 1;
+        EDITOR_SCENE_SELECTED = idx;
+        editor_scene_load(idx);
+    }
+    EDITOR_STATUS = "Deleted selected scene instance";
+    return true;
+}
+
+def editor_scene_instance_wh(s)
+{
+    var sw = int(s.size);
+    var sh = int(s.size);
+    if (sw < 1) sw = 1;
+    if (sh < 1) sh = 1;
+
+    if (s.graph_id >= 0)
+    {
+        var gw = get_graph_width(s.graph_id);
+        var gh = get_graph_height(s.graph_id);
+        if (gw > 0 && gh > 0)
+        {
+            var max_side = gw;
+            if (gh > max_side) max_side = gh;
+            sw = int(sw * gw / max_side);
+            sh = int(sh * gh / max_side);
+        }
+    }
+
+    if (sw < 8) sw = 8;
+    if (sh < 8) sh = 8;
+    return [sw, sh];
+}
+
+def editor_scene_draw_canvas(view_h)
+{
+    if (view_h < 180) view_h = 180;
+    editor_scene_clamp_settings();
+    var content_w = EDITOR_SCENE_WORLD_W;
+    var content_h = EDITOR_SCENE_WORLD_H;
+
+    if (gui_scroll_begin_mode(EDITOR_SCENE_CANVAS_SCROLL, view_h, content_w, content_h, GUI_SCROLL_BOTH))
+    {
+        var base_x = GUI_LAYOUT_BASE_X;
+        var base_y = GUI_LAYOUT_Y;
+        var view_x = GUI_CLIP_X;
+        var view_y = GUI_CLIP_Y;
+        var view_w = GUI_CLIP_W;
+        var view_h2 = GUI_CLIP_H;
+        var over_scene_view = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, view_x, view_y, view_w, view_h2);
+
+        if (!GUI_WINDOW_MOVING)
+        {
+            if (!EDITOR_SCENE_PANNING && mouse_pressed(1) && over_scene_view)
+            {
+                EDITOR_SCENE_PANNING = true;
+                EDITOR_SCENE_PAN_LAST_X = GUI_MOUSE_X;
+                EDITOR_SCENE_PAN_LAST_Y = GUI_MOUSE_Y;
+                EDITOR_SCENE_DRAGGING = false;
+                EDITOR_SCENE_SCALING = false;
+                EDITOR_SCENE_ROTATING = false;
+            }
+            elif (EDITOR_SCENE_PANNING && !mouse_down(1))
+            {
+                EDITOR_SCENE_PANNING = false;
+            }
+        }
+        else
+        {
+            EDITOR_SCENE_PANNING = false;
+        }
+
+        if (EDITOR_SCENE_PANNING && mouse_down(1))
+        {
+            var dx_pan = GUI_MOUSE_X - EDITOR_SCENE_PAN_LAST_X;
+            var dy_pan = GUI_MOUSE_Y - EDITOR_SCENE_PAN_LAST_Y;
+
+            if (dx_pan != 0 || dy_pan != 0)
+            {
+                // Drag world: moving mouse right/down moves content right/down.
+                EDITOR_SCENE_CANVAS_SCROLL.x -= dx_pan;
+                EDITOR_SCENE_CANVAS_SCROLL.y -= dy_pan;
+
+                var max_x_pan = content_w - (view_w + 2);
+                var max_y_pan = content_h - (view_h2 + 2);
+                if (max_x_pan < 0) max_x_pan = 0;
+                if (max_y_pan < 0) max_y_pan = 0;
+                EDITOR_SCENE_CANVAS_SCROLL.x = int(gui_clamp(EDITOR_SCENE_CANVAS_SCROLL.x, 0, max_x_pan));
+                EDITOR_SCENE_CANVAS_SCROLL.y = int(gui_clamp(EDITOR_SCENE_CANVAS_SCROLL.y, 0, max_y_pan));
+
+                // Keep drawing and hit-tests in sync on the same frame while panning.
+                base_x += dx_pan;
+                base_y += dy_pan;
+            }
+
+            EDITOR_SCENE_PAN_LAST_X = GUI_MOUSE_X;
+            EDITOR_SCENE_PAN_LAST_Y = GUI_MOUSE_Y;
+        }
+
+        set_color(28, 30, 36);
+        draw_rectangle(base_x, base_y, content_w, content_h, true);
+
+        set_color(52, 56, 70);
+        var gx = 0;
+        while (gx <= content_w)
+        {
+            draw_line_ex(base_x + gx, base_y, base_x + gx, base_y + content_h, 1);
+            gx += 64;
+        }
+        var gy = 0;
+        while (gy <= content_h)
+        {
+            draw_line_ex(base_x, base_y + gy, base_x + content_w, base_y + gy, 1);
+            gy += 64;
+        }
+
+        var press_left = !GUI_WINDOW_MOVING && mouse_pressed(0);
+        var interaction_started = false;
+
+        if (press_left && EDITOR_SCENE_SELECTED >= 0 && EDITOR_SCENE_SELECTED < len(EDITOR_SCENE_INSTANCES))
+        {
+            var sel = EDITOR_SCENE_INSTANCES[EDITOR_SCENE_SELECTED];
+            var sel_wh = editor_scene_instance_wh(sel);
+            var sel_w = sel_wh[0];
+            var sel_h = sel_wh[1];
+            var sel_px = base_x + int(sel.x);
+            var sel_py = base_y + int(sel.y);
+            var handle_size = 10;
+            var handle_half = int(handle_size * 0.5);
+            var scale_hx = sel_px + sel_w - handle_half;
+            var scale_hy = sel_py + sel_h - handle_half;
+            var rotate_hx = sel_px + sel_w - handle_half;
+            var rotate_hy = sel_py - handle_size - 2;
+
+            if (gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, rotate_hx, rotate_hy, handle_size, handle_size))
+            {
+                var cx = sel_px + sel_w * 0.5;
+                var cy = sel_py + sel_h * 0.5;
+                var mouse_angle = get_angle(cx, cy, GUI_MOUSE_X, GUI_MOUSE_Y);
+                EDITOR_SCENE_ROTATE_OFFSET = sel.angle - mouse_angle;
+                EDITOR_SCENE_ROTATING = true;
+                EDITOR_SCENE_SCALING = false;
+                EDITOR_SCENE_DRAGGING = false;
+                interaction_started = true;
+            }
+            elif (gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, scale_hx, scale_hy, handle_size, handle_size))
+            {
+                var cx2 = sel_px + sel_w * 0.5;
+                var cy2 = sel_py + sel_h * 0.5;
+                var dx0 = GUI_MOUSE_X - cx2;
+                var dy0 = GUI_MOUSE_Y - cy2;
+                EDITOR_SCENE_SCALE_START_DIST = sqrt(dx0 * dx0 + dy0 * dy0);
+                if (EDITOR_SCENE_SCALE_START_DIST < 4) EDITOR_SCENE_SCALE_START_DIST = 4;
+                EDITOR_SCENE_SCALE_START_SIZE = sel.size;
+                EDITOR_SCENE_SCALING = true;
+                EDITOR_SCENE_ROTATING = false;
+                EDITOR_SCENE_DRAGGING = false;
+                interaction_started = true;
+            }
+        }
+
+        var clicked_index = -1;
+        if (press_left && !interaction_started)
+        {
+            var i = len(EDITOR_SCENE_INSTANCES) - 1;
+            while (i >= 0)
+            {
+                var s = EDITOR_SCENE_INSTANCES[i];
+                var wh_click = editor_scene_instance_wh(s);
+                var sw_click = wh_click[0];
+                var sh_click = wh_click[1];
+                var px_click = base_x + int(s.x);
+                var py_click = base_y + int(s.y);
+
+                if (gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, px_click, py_click, sw_click, sh_click))
+                {
+                    clicked_index = i;
+                    EDITOR_SCENE_DRAGGING = true;
+                    EDITOR_SCENE_SCALING = false;
+                    EDITOR_SCENE_ROTATING = false;
+                    EDITOR_SCENE_DRAG_OFFSET_X = GUI_MOUSE_X - px_click;
+                    EDITOR_SCENE_DRAG_OFFSET_Y = GUI_MOUSE_Y - py_click;
+                    break;
+                }
+                i -= 1;
+            }
+        }
+
+        if (clicked_index >= 0)
+        {
+            editor_scene_load(clicked_index);
+            EDITOR_STATUS = format("Selected scene instance #{}", clicked_index);
+        }
+        elif (press_left && !interaction_started)
+        {
+            EDITOR_SCENE_DRAGGING = false;
+            EDITOR_SCENE_SCALING = false;
+            EDITOR_SCENE_ROTATING = false;
+
+            if (gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, base_x, base_y, content_w, content_h))
+            {
+                var spawn_x = int(GUI_MOUSE_X - base_x);
+                var spawn_y = int(GUI_MOUSE_Y - base_y);
+                if (!editor_scene_add_from_graph_at(EDITOR_SCENE_BRUSH_GRAPH_ID, spawn_x, spawn_y))
+                {
+                    EDITOR_STATUS = "Select a graph before adding in scene";
+                }
+            }
+        }
+
+        var di = 0;
+        while (di < len(EDITOR_SCENE_INSTANCES))
+        {
+            var sd = EDITOR_SCENE_INSTANCES[di];
+            var wh_draw = editor_scene_instance_wh(sd);
+            var sw_draw = wh_draw[0];
+            var sh_draw = wh_draw[1];
+            var px_draw = base_x + int(sd.x);
+            var py_draw = base_y + int(sd.y);
+            var cx_draw = px_draw + sw_draw * 0.5;
+            var cy_draw = py_draw + sh_draw * 0.5;
+
+            if (sd.graph_id >= 0)
+            {
+                var gw_draw = get_graph_width(sd.graph_id);
+                var gh_draw = get_graph_height(sd.graph_id);
+                if (gw_draw > 0 && gh_draw > 0)
+                {
+                    var sx = sw_draw / gw_draw;
+                    var sy = sh_draw / gh_draw;
+                    set_color(255, 255, 255);
+                    set_alpha(255);
+                    draw_graph_ex(sd.graph_id, cx_draw, cy_draw, sd.angle, sx, sy, false, false);
+                    set_alpha(255);
+                    set_color(255, 255, 255);
+                }
+            }
+
+            if (EDITOR_SCENE_SELECTED == di) set_color(255, 220, 110);
+            else set_color(164, 170, 192);
+            draw_rectangle(px_draw, py_draw, sw_draw, sh_draw, false);
+            di += 1;
+        }
+
+        if (EDITOR_SCENE_DRAGGING && EDITOR_SCENE_SELECTED >= 0 && EDITOR_SCENE_SELECTED < len(EDITOR_SCENE_INSTANCES))
+        {
+            if (!mouse_down(0))
+            {
+                EDITOR_SCENE_DRAGGING = false;
+            }
+            else
+            {
+                var s_move = EDITOR_SCENE_INSTANCES[EDITOR_SCENE_SELECTED];
+                s_move.x = int(GUI_MOUSE_X - base_x - EDITOR_SCENE_DRAG_OFFSET_X);
+                s_move.y = int(GUI_MOUSE_Y - base_y - EDITOR_SCENE_DRAG_OFFSET_Y);
+                EDITOR_SCN_X = s_move.x;
+                EDITOR_SCN_Y = s_move.y;
+            }
+        }
+        elif (EDITOR_SCENE_SCALING && EDITOR_SCENE_SELECTED >= 0 && EDITOR_SCENE_SELECTED < len(EDITOR_SCENE_INSTANCES))
+        {
+            if (!mouse_down(0))
+            {
+                EDITOR_SCENE_SCALING = false;
+            }
+            else
+            {
+                var s_scale = EDITOR_SCENE_INSTANCES[EDITOR_SCENE_SELECTED];
+                var wh_scale = editor_scene_instance_wh(s_scale);
+                var scale_w = wh_scale[0];
+                var scale_h = wh_scale[1];
+                var px_scale = base_x + int(s_scale.x);
+                var py_scale = base_y + int(s_scale.y);
+                var cx_scale = px_scale + scale_w * 0.5;
+                var cy_scale = py_scale + scale_h * 0.5;
+                var dx1 = GUI_MOUSE_X - cx_scale;
+                var dy1 = GUI_MOUSE_Y - cy_scale;
+                var dist1 = sqrt(dx1 * dx1 + dy1 * dy1);
+                if (dist1 < 4) dist1 = 4;
+                var new_size = int(EDITOR_SCENE_SCALE_START_SIZE * dist1 / EDITOR_SCENE_SCALE_START_DIST);
+                if (new_size < 1) new_size = 1;
+                if (new_size > 4096) new_size = 4096;
+                s_scale.size = new_size;
+                EDITOR_SCN_SIZE = s_scale.size;
+            }
+        }
+        elif (EDITOR_SCENE_ROTATING && EDITOR_SCENE_SELECTED >= 0 && EDITOR_SCENE_SELECTED < len(EDITOR_SCENE_INSTANCES))
+        {
+            if (!mouse_down(0))
+            {
+                EDITOR_SCENE_ROTATING = false;
+            }
+            else
+            {
+                var s_rot = EDITOR_SCENE_INSTANCES[EDITOR_SCENE_SELECTED];
+                var wh_rot = editor_scene_instance_wh(s_rot);
+                var rot_w = wh_rot[0];
+                var rot_h = wh_rot[1];
+                var px_rot = base_x + int(s_rot.x);
+                var py_rot = base_y + int(s_rot.y);
+                var cx_rot = px_rot + rot_w * 0.5;
+                var cy_rot = py_rot + rot_h * 0.5;
+                var mouse_angle2 = get_angle(cx_rot, cy_rot, GUI_MOUSE_X, GUI_MOUSE_Y);
+                s_rot.angle = normalize_angle(mouse_angle2 + EDITOR_SCENE_ROTATE_OFFSET);
+                EDITOR_SCN_ANGLE = s_rot.angle;
+            }
+        }
+
+        if (EDITOR_SCENE_SELECTED >= 0 && EDITOR_SCENE_SELECTED < len(EDITOR_SCENE_INSTANCES))
+        {
+            var sel_draw = EDITOR_SCENE_INSTANCES[EDITOR_SCENE_SELECTED];
+            var sel_wh2 = editor_scene_instance_wh(sel_draw);
+            var sel_w2 = sel_wh2[0];
+            var sel_h2 = sel_wh2[1];
+            var sel_px2 = base_x + int(sel_draw.x);
+            var sel_py2 = base_y + int(sel_draw.y);
+            var hs2 = 10;
+            var hh2 = int(hs2 * 0.5);
+            var scale_x2 = sel_px2 + sel_w2 - hh2;
+            var scale_y2 = sel_py2 + sel_h2 - hh2;
+            var rot_x2 = sel_px2 + sel_w2 - hh2;
+            var rot_y2 = sel_py2 - hs2 - 2;
+
+            set_color(255, 220, 110);
+            draw_line_ex(sel_px2 + sel_w2, sel_py2, sel_px2 + sel_w2, rot_y2 + hh2, 1);
+            draw_rectangle(scale_x2, scale_y2, hs2, hs2, true);
+            draw_rectangle(rot_x2, rot_y2, hs2, hs2, true);
+            set_color(30, 34, 44);
+            draw_rectangle(scale_x2 + 1, scale_y2 + 1, hs2 - 2, hs2 - 2, true);
+            draw_rectangle(rot_x2 + 1, rot_y2 + 1, hs2 - 2, hs2 - 2, true);
+            set_color(255, 220, 110);
+            draw_rectangle(scale_x2, scale_y2, hs2, hs2, false);
+            draw_rectangle(rot_x2, rot_y2, hs2, hs2, false);
+        }
+
+        gui_scroll_end();
+    }
+}
+
+def editor_scene_draw_inspector()
+{
+    var inspector_content_w = WIN_EDITOR.w - GUI_PADDING * 2 - 8;
+    var inspector_rows = len(EDITOR_SCENE_INSTANCES);
+    if (inspector_rows < 10) inspector_rows = 10;
+    var inspector_content_h = 720 + inspector_rows * 24;
+    var inspector_view_h = WIN_EDITOR.h - GUI_TITLE_H - GUI_PADDING * 4 - 64;
+    if (inspector_view_h < 260) inspector_view_h = 260;
+
+    if (gui_scroll_begin_mode(EDITOR_INSPECTOR_SCROLL,
+                              inspector_view_h,
+                              inspector_content_w,
+                              inspector_content_h,
+                              GUI_SCROLL_VERTICAL))
+    {
+        gui_layout_set_margins(8, 8);
+        gui_layout_reset(22, 6);
+        gui_label("Scene Inspector");
+        gui_label(format("Status: {}", EDITOR_STATUS));
+        gui_label(format("Brush graph: {}", editor_graph_label(EDITOR_SCENE_BRUSH_GRAPH_ID)));
+        gui_label(format("Selected instance: {}", EDITOR_SCENE_SELECTED));
+        if (EDITOR_SCENE_SELECTED >= 0 && EDITOR_SCENE_SELECTED < len(EDITOR_SCENE_INSTANCES))
+        {
+            var ssel = EDITOR_SCENE_INSTANCES[EDITOR_SCENE_SELECTED];
+            var pname2 = ssel.process_name;
+            if (pname2 == nil || pname2 == "") pname2 = editor_process_name_from_graph_id(ssel.graph_id);
+            gui_label(format("Process name: {}", pname2));
+        }
+        gui_space(2);
+
+        gui_layout_columns(2, 24, 6);
+        if (gui_button("Select Graph..."))
+        {
+            editor_scene_open_graph_picker();
+        }
+        if (gui_button("Load Selected"))
+        {
+            if (!editor_scene_load(EDITOR_SCENE_SELECTED))
+            {
+                EDITOR_STATUS = "No selected scene instance";
+                gui_popup_warn("Scene", EDITOR_STATUS);
+            }
+        }
+        if (gui_button("Apply"))
+        {
+            if (!editor_scene_apply(EDITOR_SCENE_SELECTED))
+            {
+                gui_popup_warn("Scene", EDITOR_STATUS);
+            }
+        }
+        if (gui_button("Delete Selected"))
+        {
+            if (!editor_scene_delete_selected())
+            {
+                gui_popup_warn("Scene", EDITOR_STATUS);
+            }
+        }
+        if (gui_button("Add Graph"))
+        {
+            if (!editor_scene_add_from_graph(EDITOR_SCENE_BRUSH_GRAPH_ID))
+            {
+                gui_popup_warn("Scene", EDITOR_STATUS);
+            }
+        }
+
+        gui_layout_reset(22, 6);
+        gui_property_section("Scene Settings");
+        EDITOR_SCENE_WORLD_W = gui_property_int("World Width", EDITOR_SCENE_WORLD_W, 256, 32768, 16);
+        EDITOR_SCENE_WORLD_H = gui_property_int("World Height", EDITOR_SCENE_WORLD_H, 256, 32768, 16);
+        editor_scene_clamp_settings();
+
+        gui_property_section("Instance Properties");
+        if (EDITOR_SCENE_SELECTED >= 0 && EDITOR_SCENE_SELECTED < len(EDITOR_SCENE_INSTANCES))
+        {
+            var pos = gui_property_vec2("Position", EDITOR_SCN_X, EDITOR_SCN_Y, -8192, 8192);
+            EDITOR_SCN_X = pos[0];
+            EDITOR_SCN_Y = pos[1];
+            EDITOR_SCN_SIZE = gui_property_int("Size", EDITOR_SCN_SIZE, 1, 4096, 1);
+            EDITOR_SCN_ANGLE = gui_property_float("Angle", EDITOR_SCN_ANGLE, -360, 360);
+
+            var scene_graph_idx = editor_graph_combo_index(EDITOR_SCN_GRAPH_ID);
+            scene_graph_idx = gui_combo_align("Graph", EDITOR_GRAPH_OPTIONS, scene_graph_idx, GUI_ALIGN_LEFT);
+            if (scene_graph_idx < 0) scene_graph_idx = 0;
+            if (scene_graph_idx >= len(EDITOR_GRAPH_OPTION_IDS)) scene_graph_idx = len(EDITOR_GRAPH_OPTION_IDS) - 1;
+            EDITOR_SCN_GRAPH_ID = EDITOR_GRAPH_OPTION_IDS[scene_graph_idx];
+        }
+        else
+        {
+            gui_label("No scene instance selected.");
+        }
+
+        gui_property_section("Scene Instance List");
+        var prev_scene_selected = EDITOR_SCENE_SELECTED;
+        if (len(EDITOR_SCENE_INSTANCES) <= 0)
+        {
+            gui_label("No scene instances.");
+        }
+        else
+        {
+            var si = 0;
+            while (si < len(EDITOR_SCENE_INSTANCES))
+            {
+                var s = EDITOR_SCENE_INSTANCES[si];
+                var pname = s.process_name;
+                if (pname == nil || pname == "") pname = editor_process_name_from_graph_id(s.graph_id);
+                var row_scene = format("#{} {} graph={} pos({}, {}) angle {}",
+                                       si, pname, s.graph_id, int(s.x), int(s.y), int(s.angle));
+                EDITOR_SCENE_SELECTED = gui_radio_align(row_scene, EDITOR_SCENE_SELECTED, si, GUI_ALIGN_LEFT);
+                si += 1;
+            }
+        }
+        if (EDITOR_SCENE_SELECTED != prev_scene_selected)
+        {
+            editor_scene_load(EDITOR_SCENE_SELECTED);
+        }
+
+        gui_layout_clear_margins();
+        gui_scroll_end();
+    }
+}
+
+def editor_scene_graph_picker_modal(screen_w, screen_h)
+{
+    if (!EDITOR_GRAPH_PICKER_OPEN) return false;
+    if (WIN_GRAPH_PICKER == nil) return false;
+
+    WIN_GRAPH_PICKER.visible = true;
+    WIN_GRAPH_PICKER.minimized = false;
+    WIN_GRAPH_PICKER.x = int((screen_w - WIN_GRAPH_PICKER.w) * 0.5);
+    WIN_GRAPH_PICKER.y = int((screen_h - WIN_GRAPH_PICKER.h) * 0.5);
+
+    if (gui_window_begin(WIN_GRAPH_PICKER))
+    {
+        gui_layout_reset(22, 6);
+        gui_label("Select graph for scene placement");
+        gui_label(format("Current brush: {}", editor_graph_label(EDITOR_SCENE_BRUSH_GRAPH_ID)));
+        gui_space(2);
+
+        var rows = len(EDITOR_GRAPH_IDS);
+        if (rows < 8) rows = 8;
+        var list_content_h = rows * 24 + 8;
+        var list_content_w = WIN_GRAPH_PICKER.w - GUI_PADDING * 2 - 10;
+        var list_view_h = WIN_GRAPH_PICKER.h - GUI_TITLE_H - 110;
+        if (list_view_h < 120) list_view_h = 120;
+
+        if (gui_scroll_begin_mode(EDITOR_GRAPH_PICKER_SCROLL,
+                                  list_view_h,
+                                  list_content_w,
+                                  list_content_h,
+                                  GUI_SCROLL_VERTICAL))
+        {
+            gui_layout_reset(22, 4);
+            if (len(EDITOR_GRAPH_IDS) <= 0)
+            {
+                gui_label("No graphs loaded.");
+            }
+            else
+            {
+                var i = 0;
+                while (i < len(EDITOR_GRAPH_IDS))
+                {
+                    var gid = EDITOR_GRAPH_IDS[i];
+                    var gw = get_graph_width(gid);
+                    var gh = get_graph_height(gid);
+                    var row = format("#{} id={} {}x{} {}", i, gid, gw, gh, EDITOR_GRAPH_PATHS[i]);
+                    EDITOR_GRAPH_PICKER_SELECTED = gui_radio_align(row, EDITOR_GRAPH_PICKER_SELECTED, i, GUI_ALIGN_LEFT);
+                    i += 1;
+                }
+            }
+            gui_scroll_end();
+        }
+
+        gui_layout_columns(2, 24, 6);
+        if (gui_button("Cancel"))
+        {
+            EDITOR_GRAPH_PICKER_OPEN = false;
+        }
+        if (gui_button("OK"))
+        {
+            if (EDITOR_GRAPH_PICKER_SELECTED >= 0 && EDITOR_GRAPH_PICKER_SELECTED < len(EDITOR_GRAPH_IDS))
+            {
+                var gid2 = EDITOR_GRAPH_IDS[EDITOR_GRAPH_PICKER_SELECTED];
+                editor_scene_set_brush_graph(gid2);
+                EDITOR_STATUS = format("Scene brush graph set to {}", editor_graph_label(gid2));
+            }
+            EDITOR_GRAPH_PICKER_OPEN = false;
+        }
+
+        gui_window_end();
+    }
+
+    return true;
+}
+
+def editor_save_scene_json(scene_path)
+{
+    if (scene_path == nil || scene_path == "")
+    {
+        EDITOR_STATUS = "Invalid scene save path";
+        return false;
+    }
+
+    editor_scene_clamp_settings();
+
+    var scene_data = {};
+    var graph_list = [];
+    var i = 0;
+    while (i < len(EDITOR_GRAPH_PATHS))
+    {
+        graph_list.push(EDITOR_GRAPH_PATHS[i]);
+        i += 1;
+    }
+
+    var scene_instance_list = [];
+    i = 0;
+    while (i < len(EDITOR_SCENE_INSTANCES))
+    {
+        var s = EDITOR_SCENE_INSTANCES[i];
+        var out_process_name = s.process_name;
+        if (out_process_name == nil || out_process_name == "")
+        {
+            out_process_name = editor_process_name_from_graph_id(s.graph_id);
+        }
+        var scene_item = {
+            process_name: out_process_name,
+            x: int(s.x),
+            y: int(s.y),
+            size: int(s.size),
+            angle: s.angle,
+            graph_id: int(s.graph_id)
+        };
+        scene_instance_list.push(scene_item);
+        i += 1;
+    }
+
+    scene_data["graphs"] = graph_list;
+    scene_data["selected_graph"] = EDITOR_GRAPH_SELECTED;
+    scene_data["brush_graph_id"] = EDITOR_SCENE_BRUSH_GRAPH_ID;
+    scene_data["scene_instances"] = scene_instance_list;
+    scene_data["selected_scene_instance"] = EDITOR_SCENE_SELECTED;
+    scene_data["scene_settings"] = {
+        world_width: int(EDITOR_SCENE_WORLD_W),
+        world_height: int(EDITOR_SCENE_WORLD_H)
+    };
+    // Optional top-level keys for simple/legacy loaders.
+    scene_data["world_width"] = int(EDITOR_SCENE_WORLD_W);
+    scene_data["world_height"] = int(EDITOR_SCENE_WORLD_H);
+
+    var out = json.stringify(scene_data, 2);
+    if (!fs.write(scene_path, out))
+    {
+        EDITOR_STATUS = format("Failed to write scene JSON: {}", scene_path);
+        return false;
+    }
+
+    EDITOR_SCENE_PATH = scene_path;
+    EDITOR_STATUS = format("Scene saved to {} ({} graphs, {} instances)",
+                           scene_path, len(EDITOR_GRAPH_IDS), len(EDITOR_SCENE_INSTANCES));
+    return true;
+}
+
+def editor_scene_save_current()
+{
+    if (EDITOR_SCENE_PATH == nil || EDITOR_SCENE_PATH == "")
+    {
+        editor_scene_open_save_as();
+        return false;
+    }
+    return editor_save_scene_json(EDITOR_SCENE_PATH);
+}
+
+def editor_load_scene_json(scene_path)
+{
+    if (scene_path == nil || scene_path == "")
+    {
+        EDITOR_STATUS = "Invalid scene path";
+        return false;
+    }
+    if (!path.exists(scene_path) || !path.isfile(scene_path))
+    {
+        EDITOR_STATUS = format("Scene file not found: {}", scene_path);
+        return false;
+    }
+
+    var json_text = fs.read(scene_path);
+    if (json_text == nil || json_text == "")
+    {
+        EDITOR_STATUS = format("Failed to read scene JSON: {}", scene_path);
+        return false;
+    }
+
+    var scene_data = nil;
+    try {
+        scene_data = json.parse(json_text);
+    } catch (e) {
+        EDITOR_STATUS = format("Scene JSON parse error: {}", e);
+        return false;
+    }
+
+    var graph_list = scene_data["graphs"];
+    if (graph_list == nil)
+    {
+        EDITOR_STATUS = "Scene JSON missing 'graphs' array";
+        return false;
+    }
+
+    var load_world_w = 2200;
+    var load_world_h = 1400;
+    var settings = scene_data["scene_settings"];
+    if (settings != nil)
+    {
+        if (settings["world_width"] != nil) load_world_w = int(settings["world_width"]);
+        if (settings["world_height"] != nil) load_world_h = int(settings["world_height"]);
+    }
+    if (scene_data["world_width"] != nil) load_world_w = int(scene_data["world_width"]);
+    if (scene_data["world_height"] != nil) load_world_h = int(scene_data["world_height"]);
+
+    editor_clear_graphs();
+    editor_scene_clear();
+    EDITOR_SCENE_WORLD_W = load_world_w;
+    EDITOR_SCENE_WORLD_H = load_world_h;
+    editor_scene_clamp_settings();
+
+    var total = 0;
+    var loaded = 0;
+    var failed = 0;
+    try {
+        total = len(graph_list);
+        var i = 0;
+        while (i < total)
+        {
+            var graph_path = graph_list[i];
+            if (graph_path != nil && graph_path != "")
+            {
+                var resolved_path = editor_resolve_graph_path(graph_path);
+                if (editor_add_graph(resolved_path))
+                {
+                    loaded += 1;
+                }
+                else
+                {
+                    failed += 1;
+                }
+            }
+            i += 1;
+        }
+    } catch (e) {
+        EDITOR_STATUS = format("Scene JSON invalid 'graphs': {}", e);
+        return false;
+    }
+
+    var selected_idx = scene_data["selected_graph"];
+    if (selected_idx != nil)
+    {
+        selected_idx = int(selected_idx);
+        if (selected_idx >= 0 && selected_idx < len(EDITOR_GRAPH_IDS))
+        {
+            EDITOR_GRAPH_SELECTED = selected_idx;
+        }
+    }
+
+    editor_graph_rebuild_options();
+
+    var brush_graph = scene_data["brush_graph_id"];
+    if (brush_graph != nil)
+    {
+        brush_graph = int(brush_graph);
+        if (editor_graph_index_by_id(brush_graph) >= 0)
+        {
+            editor_scene_set_brush_graph(brush_graph);
+        }
+    }
+    elif (EDITOR_GRAPH_SELECTED >= 0 && EDITOR_GRAPH_SELECTED < len(EDITOR_GRAPH_IDS))
+    {
+        editor_scene_set_brush_graph(EDITOR_GRAPH_IDS[EDITOR_GRAPH_SELECTED]);
+    }
+    elif (len(EDITOR_GRAPH_IDS) > 0)
+    {
+        editor_scene_set_brush_graph(EDITOR_GRAPH_IDS[0]);
+    }
+
+    var instance_total = 0;
+    var instance_loaded = 0;
+    var instance_failed = 0;
+    var instance_list = scene_data["scene_instances"];
+    if (instance_list == nil) instance_list = scene_data["instances"];
+    var legacy_processes = scene_data["processes"];
+    var legacy_prefabs = scene_data["prefabs"];
+
+    if (instance_list != nil)
+    {
+        try {
+            instance_total = len(instance_list);
+            var si = 0;
+            while (si < instance_total)
+            {
+                var srcs = instance_list[si];
+                if (srcs != nil)
+                {
+                    var s_x = 0;
+                    var s_y = 0;
+                    var s_angle = 0;
+                    var s_size = 32;
+                    var s_graph = -1;
+                    var s_process_name = "";
+
+                    var pf_idx = -1;
+                    if (srcs["prefab"] != nil) pf_idx = int(srcs["prefab"]);
+                    if (pf_idx >= 0 && legacy_prefabs != nil && pf_idx < len(legacy_prefabs))
+                    {
+                        var srcp = legacy_prefabs[pf_idx];
+                        if (srcp != nil)
+                        {
+                            if (srcp["size"] != nil) s_size = int(srcp["size"]);
+                            if (srcp["graph_id"] != nil) s_graph = int(srcp["graph_id"]);
+                            elif (srcp["graph"] != nil)
+                            {
+                                var pgi = int(srcp["graph"]);
+                                if (pgi >= 0 && pgi < len(EDITOR_GRAPH_IDS)) s_graph = EDITOR_GRAPH_IDS[pgi];
+                                else s_graph = pgi;
+                            }
+                        }
+                    }
+
+                    if (srcs["x"] != nil) s_x = int(srcs["x"]);
+                    if (srcs["y"] != nil) s_y = int(srcs["y"]);
+                    if (srcs["angle"] != nil) s_angle = srcs["angle"];
+                    if (srcs["process_name"] != nil) s_process_name = srcs["process_name"];
+                    elif (srcs["process"] != nil) s_process_name = srcs["process"];
+
+                    if (srcs["size"] != nil) s_size = int(srcs["size"]);
+                    if (srcs["graph_id"] != nil) s_graph = int(srcs["graph_id"]);
+                    elif (srcs["graph"] != nil)
+                    {
+                        var sgi = int(srcs["graph"]);
+                        if (sgi >= 0 && sgi < len(EDITOR_GRAPH_IDS)) s_graph = EDITOR_GRAPH_IDS[sgi];
+                        else s_graph = sgi;
+                    }
+
+                    if (s_process_name == nil || s_process_name == "")
+                    {
+                        s_process_name = editor_process_name_from_graph_id(s_graph);
+                    }
+
+                    var s = ObjectInstance(s_process_name, s_x, s_y, s_size, s_angle, s_graph);
+                    EDITOR_SCENE_INSTANCES.push(s);
+                    instance_loaded += 1;
+                }
+                si += 1;
+            }
+        } catch (e) {
+            instance_failed += 1;
+        }
+    }
+    elif (legacy_processes != nil)
+    {
+        // Legacy scene: "processes" used to be placed objects.
+        try {
+            instance_total = len(legacy_processes);
+            var li = 0;
+            while (li < instance_total)
+            {
+                var oldp = legacy_processes[li];
+                if (oldp != nil)
+                {
+                    var lg_x = 0;
+                    var lg_y = 0;
+                    var lg_size = 32;
+                    var lg_angle = 0;
+                    var lg_graph = -1;
+                    var lg_process_name = "";
+
+                    if (oldp["x"] != nil) lg_x = int(oldp["x"]);
+                    if (oldp["y"] != nil) lg_y = int(oldp["y"]);
+                    if (oldp["size"] != nil) lg_size = int(oldp["size"]);
+                    if (oldp["angle"] != nil) lg_angle = oldp["angle"];
+                    if (oldp["graph_id"] != nil) lg_graph = int(oldp["graph_id"]);
+                    if (oldp["process_name"] != nil) lg_process_name = oldp["process_name"];
+                    elif (oldp["process"] != nil) lg_process_name = oldp["process"];
+
+                    if (lg_process_name == nil || lg_process_name == "")
+                    {
+                        lg_process_name = editor_process_name_from_graph_id(lg_graph);
+                    }
+
+                    var legacy_inst = ObjectInstance(lg_process_name, lg_x, lg_y, lg_size, lg_angle, lg_graph);
+                    EDITOR_SCENE_INSTANCES.push(legacy_inst);
+                    instance_loaded += 1;
+                }
+                li += 1;
+            }
+        } catch (e) {
+            instance_failed += 1;
+        }
+    }
+
+    editor_graph_rebuild_options();
+
+    var selected_scene = scene_data["selected_scene_instance"];
+    if (selected_scene == nil) selected_scene = scene_data["selected_process"];
+    if (selected_scene != nil)
+    {
+        selected_scene = int(selected_scene);
+        if (selected_scene >= 0 && selected_scene < len(EDITOR_SCENE_INSTANCES))
+        {
+            editor_scene_load(selected_scene);
+        }
+    }
+    elif (len(EDITOR_SCENE_INSTANCES) > 0)
+    {
+        editor_scene_load(0);
+    }
+    else
+    {
+        editor_scene_defaults();
+    }
+
+    EDITOR_STATUS = format("Scene loaded {} (graphs {} ok/{} fail, scene {} ok/{} fail)",
+                           scene_path, loaded, failed, instance_loaded, instance_failed);
+    var ok = false;
+    if (loaded > 0) ok = true;
+    elif (instance_loaded > 0) ok = true;
+    elif (total == 0 && instance_total == 0) ok = true;
+    if (ok) EDITOR_SCENE_PATH = scene_path;
+    return ok;
+}
+
+def editor_draw_graph_preview(graph_id, graph_label)
+{
+    var view_h = 240;
+    gui_layout_calc_rect();
+    var view_x = GUI_WIDGET_X;
+    var view_y = GUI_WIDGET_Y;
+    var view_w = GUI_WIDGET_W;
+    if (view_w < 32) view_w = 32;
+
+    if (EDITOR_PREVIEW_LAST_GRAPH != graph_id)
+    {
+        EDITOR_GRAPH_PREVIEW_SCROLL.x = 0;
+        EDITOR_GRAPH_PREVIEW_SCROLL.y = 0;
+        EDITOR_PREVIEW_LAST_GRAPH = graph_id;
+        EDITOR_SUB_MODE = 0;
+    }
+
+    var content_w = view_w - 2;
+    var content_h = view_h - 2;
+    if (content_w < 8) content_w = 8;
+    if (content_h < 8) content_h = 8;
+
+    var gw = 0;
+    var gh = 0;
+    if (graph_id >= 0)
+    {
+        gw = get_graph_width(graph_id);
+        gh = get_graph_height(graph_id);
+        if (gw + 8 > content_w) content_w = gw + 8;
+        if (gh + 8 > content_h) content_h = gh + 8;
+    }
+
+    if (gui_scroll_begin_mode(EDITOR_GRAPH_PREVIEW_SCROLL, view_h, content_w, content_h, GUI_SCROLL_BOTH))
+    {
+        var draw_x = GUI_LAYOUT_BASE_X + 4;
+        var draw_y = GUI_LAYOUT_Y + 4;
+        var over_image = false;
+        var img_mx = 0;
+        var img_my = 0;
+
+        if (graph_id >= 0)
+        {
+            var free_w = content_w - gw;
+            var free_h = content_h - gh;
+            if (free_w > 8) draw_x = GUI_LAYOUT_BASE_X + int(free_w * 0.5);
+            if (free_h > 8) draw_y = GUI_LAYOUT_Y + int(free_h * 0.5);
+
+            set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+            draw_rectangle(draw_x - 1, draw_y - 1, gw + 2, gh + 2, true);
+            set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+            draw_rectangle(draw_x - 1, draw_y - 1, gw + 2, gh + 2, false);
+            draw_graph(graph_id, draw_x, draw_y);
+
+            if (EDITOR_GRID_SHOW)
+            {
+                var gs = editor_grid_size();
+                if (gs < 2) gs = 2;
+                set_color(80, 84, 100);
+                var gx = gs;
+                while (gx < gw)
+                {
+                    draw_line_ex(draw_x + gx, draw_y, draw_x + gx, draw_y + gh, 1);
+                    gx += gs;
+                }
+                var gy = gs;
+                while (gy < gh)
+                {
+                    draw_line_ex(draw_x, draw_y + gy, draw_x + gw, draw_y + gy, 1);
+                    gy += gs;
+                }
+            }
+
+            var local_mx = int(GUI_MOUSE_X - draw_x);
+            var local_my = int(GUI_MOUSE_Y - draw_y);
+            img_mx = int(gui_clamp(local_mx, 0, gw - 1));
+            img_my = int(gui_clamp(local_my, 0, gh - 1));
+            over_image = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, draw_x, draw_y, gw, gh);
+
+            if (!EDITOR_SUB_MENU_OPEN && over_image && mouse_pressed(1))
+            {
+                EDITOR_SUB_MENU_OPEN = true;
+                EDITOR_SUB_MENU_X = GUI_MOUSE_X;
+                EDITOR_SUB_MENU_Y = GUI_MOUSE_Y;
+                EDITOR_SUB_MENU_PARENT = graph_id;
+            }
+
+            var has_rect = editor_sub_rect_has_for(graph_id);
+            if (!EDITOR_SUB_MENU_OPEN && mouse_pressed(0) && over_image)
+            {
+                var handle = -1;
+                if (has_rect)
+                {
+                    handle = editor_sub_rect_hit_handle(GUI_MOUSE_X, GUI_MOUSE_Y, draw_x, draw_y);
+                }
+
+                if (handle >= 0)
+                {
+                    EDITOR_SUB_MODE = 2 + handle;
+                }
+                else
+                {
+                    EDITOR_SUB_DRAG_ANCHOR_X = img_mx;
+                    EDITOR_SUB_DRAG_ANCHOR_Y = img_my;
+                    var sx = editor_snap_start(img_mx, gw);
+                    var sy = editor_snap_start(img_my, gh);
+                    var ex = editor_snap_end(img_mx, gw);
+                    var ey = editor_snap_end(img_my, gh);
+                    editor_sub_rect_set(graph_id, sx, sy, ex, ey, gw, gh);
+                    EDITOR_SUB_MODE = 1;
+                }
+            }
+
+            if (EDITOR_SUB_MODE != 0 && EDITOR_SUB_PARENT == graph_id)
+            {
+                var cx_raw = int(gui_clamp(int(GUI_MOUSE_X - draw_x), 0, gw - 1));
+                var cy_raw = int(gui_clamp(int(GUI_MOUSE_Y - draw_y), 0, gh - 1));
+
+                if (!mouse_down(0))
+                {
+                    EDITOR_SUB_MODE = 0;
+                }
+                else
+                {
+                    if (EDITOR_SUB_MODE == 1)
+                    {
+                        var rx0 = EDITOR_SUB_DRAG_ANCHOR_X;
+                        var ry0 = EDITOR_SUB_DRAG_ANCHOR_Y;
+                        var rx1 = cx_raw;
+                        var ry1 = cy_raw;
+                        if (rx1 < rx0)
+                        {
+                            var tx = rx0;
+                            rx0 = rx1;
+                            rx1 = tx;
+                        }
+                        if (ry1 < ry0)
+                        {
+                            var ty = ry0;
+                            ry0 = ry1;
+                            ry1 = ty;
+                        }
+                        editor_sub_rect_set(graph_id,
+                                            editor_snap_start(rx0, gw), editor_snap_start(ry0, gh),
+                                            editor_snap_end(rx1, gw), editor_snap_end(ry1, gh),
+                                            gw, gh);
+                    }
+                    elif (EDITOR_SUB_MODE == 2)
+                    {
+                        var nx0 = editor_snap_start(cx_raw, gw);
+                        var ny0 = editor_snap_start(cy_raw, gh);
+                        if (nx0 > EDITOR_SUB_CUR_X) nx0 = EDITOR_SUB_CUR_X;
+                        if (ny0 > EDITOR_SUB_CUR_Y) ny0 = EDITOR_SUB_CUR_Y;
+                        editor_sub_rect_set(graph_id, nx0, ny0, EDITOR_SUB_CUR_X, EDITOR_SUB_CUR_Y, gw, gh);
+                    }
+                    elif (EDITOR_SUB_MODE == 3)
+                    {
+                        var nx1 = editor_snap_end(cx_raw, gw);
+                        var ny0 = editor_snap_start(cy_raw, gh);
+                        if (nx1 < EDITOR_SUB_START_X) nx1 = EDITOR_SUB_START_X;
+                        if (ny0 > EDITOR_SUB_CUR_Y) ny0 = EDITOR_SUB_CUR_Y;
+                        editor_sub_rect_set(graph_id, EDITOR_SUB_START_X, ny0, nx1, EDITOR_SUB_CUR_Y, gw, gh);
+                    }
+                    elif (EDITOR_SUB_MODE == 4)
+                    {
+                        var nx2 = editor_snap_end(cx_raw, gw);
+                        var ny2 = editor_snap_end(cy_raw, gh);
+                        if (nx2 < EDITOR_SUB_START_X) nx2 = EDITOR_SUB_START_X;
+                        if (ny2 < EDITOR_SUB_START_Y) ny2 = EDITOR_SUB_START_Y;
+                        editor_sub_rect_set(graph_id, EDITOR_SUB_START_X, EDITOR_SUB_START_Y, nx2, ny2, gw, gh);
+                    }
+                    elif (EDITOR_SUB_MODE == 5)
+                    {
+                        var nx3 = editor_snap_start(cx_raw, gw);
+                        var ny3 = editor_snap_end(cy_raw, gh);
+                        if (nx3 > EDITOR_SUB_CUR_X) nx3 = EDITOR_SUB_CUR_X;
+                        if (ny3 < EDITOR_SUB_START_Y) ny3 = EDITOR_SUB_START_Y;
+                        editor_sub_rect_set(graph_id, nx3, EDITOR_SUB_START_Y, EDITOR_SUB_CUR_X, ny3, gw, gh);
+                    }
+                }
+            }
+
+            if (editor_sub_rect_has_for(graph_id))
+            {
+                var rx0 = EDITOR_SUB_START_X;
+                var ry0 = EDITOR_SUB_START_Y;
+                var rx1 = EDITOR_SUB_CUR_X;
+                var ry1 = EDITOR_SUB_CUR_Y;
+                var rw = rx1 - rx0 + 1;
+                var rh = ry1 - ry0 + 1;
+                if (rw < 1) rw = 1;
+                if (rh < 1) rh = 1;
+
+                set_color(250, 210, 90);
+                draw_rectangle(draw_x + rx0, draw_y + ry0, rw, rh, false);
+
+                var hs = 8;
+                var hh = int(hs * 0.5);
+                var hx0 = draw_x + rx0;
+                var hy0 = draw_y + ry0;
+                var hx1 = draw_x + rx1;
+                var hy1 = draw_y + ry1;
+                set_color(250, 210, 90);
+                draw_rectangle(hx0 - hh, hy0 - hh, hs, hs, true);
+                draw_rectangle(hx1 - hh, hy0 - hh, hs, hs, true);
+                draw_rectangle(hx1 - hh, hy1 - hh, hs, hs, true);
+                draw_rectangle(hx0 - hh, hy1 - hh, hs, hs, true);
+                set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+                draw_rectangle(hx0 - hh, hy0 - hh, hs, hs, false);
+                draw_rectangle(hx1 - hh, hy0 - hh, hs, hs, false);
+                draw_rectangle(hx1 - hh, hy1 - hh, hs, hs, false);
+                draw_rectangle(hx0 - hh, hy1 - hh, hs, hs, false);
+
+                set_color(250, 210, 90);
+                draw_text(format("{}x{}", rw, rh), draw_x + rx0 + 4, draw_y + ry0 + 4, 12);
+            }
+        }
+        else
+        {
+            set_color(GUI_THEME.label_r, GUI_THEME.label_g, GUI_THEME.label_b);
+            draw_text("No graph selected", draw_x, draw_y, 14);
+        }
+
+        gui_scroll_end();
+    }
+
+    // Context menu drawn after preview scroll to stay visible over the preview.
+    if (EDITOR_SUB_MENU_OPEN)
+    {
+        var menu_w = 180;
+        var menu_h = 74;
+        var mx = EDITOR_SUB_MENU_X;
+        var my = EDITOR_SUB_MENU_Y;
+        if (mx + menu_w > view_x + view_w) mx = view_x + view_w - menu_w;
+        if (my + menu_h > view_y + view_h) my = view_y + view_h - menu_h;
+        if (mx < view_x) mx = view_x;
+        if (my < view_y) my = view_y;
+
+        var over_menu = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, mx, my, menu_w, menu_h);
+        var item_x = mx + 3;
+        var item_w = menu_w - 6;
+        var item_h = 30;
+        var new_y = my + 3;
+        var clear_y = my + 3 + item_h + 4;
+        var over_new = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, item_x, new_y, item_w, item_h);
+        var over_clear = gui_point_in_rect(GUI_MOUSE_X, GUI_MOUSE_Y, item_x, clear_y, item_w, item_h);
+
+        set_color(GUI_THEME.window_bg_r, GUI_THEME.window_bg_g, GUI_THEME.window_bg_b);
+        draw_rectangle(mx, my, menu_w, menu_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(mx, my, menu_w, menu_h, false);
+
+        if (over_new) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(item_x, new_y, item_w, item_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(item_x, new_y, item_w, item_h, false);
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        draw_text("New Subgraph", item_x + 8, gui_text_vcenter_y(new_y, item_h, 14), 14);
+
+        if (over_clear) set_color(GUI_THEME.button_hover_r, GUI_THEME.button_hover_g, GUI_THEME.button_hover_b);
+        else set_color(GUI_THEME.button_r, GUI_THEME.button_g, GUI_THEME.button_b);
+        draw_rectangle(item_x, clear_y, item_w, item_h, true);
+        set_color(GUI_THEME.button_border_r, GUI_THEME.button_border_g, GUI_THEME.button_border_b);
+        draw_rectangle(item_x, clear_y, item_w, item_h, false);
+        set_color(GUI_THEME.button_text_r, GUI_THEME.button_text_g, GUI_THEME.button_text_b);
+        draw_text("Clear Selection", item_x + 8, gui_text_vcenter_y(clear_y, item_h, 14), 14);
+
+        if (over_new && mouse_pressed(0))
+        {
+            if (editor_sub_rect_has_for(EDITOR_SUB_MENU_PARENT))
+            {
+                editor_create_subgraph(EDITOR_SUB_MENU_PARENT,
+                                       EDITOR_SUB_START_X, EDITOR_SUB_START_Y,
+                                       EDITOR_SUB_CUR_X, EDITOR_SUB_CUR_Y,
+                                       graph_label);
+            }
+            else
+            {
+                EDITOR_STATUS = "No rect selection for this graph";
+            }
+            EDITOR_SUB_MODE = 0;
+            EDITOR_SUB_MENU_OPEN = false;
+        }
+        elif (over_clear && mouse_pressed(0))
+        {
+            if (editor_sub_rect_has_for(EDITOR_SUB_MENU_PARENT))
+            {
+                editor_sub_rect_clear();
+                EDITOR_STATUS = "Rect selection cleared";
+            }
+            EDITOR_SUB_MENU_OPEN = false;
+        }
+        elif (!over_menu && (mouse_pressed(0) || mouse_pressed(1)))
+        {
+            EDITOR_SUB_MENU_OPEN = false;
+        }
+    }
+}
+
+set_window_size(W, H);
+set_window_resizable(false);
+set_window_title("Bu Process Editor");
+set_virtual_screen_enabled(true);
+gui_use_ascii_title_icons();
+
+WIN_EDITOR = gui_create_window(1000, "Process Editor", 0, 0, W, H);
+gui_set_min_size(WIN_EDITOR, W, H);
+gui_set_resizable(WIN_EDITOR, false);
+gui_set_movable(WIN_EDITOR, false);
+gui_set_title_buttons(WIN_EDITOR, false, false);
+
+WIN_GRAPH_PICKER = gui_create_window(1002, "Select Graph", int((W - 460) * 0.5), int((H - 420) * 0.5), 460, 420);
+gui_set_min_size(WIN_GRAPH_PICKER, 360, 280);
+gui_set_resizable(WIN_GRAPH_PICKER, false);
+gui_set_movable(WIN_GRAPH_PICKER, false);
+gui_set_title_buttons(WIN_GRAPH_PICKER, false, false);
+
+editor_graph_rebuild_options();
+editor_scene_defaults();
+
+loop
+{
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    gui_begin_frame();
+
+    var picker_result = gui_filepicker_take_result(EDITOR_PICKER);
+    if (picker_result == GUI_FILE_PICKER_OK)
+    {
+        if (!editor_add_graph(EDITOR_PICKER.selected_path))
+        {
+            gui_popup_error("Graph", EDITOR_STATUS);
+        }
+    }
+    var scene_picker_result = gui_filepicker_take_result(EDITOR_SCENE_PICKER);
+    if (scene_picker_result == GUI_FILE_PICKER_OK)
+    {
+        var scene_ok = true;
+        if (EDITOR_SCENE_PICKER_MODE == EDITOR_PICK_MODE_SAVE)
+        {
+            scene_ok = editor_save_scene_json(EDITOR_SCENE_PICKER.selected_path);
+        }
+        else
+        {
+            scene_ok = editor_load_scene_json(EDITOR_SCENE_PICKER.selected_path);
+        }
+        if (!scene_ok)
+        {
+            gui_popup_error("Scene", EDITOR_STATUS);
+        }
+        EDITOR_SCENE_PICKER_MODE = EDITOR_PICK_MODE_LOAD;
+    }
+
+    var popup_blocked = gui_popup_modal(W, H);
+    var picker_blocked = false;
+    var scene_picker_blocked = false;
+    var graph_picker_blocked = false;
+    if (!popup_blocked)
+    {
+        picker_blocked = gui_filepicker_modal(EDITOR_PICKER, W, H);
+        if (!picker_blocked)
+        {
+            scene_picker_blocked = gui_filepicker_modal(EDITOR_SCENE_PICKER, W, H);
+            if (!scene_picker_blocked)
+            {
+                graph_picker_blocked = editor_scene_graph_picker_modal(W, H);
+            }
+        }
+    }
+
+    WIN_EDITOR.visible = true;
+    WIN_EDITOR.minimized = false;
+    WIN_EDITOR.x = 0;
+    WIN_EDITOR.y = 0;
+    WIN_EDITOR.w = W;
+    WIN_EDITOR.h = H;
+
+    if (!popup_blocked && !picker_blocked && !scene_picker_blocked && !graph_picker_blocked)
+    {
+        if (gui_window_begin(WIN_EDITOR))
+        {
+            gui_layout_reset(26, 8);
+            gui_space(30);
+            gui_label("Bu Process Editor");
+            if (EDITOR_SCENE_PATH != nil && EDITOR_SCENE_PATH != "")
+            {
+                gui_label(format("Scene file: {}", EDITOR_SCENE_PATH));
+            }
+            else
+            {
+                gui_label("Scene file: <unsaved>");
+            }
+
+            var tabs = ["Graph", "Scene", "Inspector"];
+            EDITOR_TAB = gui_tabs_align(tabs, EDITOR_TAB, GUI_ALIGN_LEFT);
+            gui_space(4);
+            editor_graph_rebuild_options();
+
+            if (EDITOR_TAB == 0)
+            {
+                var graph_tab_content_w = WIN_EDITOR.w - GUI_PADDING * 2 - 8;
+                var graph_tab_rows = len(EDITOR_GRAPH_IDS);
+                if (graph_tab_rows < 8) graph_tab_rows = 8;
+                var graph_tab_content_h = 580 + graph_tab_rows * 24;
+                var graph_tab_view_h = WIN_EDITOR.h - GUI_TITLE_H - GUI_PADDING * 4 - 64;
+                if (graph_tab_view_h < 220) graph_tab_view_h = 220;
+
+                if (gui_scroll_begin_mode(EDITOR_GRAPH_TAB_SCROLL,
+                                          graph_tab_view_h,
+                                          graph_tab_content_w,
+                                          graph_tab_content_h,
+                                          GUI_SCROLL_VERTICAL))
+                {
+                    gui_layout_columns(3, 24, 6);
+                    if (gui_button("Load image..."))
+                    {
+                        EDITOR_PICKER.title = "Select Image File";
+                        EDITOR_PICKER.filter_ext = "";
+                        EDITOR_PICKER.select_dirs = false;
+                        gui_filepicker_open(EDITOR_PICKER);
+                    }
+                    if (gui_button("Remove selected"))
+                    {
+                        editor_remove_selected_graph();
+                    }
+                    if (gui_button("Save graphics.bin"))
+                    {
+                        save_graphics("graphics.bin");
+                        EDITOR_STATUS = "Saved graphics.bin";
+                    }
+                    if (gui_button("Load graphics.bin"))
+                    {
+                        load_graphics("graphics.bin");
+                        EDITOR_STATUS = "Loaded graphics.bin";
+                    }
+
+                    gui_layout_reset(24, 6);
+                    gui_label(format("Status: {}", EDITOR_STATUS));
+                    gui_label(format("Graphs loaded in this editor: {}", len(EDITOR_GRAPH_IDS)));
+                    gui_layout_set_margins(6, 6);
+                    gui_layout_columns(3, 24, 6);
+                    EDITOR_GRID_SHOW = gui_checkbox_align("Show Grid", EDITOR_GRID_SHOW, GUI_ALIGN_LEFT);
+                    EDITOR_GRID_SNAP = gui_checkbox_align("Snap Grid", EDITOR_GRID_SNAP, GUI_ALIGN_LEFT);
+                    EDITOR_GRID_SIZE_INDEX = gui_combo_align("Grid", EDITOR_GRID_SIZE_OPTIONS, EDITOR_GRID_SIZE_INDEX, GUI_ALIGN_LEFT);
+                    gui_layout_reset(24, 6);
+                    gui_layout_clear_margins();
+                    gui_label(format("Grid size: {} px", editor_grid_size()));
+                    var hint_graph = -1;
+                    if (EDITOR_GRAPH_SELECTED >= 0 && EDITOR_GRAPH_SELECTED < len(EDITOR_GRAPH_IDS))
+                    {
+                        hint_graph = EDITOR_GRAPH_IDS[EDITOR_GRAPH_SELECTED];
+                    }
+                    if (EDITOR_SUB_MODE == 1)
+                    {
+                        gui_label("Selection: drawing rect on preview.");
+                    }
+                    elif (EDITOR_SUB_MODE >= 2 && EDITOR_SUB_MODE <= 5)
+                    {
+                        gui_label("Selection: adjusting corner handle.");
+                    }
+                    elif (hint_graph >= 0 && editor_sub_rect_has_for(hint_graph))
+                    {
+                        var rw_hint = EDITOR_SUB_CUR_X - EDITOR_SUB_START_X + 1;
+                        var rh_hint = EDITOR_SUB_CUR_Y - EDITOR_SUB_START_Y + 1;
+                        gui_label(format("Selection ready: {}x{} (right click -> New Subgraph)", rw_hint, rh_hint));
+                    }
+                    gui_space(2);
+
+                    var rows = len(EDITOR_GRAPH_IDS);
+                    if (rows < 8) rows = 8;
+                    var list_content_h = rows * 24 + 8;
+                    var list_content_w = WIN_EDITOR.w - GUI_PADDING * 2 - 10;
+                    var list_view_h = 220;
+                    if (list_view_h > H - 340) list_view_h = H - 340;
+                    if (list_view_h < 100) list_view_h = 100;
+
+                    if (gui_scroll_begin_mode(EDITOR_GRAPH_SCROLL, list_view_h, list_content_w, list_content_h, GUI_SCROLL_VERTICAL))
+                    {
+                        gui_layout_reset(22, 4);
+                        if (len(EDITOR_GRAPH_IDS) <= 0)
+                        {
+                            gui_label("No graphs yet. Use 'Load image...'");
+                        }
+                        else
+                        {
+                            var i = 0;
+                            while (i < len(EDITOR_GRAPH_IDS))
+                            {
+                                var gid = EDITOR_GRAPH_IDS[i];
+                                var gw = get_graph_width(gid);
+                                var gh = get_graph_height(gid);
+                                var row = format("#{} id={} {}x{} {}", i, gid, gw, gh, EDITOR_GRAPH_PATHS[i]);
+                                EDITOR_GRAPH_SELECTED = gui_radio_align(row, EDITOR_GRAPH_SELECTED, i, GUI_ALIGN_LEFT);
+                                i += 1;
+                            }
+                        }
+                        gui_scroll_end();
+                    }
+
+                    gui_space(4);
+                    gui_separator();
+                    if (EDITOR_GRAPH_SELECTED >= 0 && EDITOR_GRAPH_SELECTED < len(EDITOR_GRAPH_IDS))
+                    {
+                        var sid = EDITOR_GRAPH_IDS[EDITOR_GRAPH_SELECTED];
+                        var spath = EDITOR_GRAPH_PATHS[EDITOR_GRAPH_SELECTED];
+                        gui_label(format("Selected graph id: {}", sid));
+                        gui_label(format("Path: {}", spath));
+                        gui_label(format("Size: {} x {}", get_graph_width(sid), get_graph_height(sid)));
+                        editor_draw_graph_preview(sid, spath);
+                    }
+                    else
+                    {
+                        gui_label("Selected graph id: none");
+                        editor_draw_graph_preview(-1, "");
+                    }
+                    gui_scroll_end();
+                }
+            }
+            elif (EDITOR_TAB == 1)
+            {
+                gui_layout_reset(24, 6);
+
+                gui_layout_columns(4, 24, 6);
+                if (gui_button("Select Graph..."))
+                {
+                    editor_scene_open_graph_picker();
+                }
+                if (gui_button("Add Graph"))
+                {
+                    if (!editor_scene_add_from_graph(EDITOR_SCENE_BRUSH_GRAPH_ID))
+                    {
+                        gui_popup_warn("Scene", EDITOR_STATUS);
+                    }
+                }
+                if (gui_button("Delete Selected"))
+                {
+                    if (!editor_scene_delete_selected())
+                    {
+                        gui_popup_warn("Scene", EDITOR_STATUS);
+                    }
+                }
+                if (gui_button("Inspector Tab"))
+                {
+                    EDITOR_TAB = 2;
+                }
+                if (gui_button("Focus Selected"))
+                {
+                    if (!editor_scene_load(EDITOR_SCENE_SELECTED))
+                    {
+                        EDITOR_STATUS = "No selected scene instance";
+                        gui_popup_warn("Scene", EDITOR_STATUS);
+                    }
+                }
+
+                gui_layout_reset(24, 6);
+                var scene_canvas_h = WIN_EDITOR.h - GUI_TITLE_H - GUI_PADDING * 5 - 180;
+                if (scene_canvas_h < 260) scene_canvas_h = 260;
+                editor_scene_draw_canvas(scene_canvas_h);
+            }
+            else
+            {
+                gui_layout_reset(24, 6);
+                editor_scene_draw_inspector();
+            }
+
+            // Draw menubar after content so menu popups stay above widgets.
+            GUI_LAYOUT_Y = WIN_EDITOR.y + GUI_TITLE_H + GUI_PADDING;
+            GUI_LAYOUT_MODE = 0;
+            GUI_LAYOUT_COLS = 1;
+            GUI_LAYOUT_COL_INDEX = 0;
+            GUI_ROW_H = 24;
+            GUI_SPACING = 6;
+            if (gui_menubar_begin())
+            {
+                if (gui_menu_begin("File"))
+                {
+                    if (gui_menu_item("Load Scene JSON..."))
+                    {
+                        editor_scene_open_load();
+                    }
+                    if (gui_menu_item("Save Scene"))
+                    {
+                        var had_path = (EDITOR_SCENE_PATH != nil && EDITOR_SCENE_PATH != "");
+                        if (!editor_scene_save_current() && had_path)
+                        {
+                            gui_popup_error("Scene", EDITOR_STATUS);
+                        }
+                    }
+                    if (gui_menu_item("Save Scene As..."))
+                    {
+                        editor_scene_open_save_as();
+                    }
+                    if (gui_menu_item("Load Test Scene"))
+                    {
+                        var test_scene2 = "scripts/test/process_editor_scene.json";
+                        if (!path.exists(test_scene2))
+                        {
+                            test_scene2 = "../scripts/test/process_editor_scene.json";
+                        }
+                        if (!editor_load_scene_json(test_scene2))
+                        {
+                            gui_popup_error("Scene", EDITOR_STATUS);
+                        }
+                    }
+                    gui_menu_end();
+                }
+
+                if (gui_menu_begin("Graph"))
+                {
+                    if (gui_menu_item("Load Image..."))
+                    {
+                        EDITOR_PICKER.title = "Select Image File";
+                        EDITOR_PICKER.filter_ext = "";
+                        EDITOR_PICKER.select_dirs = false;
+                        gui_filepicker_open(EDITOR_PICKER);
+                    }
+                    if (gui_menu_item("Remove Selected"))
+                    {
+                        editor_remove_selected_graph();
+                    }
+                    if (gui_menu_item("Save graphics.bin"))
+                    {
+                        save_graphics("graphics.bin");
+                        EDITOR_STATUS = "Saved graphics.bin";
+                    }
+                    if (gui_menu_item("Load graphics.bin"))
+                    {
+                        load_graphics("graphics.bin");
+                        EDITOR_STATUS = "Loaded graphics.bin";
+                    }
+                    gui_menu_end();
+                }
+                gui_menubar_end();
+            }
+
+            gui_window_end();
+        }
+    }
+
+    set_draw_screen(true);
+    set_color(255, 255, 255);
+    draw_fps(10, 10);
+
+    frame;
+}

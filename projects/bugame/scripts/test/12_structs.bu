@@ -1,0 +1,14 @@
+// Test: Structs
+struct Point { x, y }
+
+var p = Point(10, 20);
+if (p.x != 10) { throw "field x"; }
+if (p.y != 20) { throw "field y"; }
+
+p.x = 50;
+if (p.x != 50) { throw "set field"; }
+
+// Multiple instances
+var p2 = Point(100, 200);
+if (p2.x != 100) { throw "instance 2"; }
+if (p.x != 50) { throw "instance isolation"; }

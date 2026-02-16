@@ -1,0 +1,35 @@
+// Test: Foreach on arrays (only arrays are iterable)
+// Array foreach
+var sum = 0;
+foreach (n in [1, 2, 3, 4, 5]) {
+    sum += n;
+}
+if (sum != 15) { throw "foreach array"; }
+
+// Foreach with variable
+var nums = [10, 20, 30];
+var total = 0;
+foreach (n in nums) {
+    total += n;
+}
+if (total != 60) { throw "foreach var array"; }
+
+// Nested foreach
+var grand = 0;
+var matrix = [[1,2],[3,4],[5,6]];
+foreach (row in matrix) {
+    foreach (val in row) {
+        grand += val;
+    }
+}
+if (grand != 21) { throw "nested foreach"; }
+
+// Foreach with break
+var found = -1;
+foreach (n in [10, 20, 30, 40, 50]) {
+    if (n == 30) {
+        found = n;
+        break;
+    }
+}
+if (found != 30) { throw "foreach break"; }

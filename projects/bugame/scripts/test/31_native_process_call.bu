@@ -1,0 +1,25 @@
+// Regression: native process call must work in computed-goto runtime.
+
+var __ok = false;
+
+process native_proc_test()
+{
+    var out = native_proc_ping(41);
+    if (out == 42)
+    {
+        __ok = true;
+    }
+}
+
+native_proc_test();
+
+var __guard = 0;
+loop
+{
+    if (__ok) { break; }
+    __guard += 1;
+    if (__guard > 10) { break; }
+    frame;
+}
+
+if (!__ok) { throw "native process call failed"; }

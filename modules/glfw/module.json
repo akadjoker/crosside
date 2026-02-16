@@ -1,0 +1,79 @@
+{
+	"module":"glfw",
+	"about":"openg shared library",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":["glfw"],
+        "static":true,
+                    "priority":0,
+	"system":["linux","emscripten","windows"],
+	"src":["src/context.c",
+"src/init.c",
+"src/input.c",
+"src/monitor.c",
+"src/vulkan.c",
+"src/window.c"],
+	"include":[""],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":"-D_GLFW_X11",
+ 	   "CC_ARGS":"-D_GLFW_X11",
+ 	   "LD_ARGS":"-lGL -lc -lm -lpthread -ldl -lrt",
+	   "src":["src/x11_init.c",
+"src/x11_monitor.c",
+"src/x11_window.c",
+"src/glx_context.c",
+"src/linux_joystick.c",
+"src/posix_thread.c",
+"src/posix_time.c",
+"src/xkb_unicode.c",
+"src/egl_context.c",
+"src/osmesa_context.c"],
+	   "include":[""]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":"-D_GLFW_WIN32",
+ 	   "CC_ARGS":"-D_GLFW_WIN32",
+ 	   "LD_ARGS":"",
+	    "src":["src/win32_init.c",
+"src/win32_joystick.c",
+"src/win32_monitor.c",
+"src/win32_time.c",
+"src/win32_thread.c",
+"src/win32_window.c",
+"src/wgl_context.c",
+"src/egl_context.c",
+"src/osmesa_context.c"],
+	    "include":[]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[],
+	    "include":[""]
+	  },
+	  "emscripten":
+	  {
+	  "template":"",
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":["src/x11_init.c",
+"src/x11_monitor.c",
+"src/x11_window.c",
+"src/glx_context.c",
+"src/linux_joystick.c",
+"src/posix_thread.c",
+"src/posix_time.c",
+"src/xkb_unicode.c",
+"src/egl_context.c",
+"src/osmesa_context.c"],
+	    "include":[""]
+	  }
+      }
+}

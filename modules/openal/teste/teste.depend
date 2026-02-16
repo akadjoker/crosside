@@ -1,0 +1,833 @@
+# depslib dependency file v1.0
+1620030978 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/ALc.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	<stdio.h>
+	<memory.h>
+	<ctype.h>
+	<signal.h>
+	"alMain.h"
+	"alSource.h"
+	"alListener.h"
+	"alThunk.h"
+	"alSource.h"
+	"alBuffer.h"
+	"alAuxEffectSlot.h"
+	"alError.h"
+	"bs2b.h"
+	"alu.h"
+	"compat.h"
+	"threads.h"
+	"alstring.h"
+	"backends/base.h"
+
+1620031474 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/config.h
+
+1498292598 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/version.h
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alMain.h
+	<string.h>
+	<stdio.h>
+	<stdarg.h>
+	<assert.h>
+	<math.h>
+	<limits.h>
+	<strings.h>
+	<fenv.h>
+	"AL/al.h"
+	"AL/alc.h"
+	"AL/alext.h"
+	"static_assert.h"
+	"align.h"
+	"atomic.h"
+	"uintmap.h"
+	"vector.h"
+	"alstring.h"
+	"hrtf.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/include/AL/al.h
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/include/AL/alc.h
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/include/AL/alext.h
+	<stddef.h>
+	<inttypes.h>
+	<stdint.h>
+	<inttypes.h>
+	"alc.h"
+	"al.h"
+	"efx.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/include/AL/efx.h
+	"alc.h"
+	"al.h"
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/common/static_assert.h
+	<assert.h>
+
+1620030044 /media/djoker/code/projects/codeeditor/modules/openal/src/common/align.h
+	<stdalign.h>
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/common/atomic.h
+	"static_assert.h"
+	"bool.h"
+	<stdatomic.h>
+	<windows.h>
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/common/bool.h
+	<stdbool.h>
+
+1498294747 /media/djoker/code/projects/codeeditor/modules/openal/src/common/uintmap.h
+	"AL/al.h"
+	"rwlock.h"
+	<limits.h>
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/common/rwlock.h
+	"bool.h"
+	"atomic.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/vector.h
+	<stdlib.h>
+	<AL/al.h>
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/common/almalloc.h
+	<stddef.h>
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/alstring.h
+	<string.h>
+	"vector.h"
+	<wchar.h>
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/common/threads.h
+	<time.h>
+	<windows.h>
+	<stdint.h>
+	<errno.h>
+	<pthread.h>
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alSource.h
+	"alMain.h"
+	"alu.h"
+	"hrtf.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alu.h
+	<limits.h>
+	<math.h>
+	<float.h>
+	<ieeefp.h>
+	"alMain.h"
+	"alBuffer.h"
+	"alFilter.h"
+	"hrtf.h"
+	"align.h"
+	"math_defs.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alBuffer.h
+	"alMain.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alFilter.h
+	"alMain.h"
+	"math_defs.h"
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/common/math_defs.h
+	<math.h>
+	<float.h>
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alAuxEffectSlot.h
+	"alMain.h"
+	"alEffect.h"
+	"align.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alEffect.h
+	"alMain.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/hrtf.h
+	"AL/al.h"
+	"AL/alc.h"
+	"alstring.h"
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/nfcfilter.h
+	"alMain.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alListener.h
+	"alMain.h"
+	"alu.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alThunk.h
+	"alMain.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/alError.h
+	"alMain.h"
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/bformatdec.h
+	"alMain.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/compat.h
+	<windows.h>
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/backends/base.h
+	"alMain.h"
+	"threads.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/alcConfig.c
+	"config.h"
+	<stdlib.h>
+	<stdio.h>
+	<ctype.h>
+	<string.h>
+	<windows.h>
+	<shlobj.h>
+	"alMain.h"
+	"compat.h"
+	"bool.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/alcRing.c
+	"config.h"
+	<string.h>
+	<stdlib.h>
+	"alMain.h"
+	"threads.h"
+	"compat.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/ALu.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	<string.h>
+	<ctype.h>
+	<assert.h>
+	"alMain.h"
+	"alSource.h"
+	"alBuffer.h"
+	"alListener.h"
+	"alAuxEffectSlot.h"
+	"alu.h"
+	"bs2b.h"
+	"hrtf.h"
+	"static_assert.h"
+	"mixer_defs.h"
+	"backends/base.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/bs2b.h
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/uhjfilter.h
+	"AL/al.h"
+	"alMain.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/mixer_defs.h
+	"AL/alc.h"
+	"AL/al.h"
+	"alMain.h"
+	"alu.h"
+
+1498140444 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/ambdec.c
+	"config.h"
+	"ambdec.h"
+	<stdio.h>
+	<string.h>
+	<ctype.h>
+	"compat.h"
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/ambdec.h
+	"alstring.h"
+	"alMain.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/backends/alsa.c
+	"config.h"
+	<stdlib.h>
+	<stdio.h>
+	<memory.h>
+	"alMain.h"
+	"alu.h"
+	"threads.h"
+	"compat.h"
+	"backends/base.h"
+	<alsa/asoundlib.h>
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/backends/base.c
+	"config.h"
+	<stdlib.h>
+	"alMain.h"
+	"backends/base.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/backends/loopback.c
+	"config.h"
+	<stdlib.h>
+	"alMain.h"
+	"alu.h"
+	"backends/base.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/backends/null.c
+	"config.h"
+	<stdlib.h>
+	<windows.h>
+	"alMain.h"
+	"alu.h"
+	"threads.h"
+	"compat.h"
+	"backends/base.h"
+
+1498140444 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/backends/oss.c
+	"config.h"
+	<sys/ioctl.h>
+	<sys/types.h>
+	<sys/time.h>
+	<sys/stat.h>
+	<fcntl.h>
+	<stdlib.h>
+	<stdio.h>
+	<string.h>
+	<memory.h>
+	<unistd.h>
+	<errno.h>
+	<math.h>
+	"alMain.h"
+	"alu.h"
+	"threads.h"
+	"compat.h"
+	"backends/base.h"
+	<sys/soundcard.h>
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/backends/pulseaudio.c
+	"config.h"
+	<string.h>
+	"alMain.h"
+	"alu.h"
+	"threads.h"
+	"compat.h"
+	"backends/base.h"
+	<pulse/pulseaudio.h>
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/backends/sndio.c
+	"config.h"
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	"alMain.h"
+	"alu.h"
+	"threads.h"
+	<sndio.h>
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/backends/wave.c
+	"config.h"
+	<stdlib.h>
+	<stdio.h>
+	<memory.h>
+	<errno.h>
+	"alMain.h"
+	"alu.h"
+	"threads.h"
+	"compat.h"
+	"backends/base.h"
+
+1498140444 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/bformatdec.c
+	"config.h"
+	"bformatdec.h"
+	"ambdec.h"
+	"mixer_defs.h"
+	"alu.h"
+	"bool.h"
+	"threads.h"
+	"almalloc.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/bs2b.c
+	"config.h"
+	<math.h>
+	<string.h>
+	"bs2b.h"
+	"alu.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/bsinc.c
+	"config.h"
+	"AL/al.h"
+	"align.h"
+
+1498140444 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/converter.c
+	"config.h"
+	"converter.h"
+	"mixer_defs.h"
+
+1498140444 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/converter.h
+	"alMain.h"
+	"alu.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/static_assert.h
+	<assert.h>
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/align.h
+	<stdalign.h>
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/atomic.h
+	"static_assert.h"
+	"bool.h"
+	<stdatomic.h>
+	<windows.h>
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/bool.h
+	<stdbool.h>
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/uintmap.h
+	"AL/al.h"
+	"rwlock.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/rwlock.h
+	"bool.h"
+	"atomic.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/math_defs.h
+	<float.h>
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/linux/threads.h
+	<time.h>
+	<windows.h>
+	<stdint.h>
+	<errno.h>
+	<pthread.h>
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/autowah.c
+	<stdlib.h>
+	"config.h"
+	"alu.h"
+	"alFilter.h"
+	"alError.h"
+	"alMain.h"
+	"alAuxEffectSlot.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/chorus.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	"alMain.h"
+	"alFilter.h"
+	"alAuxEffectSlot.h"
+	"alError.h"
+	"alu.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/compressor.c
+	<stdlib.h>
+	"config.h"
+	"alError.h"
+	"alMain.h"
+	"alAuxEffectSlot.h"
+	"alu.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/dedicated.c
+	"config.h"
+	<stdlib.h>
+	"alMain.h"
+	"alFilter.h"
+	"alAuxEffectSlot.h"
+	"alError.h"
+	"alu.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/distortion.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	"alMain.h"
+	"alFilter.h"
+	"alAuxEffectSlot.h"
+	"alError.h"
+	"alu.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/echo.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	"alMain.h"
+	"alFilter.h"
+	"alAuxEffectSlot.h"
+	"alError.h"
+	"alu.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/equalizer.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	"alMain.h"
+	"alFilter.h"
+	"alAuxEffectSlot.h"
+	"alError.h"
+	"alu.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/flanger.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	"alMain.h"
+	"alFilter.h"
+	"alAuxEffectSlot.h"
+	"alError.h"
+	"alu.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/modulator.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	"alMain.h"
+	"alFilter.h"
+	"alAuxEffectSlot.h"
+	"alError.h"
+	"alu.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/null.c
+	"config.h"
+	<stdlib.h>
+	"AL/al.h"
+	"AL/alc.h"
+	"alMain.h"
+	"alAuxEffectSlot.h"
+	"alError.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/effects/reverb.c
+	"config.h"
+	<stdio.h>
+	<stdlib.h>
+	<math.h>
+	"alMain.h"
+	"alu.h"
+	"alAuxEffectSlot.h"
+	"alEffect.h"
+	"alFilter.h"
+	"alError.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/hrtf.c
+	"config.h"
+	<stdlib.h>
+	<ctype.h>
+	"AL/al.h"
+	"AL/alc.h"
+	"alMain.h"
+	"alSource.h"
+	"alu.h"
+	"hrtf.h"
+	"compat.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/mixer.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	<string.h>
+	<ctype.h>
+	<assert.h>
+	"alMain.h"
+	"AL/al.h"
+	"AL/alc.h"
+	"alSource.h"
+	"alBuffer.h"
+	"alListener.h"
+	"alAuxEffectSlot.h"
+	"alu.h"
+	"mixer_defs.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/mixer_c.c
+	"config.h"
+	<assert.h>
+	"alMain.h"
+	"alu.h"
+	"alSource.h"
+	"alAuxEffectSlot.h"
+	"mixer_inc.c"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/Alc/mixer_inc.c
+	"config.h"
+	"alMain.h"
+	"alSource.h"
+	"hrtf.h"
+	"mixer_defs.h"
+	"align.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/mixer_inc.c
+	"config.h"
+	"alMain.h"
+	"alSource.h"
+	"hrtf.h"
+	"mixer_defs.h"
+	"align.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/helpers.c
+	"config.h"
+	<stdlib.h>
+	<time.h>
+	<errno.h>
+	<stdarg.h>
+	<malloc.h>
+	<dirent.h>
+	<windows.h>
+	<guiddef.h>
+	<initguid.h>
+	<devpropdef.h>
+	<propkeydef.h>
+	<dlfcn.h>
+	<intrin.h>
+	<cpuid.h>
+	<sys/sysconf.h>
+	<float.h>
+	<ieeefp.h>
+	<unistd.h>
+	<shlobj.h>
+	"alMain.h"
+	"alu.h"
+	"atomic.h"
+	"uintmap.h"
+	"vector.h"
+	"alstring.h"
+	"compat.h"
+	"threads.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/mixer_sse.c
+	"config.h"
+	<xmmintrin.h>
+	"AL/al.h"
+	"AL/alc.h"
+	"alMain.h"
+	"alu.h"
+	"alSource.h"
+	"alAuxEffectSlot.h"
+	"mixer_defs.h"
+	"mixer_inc.c"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/mixer_sse2.c
+	"config.h"
+	<xmmintrin.h>
+	<emmintrin.h>
+	"alu.h"
+	"mixer_defs.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/Alc/panning.c
+	"config.h"
+	<math.h>
+	<stdlib.h>
+	<string.h>
+	<ctype.h>
+	<assert.h>
+	"alMain.h"
+	"AL/al.h"
+	"AL/alc.h"
+	"alu.h"
+	"bool.h"
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutBufferData.c
+	"alutInternal.h"
+
+1403761518 /media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutInternal.h
+	"config.h"
+	<stdlib.h>
+	<stdint.h>
+	<AL/alut.h>
+
+1485778412 /media/djoker/code/projects/codeeditor/modules/openal/src/alut/config.h
+
+1403761518 /media/djoker/code/projects/codeeditor/modules/openal/include/AL/alut.h
+	<alc.h>
+	<al.h>
+	<OpenAL/alc.h>
+	<OpenAL/al.h>
+	<AL/al.h>
+	<AL/alc.h>
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutCodec.c
+	"alutInternal.h"
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutError.c
+	"alutInternal.h"
+	<stdio.h>
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutInit.c
+	"alutInternal.h"
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutInputStream.c
+	"alutInternal.h"
+	<stdio.h>
+	<string.h>
+	<sys/types.h>
+	<sys/stat.h>
+	<unistd.h>
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutLoader.c
+	"alutInternal.h"
+	<ctype.h>
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutOutputStream.c
+	"alutInternal.h"
+	<string.h>
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutUtil.c
+	"alutInternal.h"
+	<time.h>
+	<errno.h>
+	<unistd.h>
+	<windows.h>
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutVersion.c
+	"alutInternal.h"
+
+1403761518 source:/media/djoker/code/projects/codeeditor/modules/openal/src/alut/alutWaveform.c
+	"alutInternal.h"
+	<math.h>
+	<string.h>
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/common/atomic.c
+	"config.h"
+	"atomic.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/common/rwlock.c
+	"config.h"
+	"rwlock.h"
+	"bool.h"
+	"atomic.h"
+	"threads.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/common/uintmap.c
+	"config.h"
+	"uintmap.h"
+	<stdlib.h>
+	<string.h>
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alAuxEffectSlot.c
+	"config.h"
+	<stdlib.h>
+	<math.h>
+	"AL/al.h"
+	"AL/alc.h"
+	"alMain.h"
+	"alAuxEffectSlot.h"
+	"alThunk.h"
+	"alError.h"
+	"alSource.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alBuffer.c
+	"config.h"
+	<stdlib.h>
+	<stdio.h>
+	<assert.h>
+	<limits.h>
+	<malloc.h>
+	"alMain.h"
+	"alu.h"
+	"alError.h"
+	"alBuffer.h"
+	"alThunk.h"
+	"sample_cvt.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/Include/sample_cvt.h
+	"AL/al.h"
+	"alBuffer.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alEffect.c
+	"config.h"
+	<stdlib.h>
+	<math.h>
+	<float.h>
+	"AL/al.h"
+	"AL/alc.h"
+	"alMain.h"
+	"alEffect.h"
+	"alThunk.h"
+	"alError.h"
+	"AL/efx-presets.h"
+
+1453691559 /media/djoker/code/projects/codeeditor/modules/openal/include/AL/efx-presets.h
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alError.c
+	"config.h"
+	<signal.h>
+	<windows.h>
+	"alMain.h"
+	"AL/alc.h"
+	"alError.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alExtension.c
+	"config.h"
+	<stdlib.h>
+	<string.h>
+	<ctype.h>
+	"alError.h"
+	"alMain.h"
+	"alFilter.h"
+	"alEffect.h"
+	"alAuxEffectSlot.h"
+	"alSource.h"
+	"alBuffer.h"
+	"AL/al.h"
+	"AL/alc.h"
+
+1620031569 source:/media/djoker/code/projects/codeeditor/modules/openal/src/common/threads.c
+	"config.h"
+	"threads.h"
+	<stdlib.h>
+	<string.h>
+	<errno.h>
+	"uintmap.h"
+	<windows.h>
+	<mmsystem.h>
+	<sys/time.h>
+	<unistd.h>
+	<pthread.h>
+	<pthread_np.h>
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alFilter.c
+	"config.h"
+	<stdlib.h>
+	"alMain.h"
+	"alu.h"
+	"alFilter.h"
+	"alThunk.h"
+	"alError.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alListener.c
+	"config.h"
+	"alMain.h"
+	"AL/alc.h"
+	"alError.h"
+	"alListener.h"
+	"alSource.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alSource.c
+	"config.h"
+	<stdlib.h>
+	<limits.h>
+	<math.h>
+	<float.h>
+	"AL/al.h"
+	"AL/alc.h"
+	"alMain.h"
+	"alError.h"
+	"alSource.h"
+	"alBuffer.h"
+	"alThunk.h"
+	"alAuxEffectSlot.h"
+	"backends/base.h"
+	"threads.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alState.c
+	"config.h"
+	<stdlib.h>
+	"alMain.h"
+	"AL/alc.h"
+	"AL/al.h"
+	"AL/alext.h"
+	"alError.h"
+	"alSource.h"
+	"alAuxEffectSlot.h"
+	"backends/base.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/alThunk.c
+	"config.h"
+	<stdlib.h>
+	"alMain.h"
+	"alThunk.h"
+
+1453691559 source:/media/djoker/code/projects/codeeditor/modules/openal/src/OpenAL32/sample_cvt.c
+	"config.h"
+	"sample_cvt.h"
+	<alloca.h>
+	<malloc.h>
+	"AL/al.h"
+	"alu.h"
+	"alBuffer.h"
+
+1620029618 source:/media/djoker/code/projects/codeeditor/modules/openal/teste/main.cpp
+	<iostream>
+

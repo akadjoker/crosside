@@ -1,0 +1,45 @@
+// Test: OS process helpers (spawn/wait/poll/kill/is_alive)
+
+import os;
+
+// Invalid PID behavior
+if (os.wait(-1) != -1) { throw "os.wait invalid"; }
+if (os.is_alive(-1)) { throw "os.is_alive invalid"; }
+if (os.kill(-1)) { throw "os.kill invalid"; }
+
+// Basic spawn + wait exit code
+var pid = os.spawn_shell("exit 7");
+if (pid <= 0) { throw "os.spawn_shell pid"; }
+
+var code = os.wait(pid);
+if (code != 7) { throw "os.wait exit code"; }
+
+// Poll should return nil (running) or final code
+pid = os.spawn_shell("exit 9");
+if (pid <= 0) { throw "os.spawn_shell pid2"; }
+
+var pol = os.poll(pid);
+if (pol == nil) {
+    pol = os.wait(pid);
+}
+if (pol != 9) { throw "os.poll/wait exit code"; }
+
+// Timeout-based wait should return nil first, then a final code
+if (os.platform == "windows") {
+    pid = os.spawn_shell("ping -n 3 127.0.0.1 > NUL");
+} else {
+    pid = os.spawn_shell("sleep 1");
+}
+if (pid <= 0) { throw "os.spawn_shell timeout pid"; }
+
+var maybe_code = os.wait(pid, 10);
+if (maybe_code != nil) { throw "os.wait timeout should be nil"; }
+
+var final_code = os.wait(pid);
+if (final_code != 0) { throw "os.wait timeout final code"; }
+
+// Capture API keeps old key ("output") and new key ("stdout")
+var cap = os.spawn_capture("echo process_ok");
+if (cap["code"] != 0) { throw "os.spawn_capture code"; }
+if (!cap["output"].contains("process_ok")) { throw "os.spawn_capture output"; }
+if (!cap["stdout"].contains("process_ok")) { throw "os.spawn_capture stdout"; }

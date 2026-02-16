@@ -1,0 +1,79 @@
+{
+  "module": "bu",
+  "about": "bu runtime and scripting library",
+  "author": "djokersoft",
+  "version": "1.0.0",
+  "depends": ["miniz"],
+  "static": true,
+  "priority": 0,
+  "system": ["linux", "android", "emscripten", "windows"],
+  "src": [
+    "src/arena.cpp",
+    "src/array.cpp",
+    "src/builtins_base.cpp",
+    "src/builtins_file.cpp",
+    "src/builtins_fs.cpp",
+    "src/builtins_json.cpp",
+    "src/builtins_math.cpp",
+    "src/builtins_net.cpp",
+    "src/builtins_os.cpp",
+    "src/builtins_path.cpp",
+    "src/builtins_regex.cpp",
+    "src/builtins_time.cpp",
+    "src/builtins_zip.cpp",
+    "src/bytecode_loader.cpp",
+    "src/bytecode_writer.cpp",
+    "src/code.cpp",
+    "src/compiler.cpp",
+    "src/compiler_expressions.cpp",
+    "src/compiler_statements.cpp",
+    "src/debug.cpp",
+    "src/function.cpp",
+    "src/gc.cpp",
+    "src/interpreter.cpp",
+    "src/interpreter_process.cpp",
+    "src/interpreter_runtime_goto.cpp",
+    "src/interpreter_runtime_switch.cpp",
+    "src/interpreter_stack.cpp",
+    "src/lexer.cpp",
+    "src/module.cpp",
+    "src/platform.cpp",
+    "src/plugin.cpp",
+    "src/pool.cpp",
+    "src/token.cpp",
+    "src/utils.cpp",
+    "src/value.cpp"
+  ],
+  "include": ["include"],
+  "plataforms": {
+    "linux": {
+      "CPP_ARGS": "-std=c++11 -DUSE_COMPUTED_GOTO=0 -fno-strict-aliasing -fexceptions -frtti",
+      "CC_ARGS": "-std=c11 -DUSE_COMPUTED_GOTO=0 -fno-strict-aliasing",
+      "LD_ARGS": "-lminiz -lpthread -ldl",
+      "src": [],
+      "include": []
+    },
+    "windows": {
+      "CPP_ARGS": "-std=c++11 -DUSE_COMPUTED_GOTO=0 -fno-strict-aliasing -fexceptions -frtti",
+      "CC_ARGS": "-std=c11 -DUSE_COMPUTED_GOTO=0 -fno-strict-aliasing",
+      "LD_ARGS": "-lminiz -lws2_32",
+      "src": [],
+      "include": []
+    },
+    "android": {
+      "CPP_ARGS": "-std=c++11 -DUSE_COMPUTED_GOTO=0 -fno-strict-aliasing -fexceptions -frtti",
+      "CC_ARGS": "-std=c11 -DUSE_COMPUTED_GOTO=0 -fno-strict-aliasing",
+      "LD_ARGS": "-lminiz -ldl -llog",
+      "src": [],
+      "include": []
+    },
+    "emscripten": {
+      "template": "",
+      "CPP_ARGS": "-std=c++11 -DUSE_COMPUTED_GOTO=0 -fno-strict-aliasing -fexceptions -frtti",
+      "CC_ARGS": "-std=c11 -DUSE_COMPUTED_GOTO=0 -fno-strict-aliasing",
+      "LD_ARGS": "-lminiz",
+      "src": [],
+      "include": []
+    }
+  }
+}

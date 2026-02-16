@@ -1,0 +1,43 @@
+// Test: Native structs (C++ struct exposed to script)
+// Point(x, y) - native struct with float fields
+
+// Constructor
+var p = Point(10.0, 20.0);
+if (abs(p.x - 10.0) > 0.01) { throw "point ctor x"; }
+if (abs(p.y - 20.0) > 0.01) { throw "point ctor y"; }
+
+// Field write
+p.x = 50.0;
+p.y = 100.0;
+if (abs(p.x - 50.0) > 0.01) { throw "point set x"; }
+if (abs(p.y - 100.0) > 0.01) { throw "point set y"; }
+
+// Multiple instances don't interfere
+var p1 = Point(1.0, 2.0);
+var p2 = Point(3.0, 4.0);
+p1.x = 99.0;
+if (abs(p2.x - 3.0) > 0.01) { throw "instance isolation"; }
+
+// Rect(x, y, w, h) - 4 field native struct
+var r = Rect(10.0, 20.0, 100.0, 50.0);
+if (abs(r.x - 10.0) > 0.01) { throw "rect x"; }
+if (abs(r.y - 20.0) > 0.01) { throw "rect y"; }
+if (abs(r.w - 100.0) > 0.01) { throw "rect w"; }
+if (abs(r.h - 50.0) > 0.01) { throw "rect h"; }
+
+// Modify rect fields
+r.w = 200.0;
+r.h = 150.0;
+if (abs(r.w - 200.0) > 0.01) { throw "rect set w"; }
+if (abs(r.h - 150.0) > 0.01) { throw "rect set h"; }
+
+// Use native struct in expressions
+var dist = sqrt(p1.x * p1.x + p1.y * p1.y);
+if (abs(dist - sqrt(99.0 * 99.0 + 2.0 * 2.0)) > 0.1) { throw "struct in expr"; }
+
+// Pass native struct fields to functions
+def add_coords(a, b) {
+    return a + b;
+}
+var sum = add_coords(p2.x, p2.y);
+if (abs(sum - 7.0) > 0.01) { throw "struct field as arg"; }

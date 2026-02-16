@@ -1,0 +1,71 @@
+{
+	"module":"vorbis",
+	"about":" ",
+	"author":"djokersoft",
+	"version":"1.0.0",
+	"depends":["ogg"],
+        "static":true,
+                            "priority":0,
+	"system":["linux","android","emscripten","windows"],
+	"src":["src/bitwise.c","src/framing.c",
+"src/analysis.c",
+"src/bitrate.c",
+"src/block.c",
+"src/codebook.c",
+"src/envelope.c",
+"src/floor0.c",
+"src/floor1.c",
+"src/info.c",
+"src/lookup.c",
+"src/lpc.c",
+"src/lsp.c",
+"src/mapping0.c",
+"src/mdct.c",
+"src/psy.c",
+"src/registry.c",
+"src/res0.c",
+"src/sharedbook.c",
+"src/smallft.c",
+"src/synthesis.c",
+"src/vorbisenc.c",
+"src/vorbisfile.c",
+"src/window.c"],
+	"include":[""],
+   	"plataforms":
+	{
+	  "linux":
+	  {
+ 	   "CPP_ARGS":" ",
+ 	   "CC_ARGS":"  ",
+ 	   "LD_ARGS":"",
+	   "src":[""],
+	   "include":["src/linux"]
+	  },
+	  "windows":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  },
+	  "android":
+	  {
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":["src/android"]
+	  },
+	  "emscripten":
+	  {
+	   "template":"",
+ 	   "CPP_ARGS":"",
+ 	   "CC_ARGS":"",
+ 	   "LD_ARGS":"",
+	    "src":[""],
+	    "include":[""]
+	  }
+      }
+}  
+

@@ -1,0 +1,138 @@
+// Test: Script-to-C++ bridge (C++ reads/writes script objects, calls script functions)
+
+// ============================================================
+// 1. Script struct - C++ reads/writes fields
+// ============================================================
+struct Vec2 { x, y }
+
+var v = Vec2(10, 20);
+
+// C++ reads struct fields
+var rx = native_read_field(v, "x");
+var ry = native_read_field(v, "y");
+if (rx != 10) { throw "cpp read struct x"; }
+if (ry != 20) { throw "cpp read struct y"; }
+
+// C++ writes struct fields
+var ok = native_write_field(v, "x", 99);
+if (!ok) { throw "cpp write struct failed"; }
+if (v.x != 99) { throw "cpp write struct x"; }
+
+ok = native_write_field(v, "y", 200);
+if (v.y != 200) { throw "cpp write struct y"; }
+
+// ============================================================
+// 2. Script class - C++ reads/writes fields
+// ============================================================
+class Entity {
+    var name;
+    var hp;
+    var alive;
+
+    def init(name, hp) {
+        self.name = name;
+        self.hp = hp;
+        self.alive = true;
+    }
+
+    def damage(amount) {
+        self.hp = self.hp - amount;
+        if (self.hp <= 0) {
+            self.hp = 0;
+            self.alive = false;
+        }
+        return self.hp;
+    }
+
+    def heal(amount) {
+        self.hp = self.hp + amount;
+        return self.hp;
+    }
+}
+
+var e = Entity("Hero", 100);
+
+// C++ reads class fields
+var n = native_read_field(e, "name");
+var h = native_read_field(e, "hp");
+var a = native_read_field(e, "alive");
+if (n != "Hero") { throw "cpp read class name"; }
+if (h != 100) { throw "cpp read class hp"; }
+if (!a) { throw "cpp read class alive"; }
+
+// C++ writes class fields
+native_write_field(e, "hp", 50);
+if (e.hp != 50) { throw "cpp write class hp"; }
+
+native_write_field(e, "name", "Warrior");
+if (e.name != "Warrior") { throw "cpp write class name"; }
+
+// ============================================================
+// 3. C++ calls script function by name
+// ============================================================
+def double_it(x) {
+    return x * 2;
+}
+
+var result = native_call_fn("double_it", 21);
+if (result != 42) { throw "cpp call fn"; }
+
+def greet(name) {
+    return "Hello " + name;
+}
+
+result = native_call_fn("greet", "World");
+if (result != "Hello World") { throw "cpp call fn string"; }
+
+// ============================================================
+// 4. C++ calls method on script class instance
+// ============================================================
+var e2 = Entity("Boss", 200);
+
+result = native_call_method(e2, "damage", 50);
+if (result != 150) { throw "cpp call method damage"; }
+if (e2.hp != 150) { throw "cpp call method side effect"; }
+
+result = native_call_method(e2, "heal", 25);
+if (result != 175) { throw "cpp call method heal"; }
+
+// ============================================================
+// 5. C++ reads/writes global variables
+// ============================================================
+var global_score = 1000;
+var global_name = "Player1";
+
+var gs = native_get_global("global_score");
+if (gs != 1000) { throw "cpp get global int"; }
+
+var gn = native_get_global("global_name");
+if (gn != "Player1") { throw "cpp get global string"; }
+
+// C++ sets global
+native_set_global("global_score", 9999);
+if (global_score != 9999) { throw "cpp set global"; }
+
+native_set_global("global_name", "Champion");
+if (global_name != "Champion") { throw "cpp set global string"; }
+
+// ============================================================
+// 6. C++ creates array, returns to script
+// ============================================================
+var arr = native_make_range(0, 5);
+if (len(arr) != 5) { throw "cpp make array len"; }
+if (arr[0] != 0) { throw "cpp make array[0]"; }
+if (arr[4] != 4) { throw "cpp make array[4]"; }
+
+// Use the C++-created array in script
+var total = 0;
+foreach (n in arr) {
+    total = total + n;
+}
+if (total != 10) { throw "cpp array foreach"; }
+
+// ============================================================
+// 7. C++ creates map, returns to script
+// ============================================================
+var info = native_make_info("Alice", 30);
+if (info["name"] != "Alice") { throw "cpp make map name"; }
+if (info["age"] != 30) { throw "cpp make map age"; }

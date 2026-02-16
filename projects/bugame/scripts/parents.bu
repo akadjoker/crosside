@@ -1,0 +1,188 @@
+print("Load Main");
+import math;
+
+var KEY_RIGHT           = 262;
+var KEY_LEFT            = 263;
+var KEY_DOWN            = 264;
+var KEY_UP              = 265;
+var KEY_SPACE           = 32;
+var KEY_ESCAPE          = 256;
+
+var WINDOW_WIDTH = 800;
+var WINDOW_HEIGHT = 600;
+
+
+def test(a,b)
+{
+    return (a,b);
+}
+
+
+process bullet(_x,_y,_angle)
+{
+    graph=2;
+    var speed=25.1;
+    x=_x;
+    y=_y;
+    angle=_angle;
+    set_circle_shape(10);
+    loop 
+    {
+        
+        advance(5);
+
+        var col =place_meeting(x,y);
+        if(col)
+        {
+            // if (type(col)=="orb")
+            // {
+            //     signal(col,SKILL); //SKILL
+            //     break;
+            // }
+        }
+        if (out_screen())
+        {
+            break;
+        }
+ 
+        frame;
+    }
+}
+
+process canon(_x,_y)
+{
+    graph=2;
+    x=_x;
+    y=_y;
+    
+    set_circle_shape(10);
+    
+    loop 
+    {
+          
+        frame;
+    }
+}
+
+
+process player()
+{
+    graph=1;
+    var state =0;
+    var coolDown=8;
+    set_circle_shape(20);
+    signal(id,SHIDE);
+    z=2;
+
+
+
+    
+      var (px0,py0) = get_local_point(33,20);
+      var (px1,py1) = get_local_point(33,75);
+
+    var left  = canon(px0, py0);
+    var right = canon(px1, py1);
+  
+     atach(left,true);
+     atach(right,true);
+    
+
+    
+
+
+    loop 
+    {
+        if (key_down(KEY_UP))
+        {
+            xadvance(10,angle);
+        }elif (key_down(KEY_DOWN))
+        {
+            xadvance(-10,angle);
+        }
+        
+
+        if (key_down(KEY_RIGHT))
+        {
+            angle=angle+2;
+        }elif (key_down(KEY_LEFT))
+        {
+            angle=angle-2;
+        }
+
+        if (key_down(KEY_SPACE) && coolDown<=0)
+        {
+            coolDown=8;
+            
+         
+            {
+            var tip_local_x = 20 ;
+            var tip_local_y = 26;
+            var (tip_world_x, tip_world_y) = get_local_point(tip_local_x, tip_local_y);
+            bullet(tip_world_x, tip_world_y, angle);
+            }
+            {
+            var tip_local_x = 20 ;
+            var tip_local_y = -30;
+            var (tip_world_x, tip_world_y) = get_local_point(tip_local_x, tip_local_y);
+            bullet(tip_world_x, tip_world_y, angle);
+            }
+        } else 
+        {
+            coolDown--;
+        }
+            
+    
+            frame;
+
+
+      
+
+
+
+        
+    }
+}
+
+process orb()
+{
+    graph=3;
+    set_circle_shape(20);
+    x= math.rand(0,WINDOW_WIDTH);
+    y= math.rand(0,WINDOW_HEIGHT);
+    z =math.rand(0,5);
+
+    loop 
+    {
+        frame;
+    }
+}
+
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Bu Game - Ship Example");
+init_collision(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+set_color(0,0,0);
+fade_in(0.5); 
+var index = load_graph("assets/ship.png");//0
+print(index);
+load_graph("assets/gun.png");//1
+load_graph("assets/ball.png"); //2
+load_graph("assets/Orb.png"); //3
+
+set_graphics_point(0, 33, 20);
+set_graphics_point(0, 33, 75);
+
+ 
+
+
+var obj= player();
+ 
+obj.x=200;
+obj.y=200;
+
+for (var i=0; i<10; i++)
+{
+    orb();
+}
+
+ 

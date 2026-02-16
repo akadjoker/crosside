@@ -1,0 +1,136 @@
+include "tween.bu";
+
+class Screen
+{
+    var name ;
+    var active;
+    var stage;
+    var stages;
+    
+
+    def init(_name)
+    {
+        self.name = _name;
+        self.active = false;
+        self.stage = -1;
+        self.stages = nil;
+    }
+
+    def set_stage(_stage)
+    {
+        self.stage = _stage;
+        return self;
+    }
+
+    def bind_stages(_stages)
+    {
+        self.stages = _stages;
+    }
+
+    def goto_stage(_stage)
+    {
+        if (self.stages != nil)
+        {
+            self.stages.change(_stage);
+        }
+    }
+
+    def enter()
+    {
+        
+    }
+
+    def leave()
+    {
+        
+    }
+
+    def update(_dt)
+    {
+        
+    }
+    def OnEnter()
+    {
+        self.active = true;
+        self.enter();
+    }
+
+    def OnLeave()
+    {
+         self.active = false;
+         self.leave();
+    }
+
+    def OnUpdate(_dt)
+    {
+        if (self.active)
+        {
+            self.update(_dt);
+        }
+    }
+}
+
+class Stages
+{
+
+    var current ;
+    var previous;
+    var pending ;
+    var list;
+
+
+    def init()
+    {
+        self.list = [];
+        self.current = nil;
+        self.previous = nil;
+        self.pending = nil;
+    }
+
+    def change(stage)
+    {
+        for (var i = 0; i < len(self.list); i++)
+        {
+            if (self.list[i].stage == stage || self.list[i].name == stage)
+            {
+                self.pending = self.list[i];
+                return;
+            }
+        }
+      
+    }
+
+    def add(stage)
+    {
+        if (stage.stage < 0)
+        {
+            stage.stage = len(self.list);
+        }
+        stage.bind_stages(self);
+        self.list.push(stage);
+        
+    }
+
+    def update(_dt)
+    {
+        if (self.pending != nil)
+        {
+            if (self.current != nil)
+            {
+                self.current.OnLeave();
+                self.previous = self.current;
+            }
+            self.current = self.pending;
+            self.current.OnEnter();
+            self.pending = nil;
+        }
+
+        if (self.current != nil)
+        {
+             self.current.OnUpdate(_dt);
+        }
+    }
+}
+        
+
+   

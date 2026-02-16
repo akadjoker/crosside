@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="teste" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/teste" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+					<Add option="-Wunused-local-typedefs" />
+					<Add option="-fexceptions" />
+					<Add option="-Wno-psabi" />
+					<Add option="-funwind-tables -finline-limit=64 -fsigned-char -no-canonical-prefixes   -fdata-sections -ffunction-sections -Wa,--noexecstack  -O2 -g  -Winline -Wall -Wextra -fvisibility=hidden" />
+					<Add option="-D_LARGEFILE_SOURCE -D_LARGE_FILES -DAL_BUILD_LIBRARY -DAL_ALEXT_PROTOTYPES -Wunused-local-typedefs -std=c11 -fexceptions -Wno-psabi -funwind-tables -finline-limit=64 -fsigned-char -no-canonical-prefixes   -fdata-sections -ffunction-sections -Wa,--noexecstack  -O2 -g  -Winline -Wall -Wextra -fvisibility=hidden" />
+					<Add option="-D_LARGEFILE_SOURCE" />
+					<Add option="-D_LARGE_FILES" />
+					<Add option="-DAL_BUILD_LIBRARY" />
+					<Add option="-DAL_ALEXT_PROTOTYPES" />
+					<Add option="-DAL_LIBTYPE_STATIC" />
+					<Add option="-DHAVE_CONFIG_H" />
+					<Add option="-DOpenAL32_EXPORTS" />
+					<Add directory="../include" />
+					<Add directory="../src/linux" />
+					<Add directory="../src/common" />
+					<Add directory="../src/Alc" />
+					<Add directory="../src/alut" />
+					<Add directory="../src/Alc/effects" />
+					<Add directory="../src/Alc/backends" />
+					<Add directory="../src/OpenAL32" />
+					<Add directory="../src/OpenAL32/Include" />
+				</Compiler>
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/teste" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-fexceptions" />
+		</Compiler>
+		<Unit filename="../src/Alc/ALc.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/ALu.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/alcConfig.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/alcRing.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/alstring.h" />
+		<Unit filename="../src/Alc/ambdec.h" />
+		<Unit filename="../src/Alc/backends/base.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/backends/base.h" />
+		<Unit filename="../src/Alc/backends/loopback.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/backends/null.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/backends/pulseaudio.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/backends/sndio.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/backends/wave.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/bformatdec.h" />
+		<Unit filename="../src/Alc/bs2b.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/bsinc.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/compat.h" />
+		<Unit filename="../src/Alc/converter.h" />
+		<Unit filename="../src/Alc/effects/autowah.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/chorus.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/compressor.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/dedicated.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/distortion.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/echo.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/equalizer.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/flanger.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/modulator.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/null.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/effects/reverb.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/helpers.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/hrtf.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/hrtf.h" />
+		<Unit filename="../src/Alc/mixer.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/mixer_c.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/mixer_defs.h" />
+		<Unit filename="../src/Alc/mixer_sse.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/mixer_sse2.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/mixer_sse3.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/mixer_sse41.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/nfcfilter.h" />
+		<Unit filename="../src/Alc/panning.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/Alc/uhjfilter.h" />
+		<Unit filename="../src/Alc/vector.h" />
+		<Unit filename="../src/OpenAL32/Include/alAuxEffectSlot.h" />
+		<Unit filename="../src/OpenAL32/Include/alBuffer.h" />
+		<Unit filename="../src/OpenAL32/Include/alEffect.h" />
+		<Unit filename="../src/OpenAL32/Include/alError.h" />
+		<Unit filename="../src/OpenAL32/Include/alFilter.h" />
+		<Unit filename="../src/OpenAL32/Include/alListener.h" />
+		<Unit filename="../src/OpenAL32/Include/alMain.h" />
+		<Unit filename="../src/OpenAL32/Include/alSource.h" />
+		<Unit filename="../src/OpenAL32/Include/alThunk.h" />
+		<Unit filename="../src/OpenAL32/Include/alu.h" />
+		<Unit filename="../src/OpenAL32/Include/bs2b.h" />
+		<Unit filename="../src/OpenAL32/Include/sample_cvt.h" />
+		<Unit filename="../src/OpenAL32/alAuxEffectSlot.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/alBuffer.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/alEffect.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/alError.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/alExtension.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/alFilter.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/alListener.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/alSource.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/alState.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/alThunk.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/OpenAL32/sample_cvt.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutBufferData.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutCodec.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutError.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutInit.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutInputStream.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutInternal.h" />
+		<Unit filename="../src/alut/alutLoader.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutOutputStream.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutUtil.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutVersion.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/alutWaveform.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/alut/config.h" />
+		<Unit filename="../src/common/align.h" />
+		<Unit filename="../src/common/almalloc.h" />
+		<Unit filename="../src/common/atomic.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/common/atomic.h" />
+		<Unit filename="../src/common/bool.h" />
+		<Unit filename="../src/common/math_defs.h" />
+		<Unit filename="../src/common/rwlock.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/common/rwlock.h" />
+		<Unit filename="../src/common/static_assert.h" />
+		<Unit filename="../src/common/threads.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/common/threads.h" />
+		<Unit filename="../src/common/uintmap.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/common/uintmap.h" />
+		<Unit filename="../src/linux/align.h" />
+		<Unit filename="../src/linux/atomic.h" />
+		<Unit filename="../src/linux/bool.h" />
+		<Unit filename="../src/linux/config.h" />
+		<Unit filename="../src/linux/math_defs.h" />
+		<Unit filename="../src/linux/rwlock.h" />
+		<Unit filename="../src/linux/static_assert.h" />
+		<Unit filename="../src/linux/threads.h" />
+		<Unit filename="../src/linux/uintmap.h" />
+		<Unit filename="../src/linux/version.h" />
+		<Unit filename="main.cpp" />
+		<Extensions />
+	</Project>
+</CodeBlocks_project_file>

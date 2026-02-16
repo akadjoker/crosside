@@ -1,0 +1,102 @@
+print("Load Main"); 
+ 
+var WINDOW_WIDTH = 800;
+var WINDOW_HEIGHT = 600;
+
+
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Bu Game - Ship Example");
+init_collision(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+var g0=load_graph("assets/Orb.png");
+var g1=load_graph("assets/wabbit_alpha.png");
+
+
+
+process dummy()
+{
+    graph  = g1;
+    x=200;
+    y=400;
+    set_rect_shape(0, 0, 20, 40);
+    red=255;
+    green=0;
+    blue=0;
+    loop
+    {
+            angle +=1;
+            frame;
+    }
+}
+
+
+process wabbit(x,y)
+{
+
+    graph  = g1;
+    
+    set_rect_shape(0, 0, 20, 40);
+    loop
+    {
+            angle +=1;
+            frame;
+    }
+}
+
+process Orb()
+{
+    graph  = g0;
+    x=100;
+    y=100;
+    set_circle_shape(20);
+    loop
+    {
+        x = get_mouse_x();
+        y = get_mouse_y();
+        var hit = collision(type wabbit, x, y);  
+        if (hit)
+        {
+            draw_text(format("Hit: {} {}", hit, get_id(type wabbit)), 50, 10,22);
+            
+            //signal(type wabbit, SKILL);
+            signal(hit, SKILL);
+            
+            
+            //draw_text(format("Hit: {} {}", hit.x,hit.y), 50, 40,22);
+        }
+
+        if (mouse_down(1))
+        {
+            signal(type wabbit, SFREEZE);             // Congela TODOS os wabbits
+        }
+        else
+        {
+            signal(type wabbit, SSHOW);               // Descongela TODOS
+        }
+
+
+         
+
+        frame;
+    }
+}
+ 
+
+dummy();
+wabbit(200, 200 );
+wabbit(300, 300 );
+wabbit(400, 400 );
+Orb();
+ 
+
+
+loop
+{
+     
+    if(key_down(256))
+    {
+        let_me_alone();
+        break;
+    }
+    frame;
+}

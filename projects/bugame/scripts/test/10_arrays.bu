@@ -1,0 +1,37 @@
+// Test: Arrays
+var arr = [1, 2, 3, 4, 5];
+if (len(arr) != 5) { throw "len"; }
+if (arr[0] != 1) { throw "index 0"; }
+if (arr[4] != 5) { throw "index 4"; }
+
+// Mutation
+arr[2] = 99;
+if (arr[2] != 99) { throw "set index"; }
+
+// Push/pop
+arr.push(6);
+if (len(arr) != 6) { throw "push len"; }
+if (arr[5] != 6) { throw "push val"; }
+
+var last = arr.pop();
+if (last != 6) { throw "pop val"; }
+if (len(arr) != 5) { throw "pop len"; }
+
+// Empty array
+var empty = [];
+if (len(empty) != 0) { throw "empty"; }
+empty.push(42);
+if (len(empty) != 1) { throw "push empty"; }
+
+// Foreach
+var sum = 0;
+var nums = [10, 20, 30];
+foreach (n in nums) {
+    sum += n;
+}
+if (sum != 60) { throw "foreach"; }
+
+// Nested arrays
+var matrix = [[1,2],[3,4]];
+if (matrix[0][0] != 1) { throw "nested 00"; }
+if (matrix[1][1] != 4) { throw "nested 11"; }

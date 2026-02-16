@@ -1,0 +1,88 @@
+// Test: Try/catch/finally
+// Basic catch
+var caught = false;
+try {
+    throw "boom";
+} catch (e) {
+    if (e != "boom") { throw "wrong error"; }
+    caught = true;
+}
+if (!caught) { throw "not caught"; }
+
+// Finally always runs
+var fin = false;
+try {
+    var x = 1;
+} finally {
+    fin = true;
+}
+if (!fin) { throw "finally normal"; }
+
+// Finally runs on exception
+var fin2 = false;
+var caught2 = false;
+try {
+    try {
+        throw "err";
+    } finally {
+        fin2 = true;
+    }
+} catch (e) {
+    caught2 = true;
+}
+if (!fin2) { throw "finally on throw"; }
+if (!caught2) { throw "outer catch"; }
+
+// Return through finally
+var fin3 = false;
+def retFinally() {
+    try {
+        return 42;
+    } finally {
+        fin3 = true;
+    }
+}
+var r = retFinally();
+if (r != 42) { throw "return value through finally"; }
+if (!fin3) { throw "finally on return"; }
+
+// Multi-return through finally
+var fin4 = false;
+def multiRetFinally() {
+    try {
+        return (10, 20);
+    } finally {
+        fin4 = true;
+    }
+}
+var (a, b) = multiRetFinally();
+if (a != 10 || b != 20) { throw "multi-return through finally"; }
+if (!fin4) { throw "finally on multi-return"; }
+
+// Nested try: exception in catch propagates
+var inner_fin = false;
+var outer_caught = false;
+try {
+    try {
+        throw "e1";
+    } catch (e) {
+        throw "e2";
+    } finally {
+        inner_fin = true;
+    }
+} catch (e) {
+    if (e != "e2") { throw "wrong propagated error"; }
+    outer_caught = true;
+}
+if (!inner_fin) { throw "inner finally on catch throw"; }
+if (!outer_caught) { throw "outer catch from inner catch"; }
+
+// Throw integer
+var intCaught = false;
+try {
+    throw 404;
+} catch (e) {
+    if (e != 404) { throw "int throw value"; }
+    intCaught = true;
+}
+if (!intCaught) { throw "int throw"; }
