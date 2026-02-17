@@ -23,6 +23,7 @@ Binary output:
 ./bin/builder list all
 ./bin/builder clean bugame web --dry-run
 ./bin/builder build module miniz desktop --mode debug
+./bin/builder build module miniz desktop --with-deps
 ./bin/builder build projects/sdl/tutorial_2.c desktop
 ./bin/builder module init mymodule --author "Luis Santos"
 ./bin/builder build bugame desktop
@@ -68,6 +69,10 @@ Quick scaffold command:
 - Use `--build-modules` to restore auto-build dependencies before linking app.
 - `--skip-modules` remains available and is now effectively the default behavior.
 
+## Module build behavior for modules
+- `build module ...` now builds only the requested module by default.
+- Use `--with-deps` when you want to rebuild the module dependency closure.
+
 ## Single-file build mode
 - You can build a single C/C++ source file without a `main.mk` project file.
 - Example: `./bin/builder build projects/sdl/tutorial_2.c desktop`
@@ -75,6 +80,9 @@ Quick scaffold command:
 - `root`: source file folder
 - `name`: source filename stem
 - `modules`: `Configuration.SingleFileModules` from `config.json` (fallback: `Configuration.Modules`)
+- You can also point app build directly to a project file/folder:
+- `./bin/builder build projects/bugame/releases/chaos web`
+- If the folder has `project.mk`, builder uses it; otherwise it falls back to `main.mk`.
 
 Single-file config in `config.json`:
 
@@ -153,6 +161,19 @@ Manifest/runtime options:
 - Java template default file: `Templates/Android/AndroidManifest.java.xml`
 - Native template default file: `Templates/Android/AndroidManifest.xml`
 - `JAVA_SOURCES` / `JAVA` / `JAVA_DIRS`: Java files/folders copied into build java root before `javac` (useful for SDL2 activities)
+- `CONTENT_ROOT`: optional folder used for Android asset packaging.
+  If set, builder packs from `<CONTENT_ROOT>/scripts`, `assets`, `resources`, `data`, `media`.
+
+Release/cache options:
+- `BuildCache`: optional cache key for project object files.
+  Projects/releases with the same `BuildCache` reuse compile artifacts (`obj/<target>/<BuildCache>`).
+- `Release`: optional JSON overlay file (relative to project root) to override fields like `Name`, `Android`, `Web`, `CONTENT_ROOT`.
+- Runtime override from CLI: `--release <profile>`.
+  If `<profile>` has no path/ext (for example `chaos`), builder resolves it as `releases/<profile>.json`.
+
+Web release content:
+- `Web.CONTENT_ROOT`: optional folder used for web `--preload-file`.
+  If set, builder preloads from `<CONTENT_ROOT>/scripts`, `assets`, `resources`, `data`, `media`.
 
 Default template path:
 - `Templates/Android/AndroidManifest.xml`

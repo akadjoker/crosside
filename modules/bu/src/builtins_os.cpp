@@ -613,14 +613,16 @@ void Interpreter::registerOS()
 {
 #ifdef _WIN32
     const char *platform = "windows";
+#elif defined(__ANDROID__)
+    const char *platform = "android";
+#elif defined(__EMSCRIPTEN__)
+    const char *platform = "emscripten";
 #elif defined(__APPLE__)
     const char *platform = "macos";
 #elif defined(__linux__)
     const char *platform = "linux";
 #elif defined(__unix__)
     const char *platform = "unix";
-#elif defined(__ANDROID__)
-    const char *platform = "android";
 #else
     const char *platform = "unknown";
 #endif

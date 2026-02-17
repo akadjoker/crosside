@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <exception>
 #include <algorithm>
 #include <vector>
 #include <raylib.h>
@@ -73,16 +74,90 @@ struct FileLoaderContext
     FileBuffer fileBuffer;
 };
 
+static bool isAbsolutePath(const char *path)
+{
+    if (!path || !*path)
+        return false;
+    if (path[0] == '/' || path[0] == '\\')
+        return true;
+#if defined(_WIN32)
+    if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
+        path[1] == ':')
+    {
+        return true;
+    }
+#endif
+    return false;
+}
+
+static void pathDirname(const char *path, char *out, size_t outSize)
+{
+    if (!out || outSize == 0)
+        return;
+    out[0] = '\0';
+
+    if (!path || !*path)
+    {
+        snprintf(out, outSize, ".");
+        return;
+    }
+
+    const char *slash1 = strrchr(path, '/');
+    const char *slash2 = strrchr(path, '\\');
+    const char *slash = slash1;
+    if (slash2 && (!slash1 || slash2 > slash1))
+        slash = slash2;
+
+    if (!slash)
+    {
+        snprintf(out, outSize, ".");
+        return;
+    }
+
+    size_t len = (size_t)(slash - path);
+    if (len == 0)
+    {
+        snprintf(out, outSize, "/");
+        return;
+    }
+
+    if (len >= outSize)
+        len = outSize - 1;
+    memcpy(out, path, len);
+    out[len] = '\0';
+}
+
 const char *multiPathFileLoader(const char *filename, size_t *outSize, void *userdata)
 {
     if (!filename || !outSize || !userdata)
         return nullptr;
 
     FileLoaderContext *ctx = (FileLoaderContext *)userdata;
+    *outSize = 0;
 
+    // If include path starts with '/' (ex: "/scripts/main.bu"), also keep relative form.
+    const char *relativeName = filename;
+    while (*relativeName == '/' || *relativeName == '\\')
+    {
+        relativeName++;
+    }
+
+    // Absolute filesystem path: try directly.
+    if (isAbsolutePath(filename))
+    {
+        if (ctx->fileBuffer.load(filename))
+        {
+            *outSize = ctx->fileBuffer.size();
+            return ctx->fileBuffer.c_str();
+        }
+        return nullptr;
+    }
+
+    // Relative include: search configured script roots first.
+    const char *namePart = (relativeName != filename) ? relativeName : filename;
     for (int i = 0; i < ctx->pathCount; i++)
     {
-        snprintf(ctx->fullPath, sizeof(ctx->fullPath), "%s/%s", ctx->searchPaths[i], filename);
+        snprintf(ctx->fullPath, sizeof(ctx->fullPath), "%s/%s", ctx->searchPaths[i], namePart);
         if (!ctx->fileBuffer.load(ctx->fullPath))
             continue;
 
@@ -90,7 +165,18 @@ const char *multiPathFileLoader(const char *filename, size_t *outSize, void *use
         return ctx->fileBuffer.c_str();
     }
 
-    *outSize = 0;
+    // Last fallback: current working directory relative.
+    if (ctx->fileBuffer.load(filename))
+    {
+        *outSize = ctx->fileBuffer.size();
+        return ctx->fileBuffer.c_str();
+    }
+    if (relativeName != filename && ctx->fileBuffer.load(relativeName))
+    {
+        *outSize = ctx->fileBuffer.size();
+        return ctx->fileBuffer.c_str();
+    }
+
     return nullptr;
 }
 
@@ -438,14 +524,7 @@ int main(int argc, char *argv[])
     vm.registerNative("close_window", native_close_window, 0);
     vm.registerNative("set_log_level", native_set_log_level, 1);
 
-    FileLoaderContext ctx;
-    ctx.searchPaths[0] = "/scripts";
-    ctx.searchPaths[1] = "scripts";
-    ctx.searchPaths[2] = "./scripts";
-    ctx.searchPaths[3] = "../scripts";
-    ctx.searchPaths[4] = ".";
-    ctx.pathCount = 5;
-    vm.setFileLoader(multiPathFileLoader, &ctx);
+    FileLoaderContext ctx{};
 
     const char *scriptFile = nullptr;
     std::string code;
@@ -502,12 +581,82 @@ int main(int argc, char *argv[])
     }
     TraceLog(LOG_INFO, "Using script: %s", scriptFile ? scriptFile : "<none>");
 
+    // Build include search paths anchored to the loaded main script location.
+    char scriptPathAbs[512] = {0};
+    if (scriptFile && isAbsolutePath(scriptFile))
+    {
+        snprintf(scriptPathAbs, sizeof(scriptPathAbs), "%s", scriptFile);
+    }
+    else if (scriptFile)
+    {
+        snprintf(scriptPathAbs, sizeof(scriptPathAbs), "%s/%s", GetWorkingDirectory(), scriptFile);
+    }
+    else
+    {
+        snprintf(scriptPathAbs, sizeof(scriptPathAbs), "%s", GetWorkingDirectory());
+    }
+
+    char scriptDir[512] = {0};
+    char scriptParentDir[512] = {0};
+    pathDirname(scriptPathAbs, scriptDir, sizeof(scriptDir));
+    pathDirname(scriptDir, scriptParentDir, sizeof(scriptParentDir));
+
+    ctx.pathCount = 0;
+    auto addSearchPath = [&](const char *p)
+    {
+        if (!p || !*p || ctx.pathCount >= 8)
+            return;
+        for (int i = 0; i < ctx.pathCount; ++i)
+        {
+            if (strcmp(ctx.searchPaths[i], p) == 0)
+                return;
+        }
+        ctx.searchPaths[ctx.pathCount++] = p;
+    };
+
+    addSearchPath(scriptDir);
+    addSearchPath(scriptParentDir);
+    addSearchPath("/scripts");
+    addSearchPath("scripts");
+    addSearchPath("./scripts");
+    addSearchPath("../scripts");
+    addSearchPath(".");
+
+    vm.setFileLoader(multiPathFileLoader, &ctx);
+
     InitScene();
     gCamera.init(WINDOW_WIDTH, WINDOW_HEIGHT);
     gCamera.setScreenScaleMode(SCALE_NONE);
     gCamera.setVirtualScreenEnabled(false);
 
-    if (!vm.run(code.c_str(), false))
+    bool scriptOk = false;
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+    try
+    {
+        scriptOk = vm.run(code.c_str(), false);
+    }
+    catch (const std::exception &e)
+    {
+        std::string msg = "Script exception while loading: ";
+        msg += e.what();
+        Error("%s", msg.c_str());
+        showFatalScreen(msg);
+        CloseWindow();
+        return 1;
+    }
+    catch (...)
+    {
+        std::string msg = "Unknown C++ exception while loading script.";
+        Error("%s", msg.c_str());
+        showFatalScreen(msg);
+        CloseWindow();
+        return 1;
+    }
+#else
+    scriptOk = vm.run(code.c_str(), false);
+#endif
+
+    if (!scriptOk)
     {
         Error("Failed to execute script: %s", scriptFile);
         std::string msg = "Failed to execute script: ";

@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.rects",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "Rects",
+    "CONTENT_ROOT": "releases/rects"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/rects"
+  }
+}

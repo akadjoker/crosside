@@ -1,0 +1,266 @@
+print("Box2D + Poly2Tri test");
+
+var KEY_ESCAPE = 256;
+var KEY_SPACE = 32;
+var KEY_R = 82;
+var KEY_D = 68;
+
+var SCREEN_W = 1280;
+var SCREEN_H = 720;
+
+var TRIANGLES = [];
+var TRI_COUNT = 0;
+var TRI_BODIES = [];
+var LAST_SPAWN_X = 340;
+var LAST_SPAWN_Y = 120;
+var TRACK_BODY = nil;
+
+var DEBUG_DRAW = true;
+var NEXT_SPAWN_X = 340;
+var NEXT_SPAWN_Y = 120;
+
+var OUTER = [
+    -220, -160,
+     220, -150,
+     290,  -20,
+     180,  170,
+     -40,  200,
+    -250,  120,
+    -300,  -40
+];
+
+var HOLE = [
+    -70, -40,
+     80, -50,
+    110,  30,
+     20,  90,
+    -90,  40
+];
+
+def make_static_box(x, y, half_w, half_h)
+{
+    var body_def = create_bodydef(BODY_STATIC);
+    body_def.set_position(x, y);
+
+    var fx = create_fixture_def();
+    fx.set_friction(0.9);
+    fx.set_restitution(0.0);
+    fx.set_box_shape(half_w, half_h);
+
+    var body = create_body(body_def);
+    body.add_fixture(fx);
+    return body;
+}
+
+def clear_mesh_bodies()
+{
+    for (var i = 0; i < len(TRI_BODIES); i = i + 1)
+    {
+        TRI_BODIES[i].remove();
+    }
+    TRI_BODIES = [];
+    TRACK_BODY = nil;
+}
+
+def triangulate_shape()
+{
+    var cdt = CDT(OUTER);
+    cdt.add_hole(HOLE);
+    cdt.triangulate();
+    TRIANGLES = cdt.get_triangles();
+    TRI_COUNT = len(TRIANGLES) / 6;
+    print(format("poly2tri triangles: {}", TRI_COUNT));
+}
+
+def spawn_one_triangle(fx, x1, y1, x2, y2, x3, y3, base_x, base_y)
+{
+    var cx = (x1 + x2 + x3) / 3;
+    var cy = (y1 + y2 + y3) / 3;
+
+    var body_def = create_bodydef(BODY_DYNAMIC);
+    body_def.set_type(BODY_DYNAMIC);
+    body_def.set_position(base_x + cx, base_y + cy);
+    body_def.set_linear_damping(0.02);
+    body_def.set_angular_damping(0.02);
+
+    var body = create_body(body_def);
+    body.add_polygon([
+        x1 - cx, y1 - cy,
+        x2 - cx, y2 - cy,
+        x3 - cx, y3 - cy
+    ], fx);
+
+    TRI_BODIES.push(body);
+    if (TRACK_BODY == nil) TRACK_BODY = body;
+}
+
+def spawn_mesh(base_x, base_y)
+{
+    if (TRI_COUNT <= 0) return;
+    LAST_SPAWN_X = base_x;
+    LAST_SPAWN_Y = base_y;
+
+    var fx = create_fixture_def();
+    fx.set_density(0.8);
+    fx.set_friction(0.45);
+    fx.set_restitution(0.05);
+
+    var i = 0;
+    while (i + 5 < len(TRIANGLES))
+    {
+        var x1 = TRIANGLES[i];
+        var y1 = TRIANGLES[i + 1];
+        var x2 = TRIANGLES[i + 2];
+        var y2 = TRIANGLES[i + 3];
+        var x3 = TRIANGLES[i + 4];
+        var y3 = TRIANGLES[i + 5];
+
+        // Enforce stable winding (CCW) and skip degenerate triangles.
+        var area2 = ((x2 - x1) * (y3 - y1)) - ((y2 - y1) * (x3 - x1));
+        if (area2 < 0)
+        {
+            var tx = x2;
+            var ty = y2;
+            x2 = x3;
+            y2 = y3;
+            x3 = tx;
+            y3 = ty;
+            area2 = -area2;
+        }
+        if (area2 < 0.01)
+        {
+            i = i + 6;
+            continue;
+        }
+
+        spawn_one_triangle(fx, x1, y1, x2, y2, x3, y3, base_x, base_y);
+        i = i + 6;
+    }
+}
+
+def spawn_next_mesh()
+{
+    spawn_mesh(NEXT_SPAWN_X, NEXT_SPAWN_Y);
+
+    NEXT_SPAWN_X = NEXT_SPAWN_X + 220;
+    if (NEXT_SPAWN_X > 980)
+    {
+        NEXT_SPAWN_X = 300;
+        NEXT_SPAWN_Y = NEXT_SPAWN_Y + 40;
+        if (NEXT_SPAWN_Y > 260) NEXT_SPAWN_Y = 120;
+    }
+}
+
+def draw_polyline(poly, ox, oy, r, g, b)
+{
+    set_color(r, g, b);
+    var i = 0;
+    while (i < len(poly))
+    {
+        var x1 = ox + poly[i];
+        var y1 = oy + poly[i + 1];
+
+        var j = i + 2;
+        if (j >= len(poly)) j = 0;
+        var x2 = ox + poly[j];
+        var y2 = oy + poly[j + 1];
+
+        draw_line_ex(x1, y1, x2, y2, 2);
+        draw_circle(x1, y1, 2, true);
+        i = i + 2;
+    }
+}
+
+def draw_triangle_preview(ox, oy)
+{
+    var i = 0;
+    while (i + 5 < len(TRIANGLES))
+    {
+        var x1 = ox + TRIANGLES[i];
+        var y1 = oy + TRIANGLES[i + 1];
+        var x2 = ox + TRIANGLES[i + 2];
+        var y2 = oy + TRIANGLES[i + 3];
+        var x3 = ox + TRIANGLES[i + 4];
+        var y3 = oy + TRIANGLES[i + 5];
+
+        set_color(90, 180, 255);
+        draw_triangle(x1, y1, x2, y2, x3, y3, false);
+
+        i = i + 6;
+    }
+}
+
+set_window_size(SCREEN_W, SCREEN_H);
+set_window_title("Box2D + Poly2Tri");
+set_design_resolution(SCREEN_W, SCREEN_H);
+set_virtual_screen_enabled(true);
+set_draw_screen(true);
+
+create_world(0, 9.8);
+set_physics_debug(DEBUG_DRAW);
+set_physics_debug_flags(1 + 2 + 16);
+
+make_static_box(640, 700, 620, 20);
+make_static_box(15, 360, 15, 360);
+make_static_box(1265, 360, 15, 360);
+
+triangulate_shape();
+spawn_next_mesh();
+
+loop
+{
+    var dt = delta();
+    if (dt > 0.05) dt = 0.05;
+    update_world(dt);
+
+    set_color(10, 12, 16);
+  //  draw_rectangle(0, 0, SCREEN_W, SCREEN_H, true);
+
+    draw_polyline(OUTER, LAST_SPAWN_X, LAST_SPAWN_Y, 250, 220, 120);
+    draw_polyline(HOLE, LAST_SPAWN_X, LAST_SPAWN_Y, 255, 120, 120);
+    draw_triangle_preview(LAST_SPAWN_X, LAST_SPAWN_Y);
+
+    set_color(230, 230, 230);
+    draw_text(format("Triangles: {}", TRI_COUNT), 20, 20, 24);
+    draw_text(format("Bodies: {}", len(TRI_BODIES)), 20, 48, 22);
+    draw_text("SPACE spawn mesh | R reset | D debug | ESC quit", 20, 78, 20);
+
+    if (TRACK_BODY != nil)
+    {
+        var (tx, ty) = TRACK_BODY.get_position();
+        var (vx, vy) = TRACK_BODY.get_linear_velocity();
+        var awake = TRACK_BODY.is_awake();
+        var btype = TRACK_BODY.get_type();
+        draw_text(format("track y={} vy={} awake={} type={}", ty, vy, awake, btype), 20, 106, 20);
+    }
+
+    if (key_pressed(KEY_SPACE))
+    {
+        spawn_next_mesh();
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        clear_mesh_bodies();
+        triangulate_shape();
+        NEXT_SPAWN_X = 340;
+        NEXT_SPAWN_Y = 120;
+        LAST_SPAWN_X = NEXT_SPAWN_X;
+        LAST_SPAWN_Y = NEXT_SPAWN_Y;
+        spawn_next_mesh();
+    }
+
+    if (key_pressed(KEY_D))
+    {
+        DEBUG_DRAW = !DEBUG_DRAW;
+        set_physics_debug(DEBUG_DRAW);
+    }
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}

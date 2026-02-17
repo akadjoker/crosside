@@ -1,0 +1,215 @@
+print("Light + Shadow Demo");
+import math;
+
+var KEY_ESCAPE = 256;
+var KEY_F1 = 290;
+
+var SCREEN_W = 1280;
+var SCREEN_H = 720;
+
+var SHADOW_LENGTH = 1100;
+var LIGHT_RADIUS = 320;
+var SHOW_HELP = true;
+var FX_VIGNETTE = -1;
+
+// Occluders: x, y, w, h
+var OCC = [
+    180, 160, 180, 120,
+    520, 130, 220, 80,
+    880, 220, 170, 140,
+    360, 430, 260, 120,
+    760, 500, 300, 110
+];
+
+def clamp(v, a, b)
+{
+    if (v < a) return a;
+    if (v > b) return b;
+    return v;
+}
+
+def cast_shadow_edge(x1, y1, x2, y2, nx, ny, lx, ly)
+{
+    var mx = (x1 + x2) * 0.5;
+    var my = (y1 + y2) * 0.5;
+
+    // Edges with light "behind" them cast shadow.
+    var vx = lx - mx;
+    var vy = ly - my;
+    var facing = nx * vx + ny * vy;
+    if (facing >= 0) return;
+
+    var d1x = x1 - lx;
+    var d1y = y1 - ly;
+    var d2x = x2 - lx;
+    var d2y = y2 - ly;
+
+    var len1 = sqrt(d1x * d1x + d1y * d1y);
+    var len2 = sqrt(d2x * d2x + d2y * d2y);
+    if (len1 <= 0.001 || len2 <= 0.001) return;
+
+    var fx1 = x1 + (d1x / len1) * SHADOW_LENGTH;
+    var fy1 = y1 + (d1y / len1) * SHADOW_LENGTH;
+    var fx2 = x2 + (d2x / len2) * SHADOW_LENGTH;
+    var fy2 = y2 + (d2y / len2) * SHADOW_LENGTH;
+
+    set_color(0, 0, 0);
+    set_alpha(200);
+    draw_triangle(x1, y1, x2, y2, fx2, fy2, true);
+    draw_triangle(x1, y1, fx2, fy2, fx1, fy1, true);
+}
+
+def draw_occluder_shadows(lx, ly)
+{
+    var i = 0;
+    while (i < len(OCC))
+    {
+        var x = OCC[i];
+        var y = OCC[i + 1];
+        var w = OCC[i + 2];
+        var h = OCC[i + 3];
+
+        // top, right, bottom, left
+        cast_shadow_edge(x, y, x + w, y, 0, -1, lx, ly);
+        cast_shadow_edge(x + w, y, x + w, y + h, 1, 0, lx, ly);
+        cast_shadow_edge(x + w, y + h, x, y + h, 0, 1, lx, ly);
+        cast_shadow_edge(x, y + h, x, y, -1, 0, lx, ly);
+
+        i = i + 4;
+    }
+}
+
+def draw_soft_light(lx, ly, radius, r, g, b)
+{
+    var steps = 14;
+    var i = 0;
+    while (i < steps)
+    {
+        var t = i / (steps - 1);
+        var rr = radius * (1.0 - t);
+        var aa = 3 + 125 * t * t;
+        set_color(r, g, b);
+        set_alpha(aa);
+        draw_circle(lx, ly, rr, true);
+        i = i + 1;
+    }
+}
+
+def draw_scene()
+{
+    set_color(16, 22, 34);
+    set_alpha(255);
+    draw_rectangle(0, 0, SCREEN_W, SCREEN_H, true);
+
+    // Subtle bands to avoid flat background.
+    set_color(20, 28, 44);
+    set_alpha(255);
+    draw_rectangle(0, 120, SCREEN_W, 120, true);
+    draw_rectangle(0, 380, SCREEN_W, 140, true);
+}
+
+def draw_occluders()
+{
+    var i = 0;
+    while (i < len(OCC))
+    {
+        var x = OCC[i];
+        var y = OCC[i + 1];
+        var w = OCC[i + 2];
+        var h = OCC[i + 3];
+
+        set_color(70, 86, 108);
+        set_alpha(255);
+        draw_rectangle(x, y, w, h, true);
+
+        set_color(130, 150, 178);
+        set_alpha(255);
+        draw_rectangle(x, y, w, h, false);
+
+        i = i + 4;
+    }
+}
+
+def draw_ambient_dark()
+{
+    set_color(0, 0, 0);
+    set_alpha(175);
+    draw_rectangle(0, 0, SCREEN_W, SCREEN_H, true);
+}
+
+process light_world()
+{
+    var light_x = SCREEN_W * 0.5;
+    var light_y = SCREEN_H * 0.5;
+    FX_VIGNETTE = load_shader_auto("scripts/shaders/vignette");
+
+    loop
+    {
+        var tx = get_mouse_x();
+        var ty = get_mouse_y();
+        if (touch_count() > 0)
+        {
+            tx = get_touch_x(0);
+            ty = get_touch_y(0);
+        }
+        light_x = light_x + (tx - light_x) * 0.23;
+        light_y = light_y + (ty - light_y) * 0.23;
+
+        light_x = clamp(light_x, 0, SCREEN_W);
+        light_y = clamp(light_y, 0, SCREEN_H);
+
+        if (FX_VIGNETTE >= 0)
+        {
+            set_shader(FX_VIGNETTE);
+            set_shader_uniform_vec2(FX_VIGNETTE, "u_resolution", SCREEN_W, SCREEN_H);
+            set_shader_uniform_float(FX_VIGNETTE, "u_strength", 1.15);
+        }
+
+        draw_scene();
+        draw_occluders();
+        draw_occluder_shadows(light_x, light_y);
+        draw_ambient_dark();
+
+        set_blend_mode(BLEND_ADDITIVE);
+        draw_soft_light(light_x, light_y, LIGHT_RADIUS, 255, 220, 150);
+        draw_soft_light(220, 120, 170, 100, 150, 255);
+        draw_soft_light(1080, 190, 150, 130, 255, 180);
+        reset_blend_mode();
+
+        set_color(240, 240, 240);
+        set_alpha(255);
+        draw_text("Light + Shadows (2D fake, mobile/web friendly)", 20, 18, 24);
+        draw_text("Move light: mouse or touch", 20, 48, 20);
+
+        if (SHOW_HELP)
+            draw_text("F1 hide help | ESC quit", 20, 74, 18);
+        else
+            draw_text("F1 help", 20, 74, 18);
+
+        draw_fps(20, 98);
+
+        if (key_pressed(KEY_F1))
+            SHOW_HELP = !SHOW_HELP;
+
+        if (key_down(KEY_ESCAPE))
+        {
+            if (FX_VIGNETTE >= 0)
+                unload_shader(FX_VIGNETTE);
+            close_window();
+            break;
+        }
+
+        if (FX_VIGNETTE >= 0)
+            reset_shader();
+
+        frame;
+    }
+}
+
+set_window_size(SCREEN_W, SCREEN_H);
+set_window_title("Light Shadow Demo");
+set_design_resolution(SCREEN_W, SCREEN_H);
+set_virtual_screen_enabled(true);
+set_draw_screen(false);
+
+light_world();

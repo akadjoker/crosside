@@ -34,6 +34,11 @@ namespace BindingsBox2D
     b2Draw *getDebugDraw();
 }
 
+namespace BindingsPoly2Tri
+{
+    void registerAll(Interpreter &vm);
+}
+
 namespace BindingsDraw
 {
     void registerAll(Interpreter &vm);

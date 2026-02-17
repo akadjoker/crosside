@@ -1,6 +1,7 @@
 #include "bindings.hpp"
 #include "camera.hpp"
 #include <raylib.h>
+#include <algorithm>
 #include <vector>
 
 extern CameraManager gCamera;
@@ -23,6 +24,39 @@ namespace BindingsInput
     static bool s_virtualKeysVisible = true;
     static bool s_anyTouchPressed = false;
     static bool s_anyTouchReleased = false;
+
+    static const char *getVirtualKeyLabel(int keyCode)
+    {
+        switch (keyCode)
+        {
+        case KEY_UP: return "UP";
+        case KEY_DOWN: return "DN";
+        case KEY_LEFT: return "LT";
+        case KEY_RIGHT: return "RT";
+        case KEY_SPACE: return "DRIFT";
+        case KEY_LEFT_SHIFT: return "BOOST";
+        case KEY_RIGHT_SHIFT: return "BOOST";
+        case KEY_ESCAPE: return "EXIT";
+        case KEY_ENTER: return "OK";
+        case KEY_R: return "RST";
+        case KEY_F: return "FIRE";
+        default:
+            break;
+        }
+
+        static char oneChar[2] = {0, 0};
+        if (keyCode >= 'A' && keyCode <= 'Z')
+        {
+            oneChar[0] = (char)keyCode;
+            return oneChar;
+        }
+        if (keyCode >= '0' && keyCode <= '9')
+        {
+            oneChar[0] = (char)keyCode;
+            return oneChar;
+        }
+        return "";
+    }
 
     static bool containsId(const std::vector<int> &ids, int value)
     {
@@ -154,17 +188,35 @@ namespace BindingsInput
         for (size_t i = 0; i < s_virtualKeys.size(); i++)
         {
             const VirtualKey &vk = s_virtualKeys[i];
-            Color fill = vk.down ? Color{255, 192, 64, 140} : Color{230, 230, 230, 80};
-            Color border = vk.down ? Color{255, 220, 120, 220} : Color{255, 255, 255, 180};
-            DrawRectangleRec(vk.bounds, fill);
-            DrawRectangleLinesEx(vk.bounds, 2.0f, border);
+            Color fill = vk.down ? Color{255, 140, 56, 170} : Color{28, 36, 56, 118};
+            Color border = vk.down ? Color{255, 220, 130, 230} : Color{170, 200, 255, 196};
+            Color textColor = vk.down ? Color{255, 245, 220, 255} : Color{225, 238, 255, 230};
 
-            const char *label = TextFormat("%d", vk.keyCode);
-            int fontSize = 20;
-            int textWidth = MeasureText(label, fontSize);
-            int tx = (int)(vk.bounds.x + (vk.bounds.width - textWidth) * 0.5f);
-            int ty = (int)(vk.bounds.y + (vk.bounds.height - fontSize) * 0.5f);
-            DrawText(label, tx, ty, fontSize, border);
+            Rectangle outer = vk.bounds;
+            DrawRectangleRounded(outer, 0.24f, 8, fill);
+            DrawRectangleRoundedLines(outer, 0.24f, 8, 2.0f, border);
+
+            Rectangle inner = {
+                vk.bounds.x + 6.0f,
+                vk.bounds.y + 6.0f,
+                std::max(0.0f, vk.bounds.width - 12.0f),
+                std::max(0.0f, vk.bounds.height - 12.0f)
+            };
+            if (inner.width > 1.0f && inner.height > 1.0f)
+            {
+                Color gloss = vk.down ? Color{255, 210, 120, 44} : Color{200, 220, 255, 30};
+                DrawRectangleRounded(inner, 0.20f, 6, gloss);
+            }
+
+            const char *label = getVirtualKeyLabel(vk.keyCode);
+            if (label[0] != '\0')
+            {
+                int fontSize = (int)std::max(14.0f, std::min(vk.bounds.height * 0.28f, 24.0f));
+                int textWidth = MeasureText(label, fontSize);
+                int tx = (int)(vk.bounds.x + (vk.bounds.width - textWidth) * 0.5f);
+                int ty = (int)(vk.bounds.y + (vk.bounds.height - fontSize) * 0.5f);
+                DrawText(label, tx, ty, fontSize, textColor);
+            }
         }
     }
 

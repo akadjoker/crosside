@@ -7,7 +7,8 @@
     "sdl2",
     "png",
     "jpeg",
-    "zlib"
+    "zlib",
+    "webp"
   ],
   "static": true,
   "priority": 0,
@@ -20,12 +21,16 @@
   "src": [
     "src/IMG.c",
     "src/IMG_bmp.c",
+    "src/IMG_avif.c",
     "src/IMG_gif.c",
     "src/IMG_jpg.c",
+    "src/IMG_jxl.c",
     "src/IMG_lbm.c",
     "src/IMG_pcx.c",
     "src/IMG_png.c",
     "src/IMG_pnm.c",
+    "src/IMG_qoi.c",
+    "src/IMG_stb.c",
     "src/IMG_svg.c",
     "src/IMG_tga.c",
     "src/IMG_tif.c",
@@ -40,21 +45,21 @@
   "plataforms": {
     "linux": {
       "CPP_ARGS": "",
-      "CC_ARGS": "-DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG",
+      "CC_ARGS": "-DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG -DLOAD_WEBP",
       "LD_ARGS": "",
       "src": [],
       "include": []
     },
     "windows": {
       "CPP_ARGS": "",
-      "CC_ARGS": "-DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG",
+      "CC_ARGS": "-DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG -DLOAD_WEBP",
       "LD_ARGS": "",
       "src": [],
       "include": []
     },
     "android": {
       "CPP_ARGS": "",
-      "CC_ARGS": "-DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG",
+      "CC_ARGS": "-DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_JPG -DLOAD_PNG -DLOAD_WEBP",
       "LD_ARGS": "",
       "src": [],
       "include": []

@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.survive",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "Survive",
+    "CONTENT_ROOT": "releases/survive"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/survive"
+  }
+}

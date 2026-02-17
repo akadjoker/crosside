@@ -295,10 +295,15 @@ namespace crosside::commands
             bool dryRun)
         {
             int removed = 0;
+            const std::string buildCacheKey = crosside::model::projectBuildCacheKey(project);
 
             if (target == "desktop")
             {
                 removed += crosside::io::removePath(project.root / "obj" / kDesktopFolder / project.name, dryRun, ctx) ? 1 : 0;
+                if (buildCacheKey != project.name)
+                {
+                    removed += crosside::io::removePath(project.root / "obj" / kDesktopFolder / buildCacheKey, dryRun, ctx) ? 1 : 0;
+                }
                 removed += crosside::io::removePath(project.root / project.name, dryRun, ctx) ? 1 : 0;
                 removed += crosside::io::removePath(project.root / (project.name + ".exe"), dryRun, ctx) ? 1 : 0;
                 return removed;
@@ -307,6 +312,10 @@ namespace crosside::commands
             if (target == "web")
             {
                 removed += crosside::io::removePath(project.root / "obj" / "Web" / project.name, dryRun, ctx) ? 1 : 0;
+                if (buildCacheKey != project.name)
+                {
+                    removed += crosside::io::removePath(project.root / "obj" / "Web" / buildCacheKey, dryRun, ctx) ? 1 : 0;
+                }
                 removed += crosside::io::removePath(project.root / "Web" / (project.name + ".html"), dryRun, ctx) ? 1 : 0;
                 removed += crosside::io::removePath(project.root / "Web" / (project.name + ".js"), dryRun, ctx) ? 1 : 0;
                 removed += crosside::io::removePath(project.root / "Web" / (project.name + ".wasm"), dryRun, ctx) ? 1 : 0;
@@ -317,6 +326,10 @@ namespace crosside::commands
             if (target == "android")
             {
                 removed += crosside::io::removePath(project.root / "obj" / "Android" / project.name, dryRun, ctx) ? 1 : 0;
+                if (buildCacheKey != project.name)
+                {
+                    removed += crosside::io::removePath(project.root / "obj" / "Android" / buildCacheKey, dryRun, ctx) ? 1 : 0;
+                }
                 for (int abi : abis)
                 {
                     const std::string abiName = abi == 1 ? "arm64-v8a" : "armeabi-v7a";

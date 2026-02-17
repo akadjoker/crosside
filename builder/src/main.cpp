@@ -35,6 +35,7 @@ namespace
                   << "  " << kAppName << " build projects/sdl/tutorial_2.c desktop\n"
                   << "  " << kAppName << " module init mymodule --author \"Luis Santos\"\n"
                   << "  " << kAppName << " build bugame desktop --run\n"
+                  << "  " << kAppName << " build bugame android --release chaos\n"
                   << "  " << kAppName << " build bugame web --run --detach --port 8080\n"
                   << "  " << kAppName << " clean bugame web --dry-run\n"
                   << "  " << kAppName << " serve projects/bugame/Web/main.html --port 8080 --detach\n"

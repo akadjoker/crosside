@@ -10,9 +10,6 @@ print("Load Main");
 //include "super_shapes.bu";
 //include "super_square_world.bu";
 //include "rect_mouse_shooter.bu";
-//include "square_world_gunner.bu";
-//include "topdown_chaos_cars.bu";
-//include "topdown_chaos_waypoints.bu";
 
 //include "fast_and_chaos.bu";
 //include "dead_rails.bu";
@@ -32,11 +29,11 @@ print("Load Main");
 //include "box2d_mouse_joint.bu";
 //include "box2d_car_demo.bu";
 //include "box2d_flipper_demo.bu";
-include "box2d_angry_birds_demo.bu";
+//include "box2d_angry_birds_demo.bu";
 
 //include "test_candy_crush.bu";
 //include "candicrash.bu";
-//include "candicrash_2.bu";
+//include "candicrash_3.bu";
 
 //include "box2d_distance_joint_demo.bu";
 
@@ -53,3 +50,13 @@ include "box2d_angry_birds_demo.bu";
 //include "candicrash_3.bu";
 
 //include "music_notes_trainer.bu";
+
+
+//include "polytotri.bu";
+//include "box2d_poly2tri_test.bu";
+
+//include "light_shadow_demo.bu";
+
+//clude "fast_and_chaos_advanced.bu";
+//include "game.bu";
+//include "arkanoid_hard.bu";

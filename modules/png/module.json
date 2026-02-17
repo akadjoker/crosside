@@ -23,6 +23,9 @@
 "src/pngwrite.c",
 "src/pngwtran.c",
 "src/pngwutil.c",
+"src/arm/arm_init.c",
+"src/arm/filter_neon_intrinsics.c",
+"src/arm/palette_neon_intrinsics.c",
 "src/mips/mips_init.c",
 "src/mips/filter_msa_intrinsics.c",
 "src/intel/intel_init.c",
@@ -36,7 +39,7 @@
 	  {
  	   "CPP_ARGS":"",
  	   "CC_ARGS":"-fPIC  -fno-strict-aliasing",
- 	   "LD_ARGS":"-lzlib",
+ 	   "LD_ARGS":"-lzlib -lm",
 	   "src":[""],
 	   "include":[""]
 	  },
@@ -44,7 +47,7 @@
 	  {
  	   "CPP_ARGS":"",
  	   "CC_ARGS":"-fPIC -fno-strict-aliasing ",
- 	   "LD_ARGS":"-lzlib",
+ 	   "LD_ARGS":"-lzlib -lm",
 	    "src":[""],
 	    "include":[""]
 	  },
@@ -52,7 +55,7 @@
 	  {
  	   "CPP_ARGS":"",
  	   "CC_ARGS":"-fPIC -fno-strict-aliasing",
- 	   "LD_ARGS":"-lzlib",
+ 	   "LD_ARGS":"-lzlib -lm",
 	    "src":[""],
 	    "include":[""]
 	  },
@@ -61,10 +64,9 @@
 	   "template":"",
  	   "CPP_ARGS":"",
  	   "CC_ARGS":"-fPIC",
- 	   "LD_ARGS":"-lzlib",
+ 	   "LD_ARGS":"-lzlib -lm",
 	    "src":[""],
 	    "include":[""]
 	  }
       }
 }  
-

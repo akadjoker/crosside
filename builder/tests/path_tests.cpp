@@ -1,6 +1,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <system_error>
 
@@ -175,6 +176,53 @@ TEST(PathResolve, LoadDefaultWebShellReturnsEmptyWhenUnset)
 
     const auto shell = crosside::model::loadDefaultWebShell(repoRoot);
     EXPECT_FALSE(shell.has_value());
+
+    cleanupTemp(repoRoot);
+}
+
+TEST(PathResolve, LoadModuleFileSupportsPlatformStaticOverrides)
+{
+    const fs::path repoRoot = makeTempRepoRoot("module_static_override");
+    cleanupTemp(repoRoot);
+    const fs::path moduleRoot = repoRoot / "modules" / "codec";
+    fs::create_directories(moduleRoot / "src");
+    fs::create_directories(moduleRoot / "include");
+
+    {
+        std::ofstream src(moduleRoot / "src" / "codec.c");
+        src << "int codec_ping(void) { return 1; }\n";
+    }
+
+    std::ostringstream json;
+    json << "{\n"
+         << "  \"module\": \"codec\",\n"
+         << "  \"static\": true,\n"
+         << "  \"src\": [\"src/codec.c\"],\n"
+         << "  \"plataforms\": {\n"
+         << "    \"" << crosside::model::hostDesktopKey() << "\": { \"static\": false },\n"
+         << "    \"android\": { \"shared\": true },\n"
+         << "    \"emscripten\": { \"static\": true }\n"
+         << "  }\n"
+         << "}\n";
+
+    {
+        std::ofstream mod(moduleRoot / "module.json");
+        mod << json.str();
+    }
+
+    const auto spec = crosside::model::loadModuleFile(moduleRoot / "module.json", makeContext());
+    ASSERT_TRUE(spec.has_value());
+    EXPECT_TRUE(spec->staticLib);
+    ASSERT_TRUE(spec->desktop.staticLib.has_value());
+    EXPECT_FALSE(spec->desktop.staticLib.value());
+    ASSERT_TRUE(spec->android.staticLib.has_value());
+    EXPECT_FALSE(spec->android.staticLib.value());
+    ASSERT_TRUE(spec->web.staticLib.has_value());
+    EXPECT_TRUE(spec->web.staticLib.value());
+
+    EXPECT_FALSE(crosside::model::moduleStaticForDesktop(spec.value()));
+    EXPECT_FALSE(crosside::model::moduleStaticForAndroid(spec.value()));
+    EXPECT_TRUE(crosside::model::moduleStaticForWeb(spec.value()));
 
     cleanupTemp(repoRoot);
 }

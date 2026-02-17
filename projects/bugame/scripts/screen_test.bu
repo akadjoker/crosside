@@ -217,6 +217,7 @@ class CreditsScreen : Screen
 
 set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
 set_window_title("Bu Stages Demo");
+set_virtual_screen_enabled(true);
 
 var stages = Stages();
 stages.add(MenuScreen());

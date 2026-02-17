@@ -1,12 +1,16 @@
 #include "bindings.hpp"
 #include "box2d_joints.hpp"
 #include "interpreter.hpp"
+#include "engine.hpp"
 #include <raylib.h>
 #include <rlgl.h>
 #include <box2d/box2d.h>
 #include <cmath>
 #include <cstdint>
+#include <unordered_map>
 #include <vector>
+
+extern Scene gScene;
 
 namespace BindingsBox2D
 {
@@ -156,9 +160,21 @@ namespace BindingsBox2D
         return c;
     }
 
+    static inline float debugScrollX()
+    {
+        return (float)gScene.scroll_x;
+    }
+
+    static inline float debugScrollY()
+    {
+        return (float)gScene.scroll_y;
+    }
+
     void rDrawCircle(const b2Vec2 &center, float radius, const b2Color &color)
     {
         Vector2 pos = worldToPixel(center);
+        pos.x -= debugScrollX();
+        pos.y -= debugScrollY();
         float r = worldToPixel(radius);
         DrawCircleLines(pos.x, pos.y, r, getColor(color));
     }
@@ -166,6 +182,9 @@ namespace BindingsBox2D
     {
         Vector2 pos = worldToPixel(center);
         float r = worldToPixel(radius);
+        pos.x -= debugScrollX();
+        pos.y -= debugScrollY();
+
         DrawCircle(pos.x, pos.y, r, getColor(color));
     }
 
@@ -266,6 +285,10 @@ namespace BindingsBox2D
                 int j = (i + 1) % vertexCount;
                 Vector2 p1 = worldToPixel(vertices[i]);
                 Vector2 p2 = worldToPixel(vertices[j]);
+                p1.x -= debugScrollX();
+                p1.y -= debugScrollY();
+                p2.x -= debugScrollX();
+                p2.y -= debugScrollY();
                 DrawLine(p1.x, p1.y, p2.x, p2.y, raylibColor(color));
             }
         }
@@ -277,6 +300,8 @@ namespace BindingsBox2D
 
             // Box2D polygons are convex; triangle fan is the correct fill path.
             Vector2 pivot = worldToPixel(vertices[0]);
+            pivot.x -= debugScrollX();
+            pivot.y -= debugScrollY();
             Color fill = raylibColor(color);
             fill.a = (unsigned char)((int)fill.a / 2);
 
@@ -286,6 +311,10 @@ namespace BindingsBox2D
             {
                 Vector2 v1 = worldToPixel(vertices[i]);
                 Vector2 v2 = worldToPixel(vertices[i + 1]);
+                v1.x -= debugScrollX();
+                v1.y -= debugScrollY();
+                v2.x -= debugScrollX();
+                v2.y -= debugScrollY();
                 rlVertex2f(pivot.x, pivot.y);
                 rlVertex2f(v2.x, v2.y);
                 rlVertex2f(v1.x, v1.y);
@@ -318,6 +347,10 @@ namespace BindingsBox2D
         {
             Vector2 pos1 = worldToPixel(p1);
             Vector2 pos2 = worldToPixel(p2);
+            pos1.x -= debugScrollX();
+            pos1.y -= debugScrollY();
+            pos2.x -= debugScrollX();
+            pos2.y -= debugScrollY();
             DrawLine(pos1.x, pos1.y, pos2.x, pos2.y, raylibColor(color));
         }
 
@@ -325,6 +358,10 @@ namespace BindingsBox2D
         {
             Vector2 p1 = worldToPixel(xf.p);
             Vector2 p2 = worldToPixel(b2Mul(xf, b2Vec2(0.5f, 0.0f)));
+            p1.x -= debugScrollX();
+            p1.y -= debugScrollY();
+            p2.x -= debugScrollX();
+            p2.y -= debugScrollY();
             DrawLine(p1.x, p1.y, p2.x, p2.y, GREEN);
         }
         void DrawPoint(const b2Vec2 &p, float size, const b2Color &color)
@@ -375,6 +412,38 @@ namespace BindingsBox2D
             return 0;
         const uintptr_t ptr = body->GetUserData().pointer;
         return (uint32)ptr;
+    }
+
+    static std::unordered_map<const b2Body *, uint32> gRuntimeBodyIds;
+    static uint32 gNextRuntimeBodyId = 1000000u;
+
+    static uint32 body_contact_id(const b2Body *body)
+    {
+        if (!body)
+            return 0;
+
+        const uint32 processId = body_process_id(body);
+        if (processId != 0)
+            return processId;
+
+        auto it = gRuntimeBodyIds.find(body);
+        if (it != gRuntimeBodyIds.end())
+            return it->second;
+
+        // Generate positive IDs for script-side contact filtering/logging.
+        if (gNextRuntimeBodyId >= 0x7FFFFFFEu)
+            gNextRuntimeBodyId = 1000000u;
+
+        const uint32 newId = gNextRuntimeBodyId++;
+        gRuntimeBodyIds.emplace(body, newId);
+        return newId;
+    }
+
+    static void forget_runtime_body_id(const b2Body *body)
+    {
+        if (!body)
+            return;
+        gRuntimeBodyIds.erase(body);
     }
 
     struct ProcessTypeEntry
@@ -432,8 +501,15 @@ namespace BindingsBox2D
         int refCount;
     };
 
+    struct CollisionEventEntry
+    {
+        uint64_t key;
+        b2Vec2 point;
+    };
+
+    static constexpr size_t kMaxCollisionEvents = 2048;
     static std::vector<ContactRefEntry> gContactRefCounts;
-    static std::vector<uint64_t> gCollisionEvents;
+    static std::vector<CollisionEventEntry> gCollisionEvents;
 
     static int find_contact_ref_index(uint64_t key)
     {
@@ -469,10 +545,28 @@ namespace BindingsBox2D
             if (!fixtureA || !fixtureB)
                 return;
 
-            const uint32 idA = body_process_id(fixtureA->GetBody());
-            const uint32 idB = body_process_id(fixtureB->GetBody());
+            const uint32 idA = body_contact_id(fixtureA->GetBody());
+            const uint32 idB = body_contact_id(fixtureB->GetBody());
             if (idA == 0 || idB == 0)
                 return;
+
+            b2Vec2 contactPoint(0.0f, 0.0f);
+            b2Body *bodyA = fixtureA->GetBody();
+            b2Body *bodyB = fixtureB->GetBody();
+            if (bodyA && bodyB)
+            {
+                const b2Vec2 centerA = bodyA->GetWorldCenter();
+                const b2Vec2 centerB = bodyB->GetWorldCenter();
+                contactPoint.Set((centerA.x + centerB.x) * 0.5f, (centerA.y + centerB.y) * 0.5f);
+            }
+
+            const b2Manifold *manifold = contact->GetManifold();
+            if (manifold && manifold->pointCount > 0)
+            {
+                b2WorldManifold worldManifold;
+                contact->GetWorldManifold(&worldManifold);
+                contactPoint = worldManifold.points[0];
+            }
 
             const uint64_t key = make_contact_key(idA, idB);
             const int index = find_contact_ref_index(key);
@@ -481,7 +575,11 @@ namespace BindingsBox2D
                 if (delta > 0)
                 {
                     gContactRefCounts.push_back({key, delta});
-                    gCollisionEvents.push_back(key);
+                    if (gCollisionEvents.size() >= kMaxCollisionEvents)
+                    {
+                        gCollisionEvents.erase(gCollisionEvents.begin());
+                    }
+                    gCollisionEvents.push_back({key, contactPoint});
                 }
                 return;
             }
@@ -518,6 +616,7 @@ namespace BindingsBox2D
         }
         else
         {
+            forget_runtime_body_id(body);
             gWorld->DestroyBody(body);
         }
     }
@@ -560,7 +659,7 @@ namespace BindingsBox2D
         return true;
     }
 
-    static bool point_in_triangle(const b2Vec2 &p, const b2Vec2 &a, const b2Vec2 &b, const b2Vec2 &c)
+    static bool point_in_triangle_ear(const b2Vec2 &p, const b2Vec2 &a, const b2Vec2 &b, const b2Vec2 &c)
     {
         const float c1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
         const float c2 = (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x);
@@ -592,7 +691,7 @@ namespace BindingsBox2D
             const int idx = indices[i];
             if (idx == prevIndex || idx == currIndex || idx == nextIndex)
                 continue;
-            if (point_in_triangle(vertices[idx], a, b, c))
+            if (point_in_triangle_ear(vertices[idx], a, b, c))
             {
                 return false;
             }
@@ -600,7 +699,7 @@ namespace BindingsBox2D
         return true;
     }
 
-    std::vector<b2Vec2> triangulate(std::vector<b2Vec2> vertices)
+    static std::vector<b2Vec2> triangulate_ear(std::vector<b2Vec2> vertices)
     {
         std::vector<b2Vec2> triangles;
         if (vertices.size() < 3)
@@ -655,6 +754,11 @@ namespace BindingsBox2D
             triangles.clear();
         }
         return triangles;
+    }
+
+    static std::vector<b2Vec2> triangulate(const std::vector<b2Vec2> &vertices)
+    {
+        return triangulate_ear(vertices);
     }
 
     static bool parse_shape_points(Interpreter *vm, const Value &value, std::vector<b2Vec2> *outPoints, const char *funcName, size_t minPoints)
@@ -735,6 +839,8 @@ namespace BindingsBox2D
         }
         gContactRefCounts.clear();
         gCollisionEvents.clear();
+        gRuntimeBodyIds.clear();
+        gNextRuntimeBodyId = 1000000u;
         if (gContactRefCounts.capacity() < 256)
         {
             gContactRefCounts.reserve(256);
@@ -802,6 +908,8 @@ namespace BindingsBox2D
         gProcessTypes.clear();
         jointsScheduledForRemoval.clear();
         bodysScheduledForRemoval.clear();
+        gRuntimeBodyIds.clear();
+        gNextRuntimeBodyId = 1000000u;
     }
     void onProcessDestroy(Process *proc)
     {
@@ -829,7 +937,7 @@ namespace BindingsBox2D
 
         for (size_t i = 0; i < gCollisionEvents.size();)
         {
-            if (contact_key_has_id(gCollisionEvents[i], id))
+            if (contact_key_has_id(gCollisionEvents[i].key, id))
             {
                 gCollisionEvents[i] = gCollisionEvents.back();
                 gCollisionEvents.pop_back();
@@ -1201,13 +1309,76 @@ namespace BindingsBox2D
             return 2;
         }
 
-        const uint64_t key = gCollisionEvents.back();
+        const CollisionEventEntry event = gCollisionEvents.back();
         gCollisionEvents.pop_back();
+        const uint64_t key = event.key;
         const uint32 idA = (uint32)(key >> 32);
         const uint32 idB = (uint32)(key & 0xFFFFFFFFu);
         vm->pushInt((int)idA);
         vm->pushInt((int)idB);
         return 2;
+    }
+
+    int native_physics_contact_count(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)args;
+        if (argCount != 0)
+        {
+            Error("physics_contact_count expects no arguments");
+            vm->pushInt(0);
+            return 1;
+        }
+
+        vm->pushInt((int)gCollisionEvents.size());
+        return 1;
+    }
+
+    int native_physics_contact_at(Interpreter *vm, int argCount, Value *args)
+    {
+        if (argCount != 1 || (!args[0].isInt() && !args[0].isNumber()))
+        {
+            Error("physics_contact_at expects 1 index argument");
+            vm->pushInt(-1);
+            vm->pushInt(-1);
+            vm->pushDouble(0);
+            vm->pushDouble(0);
+            return 4;
+        }
+
+        const int index = args[0].isInt() ? args[0].asInt() : (int)args[0].asNumber();
+        if (index < 0 || index >= (int)gCollisionEvents.size())
+        {
+            vm->pushInt(-1);
+            vm->pushInt(-1);
+            vm->pushDouble(0);
+            vm->pushDouble(0);
+            return 4;
+        }
+
+        const CollisionEventEntry &event = gCollisionEvents[(size_t)index];
+        const uint32 idA = (uint32)(event.key >> 32);
+        const uint32 idB = (uint32)(event.key & 0xFFFFFFFFu);
+        vm->pushInt((int)idA);
+        vm->pushInt((int)idB);
+        vm->pushDouble(worldToPixel(event.point.x));
+        vm->pushDouble(worldToPixel(event.point.y));
+        return 4;
+    }
+
+    int native_physics_contact_clear(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)args;
+        if (argCount != 0)
+        {
+            Error("physics_contact_clear expects no arguments");
+            vm->pushInt(0);
+            return 1;
+        }
+
+        const int removed = (int)gCollisionEvents.size();
+        gCollisionEvents.clear();
+        vm->pushInt(removed);
+        return 1;
     }
 
     int native_physics_raycast(Interpreter *vm, int argCount, Value *args)
@@ -3443,6 +3614,12 @@ namespace BindingsBox2D
         vm.registerNative("physics_collide_with", native_physics_collide_with, 1);
         vm.registerNative("body_collide_with", native_physics_collide_with, 1);
         vm.registerNative("physics_collision", native_physics_collision, 0);
+        vm.registerNative("physics_contact_count", native_physics_contact_count, 0);
+        vm.registerNative("physics_contact_at", native_physics_contact_at, 1);
+        vm.registerNative("physics_contact_clear", native_physics_contact_clear, 0);
+        vm.registerNative("body_contact_count", native_physics_contact_count, 0);
+        vm.registerNative("body_contact_at", native_physics_contact_at, 1);
+        vm.registerNative("body_contact_clear", native_physics_contact_clear, 0);
         vm.registerNative("physics_raycast", native_physics_raycast, -1);
         vm.registerNative("body_raycast", native_physics_raycast, -1);
         vm.registerNative("physics_overlap_point", native_physics_overlap_point, -1);

@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.galax",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "Galax",
+    "CONTENT_ROOT": "releases/galax"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/galax"
+  }
+}

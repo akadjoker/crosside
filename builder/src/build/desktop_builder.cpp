@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -65,6 +66,90 @@ namespace crosside::build
             const std::string flag = "-I" + path.string();
             appendUnique(cc, flag);
             appendUnique(cpp, flag);
+        }
+
+        void appendLdFlags(std::vector<std::string> &dst, const std::vector<std::string> &src)
+        {
+            for (const auto &flag : src)
+            {
+                if (!flag.empty())
+                {
+                    dst.push_back(flag);
+                }
+            }
+        }
+
+        std::optional<fs::path> resolveDesktopRunScript(const crosside::model::ProjectSpec &project)
+        {
+            std::vector<fs::path> contentRoots;
+            auto addContentRoot = [&](const fs::path &root)
+            {
+                if (root.empty())
+                {
+                    return;
+                }
+                if (std::find(contentRoots.begin(), contentRoots.end(), root) == contentRoots.end())
+                {
+                    contentRoots.push_back(root);
+                }
+            };
+
+            addContentRoot(project.desktopContentRoot);
+            addContentRoot(project.webContentRoot);
+            addContentRoot(project.androidContentRoot);
+
+            for (const auto &contentRoot : contentRoots)
+            {
+                const fs::path primary = contentRoot / "scripts" / "main.bu";
+                if (fs::exists(primary) && fs::is_regular_file(primary))
+                {
+                    return fs::absolute(primary);
+                }
+
+                const fs::path fallback = contentRoot / "main.bu";
+                if (fs::exists(fallback) && fs::is_regular_file(fallback))
+                {
+                    return fs::absolute(fallback);
+                }
+            }
+
+            const fs::path rootPrimary = project.root / "scripts" / "main.bu";
+            if (fs::exists(rootPrimary) && fs::is_regular_file(rootPrimary))
+            {
+                return fs::absolute(rootPrimary);
+            }
+
+            const fs::path rootFallback = project.root / "main.bu";
+            if (fs::exists(rootFallback) && fs::is_regular_file(rootFallback))
+            {
+                return fs::absolute(rootFallback);
+            }
+
+            return std::nullopt;
+        }
+
+        std::vector<std::string> resolveDesktopRunArgs(
+            const crosside::Context &ctx,
+            const crosside::model::ProjectSpec &project)
+        {
+            std::vector<std::string> args;
+            const auto script = resolveDesktopRunScript(project);
+            if (!script.has_value())
+            {
+                return args;
+            }
+
+            std::error_code ec;
+            fs::path displayPath = script.value();
+            const fs::path relativePath = fs::relative(script.value(), project.root, ec);
+            if (!ec)
+            {
+                displayPath = relativePath;
+            }
+
+            args.push_back(displayPath.string());
+            ctx.log("Desktop run script: ", args.front());
+            return args;
         }
 
         void normalizeModeFlags(std::vector<std::string> &flags)
@@ -327,7 +412,8 @@ namespace crosside::build
         const fs::path outDir = module.dir / kDesktopFolder;
         io::ensureDir(outDir);
 
-        if (module.staticLib)
+        const bool moduleStaticLib = crosside::model::moduleStaticForDesktop(module);
+        if (moduleStaticLib)
         {
             const fs::path outLib = outDir / ("lib" + module.name + ".a");
             std::error_code ec;
@@ -359,6 +445,7 @@ namespace crosside::build
         std::vector<std::string> args;
         args.push_back("-shared");
         args.push_back("-fPIC");
+        args.push_back("-Wl,--no-undefined");
         args.push_back("-o");
         args.push_back(outLib.string());
         for (const auto &obj : objects)
@@ -439,6 +526,21 @@ namespace crosside::build
             addIncludeFlag(cc, cpp, inc);
         }
 
+        std::vector<std::string> moduleLinkArgs;
+        std::vector<std::string> moduleSysLdArgs;
+
+        auto appendModuleLink = [&](const crosside::model::ModuleSpec &spec)
+        {
+            appendUnique(moduleLinkArgs, "-L" + (spec.dir / kDesktopFolder).string());
+            appendUnique(moduleLinkArgs, "-l" + spec.name);
+        };
+
+        auto appendModuleSysLd = [&](const crosside::model::ModuleSpec &spec)
+        {
+            appendLdFlags(moduleSysLdArgs, spec.main.ldArgs);
+            appendLdFlags(moduleSysLdArgs, spec.desktop.ldArgs);
+        };
+
         for (const auto &moduleName : allModules)
         {
             auto it = modules.find(moduleName);
@@ -459,46 +561,27 @@ namespace crosside::build
                 }
                 const auto &dep = depIt->second;
                 collectModuleIncludes(dep, dep.desktop, cc, cpp);
-                ld.push_back("-L" + (dep.dir / kDesktopFolder).string());
-                ld.push_back("-l" + dep.name);
-                for (const auto &flag : dep.main.ldArgs)
-                {
-                    if (!flag.empty())
-                    {
-                        ld.push_back(flag);
-                    }
-                }
-                for (const auto &flag : dep.desktop.ldArgs)
-                {
-                    if (!flag.empty())
-                    {
-                        ld.push_back(flag);
-                    }
-                }
+                appendModuleLink(dep);
+                appendModuleSysLd(dep);
             }
 
             collectModuleIncludes(module, module.desktop, cc, cpp);
-            ld.push_back("-L" + (module.dir / kDesktopFolder).string());
-            ld.push_back("-l" + module.name);
-            for (const auto &flag : module.main.ldArgs)
-            {
-                if (!flag.empty())
-                {
-                    ld.push_back(flag);
-                }
-            }
-            for (const auto &flag : module.desktop.ldArgs)
-            {
-                if (!flag.empty())
-                {
-                    ld.push_back(flag);
-                }
-            }
+            appendModuleLink(module);
+            appendModuleSysLd(module);
+        }
+
+        if (!moduleLinkArgs.empty())
+        {
+            ld.push_back("-Wl,--start-group");
+            ld.insert(ld.end(), moduleLinkArgs.begin(), moduleLinkArgs.end());
+            ld.push_back("-Wl,--end-group");
+            ld.insert(ld.end(), moduleSysLdArgs.begin(), moduleSysLdArgs.end());
         }
 
         applyDesktopMode(cc, cpp, mode);
 
-        const fs::path objRoot = project.root / "obj" / kDesktopFolder / project.name;
+        const std::string buildCacheKey = crosside::model::projectBuildCacheKey(project);
+        const fs::path objRoot = project.root / "obj" / kDesktopFolder / buildCacheKey;
         io::ensureDir(objRoot);
 
         std::vector<fs::path> objects;
@@ -536,9 +619,10 @@ namespace crosside::build
 
         if (runAfter)
         {
+            const auto runArgs = resolveDesktopRunArgs(ctx, project);
             auto run = detachRun
-                           ? io::runCommandDetached(output.string(), {}, project.root, ctx, false)
-                           : io::runCommand(output.string(), {}, project.root, ctx, false);
+                           ? io::runCommandDetached(output.string(), runArgs, project.root, ctx, false)
+                           : io::runCommand(output.string(), runArgs, project.root, ctx, false);
             return run.code == 0;
         }
 

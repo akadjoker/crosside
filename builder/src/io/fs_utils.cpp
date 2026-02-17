@@ -67,7 +67,8 @@ namespace crosside::io
             {
                 continue;
             }
-            if (entry.path().filename() == "main.mk")
+            const auto name = entry.path().filename().string();
+            if (name == "main.mk" || name == "project.mk")
             {
                 out.push_back(entry.path());
             }

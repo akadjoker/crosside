@@ -2,6 +2,7 @@
 #include "engine.hpp"
 #include "render.hpp"
 #include <raylib.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,128 @@ namespace BindingsDraw
     Color currentColor = WHITE;
     int layer = 0;
     bool screen= false;
+    int currentBlendMode = BLEND_ALPHA;
+    int currentShaderId = -1;
+
+    static inline void beginCurrentBlend()
+    {
+        if (currentBlendMode != BLEND_ALPHA)
+            BeginBlendMode(currentBlendMode);
+    }
+
+    static inline void endCurrentBlend()
+    {
+        if (currentBlendMode != BLEND_ALPHA)
+            EndBlendMode();
+    }
+
+    struct LoadedShader
+    {
+        Shader shader{};
+        bool alive = false;
+    };
+
+    static std::vector<LoadedShader> loadedShaders;
+
+    static Shader *getLoadedShader(int shaderId)
+    {
+        if (shaderId < 0 || shaderId >= (int)loadedShaders.size())
+            return nullptr;
+        if (!loadedShaders[(size_t)shaderId].alive)
+            return nullptr;
+        return &loadedShaders[(size_t)shaderId].shader;
+    }
+
+    static std::string normalizePath(std::string path)
+    {
+        std::replace(path.begin(), path.end(), '\\', '/');
+        return path;
+    }
+
+    static void addCandidatePath(std::vector<std::string> &candidates, const std::string &path)
+    {
+        if (path.empty())
+            return;
+        for (size_t i = 0; i < candidates.size(); i++)
+        {
+            if (candidates[i] == path)
+                return;
+        }
+        candidates.push_back(path);
+    }
+
+    static bool resolveExistingPath(const std::string &rawPath, std::string &resolvedPath)
+    {
+        if (rawPath.empty())
+            return false;
+
+        const std::string path = normalizePath(rawPath);
+        std::vector<std::string> candidates;
+        addCandidatePath(candidates, path);
+
+        if (path[0] == '/')
+            addCandidatePath(candidates, path.substr(1));
+        else
+            addCandidatePath(candidates, "/" + path);
+
+        if (path.rfind("scripts/", 0) != 0 && path.rfind("/scripts/", 0) != 0)
+        {
+            addCandidatePath(candidates, "scripts/" + path);
+            addCandidatePath(candidates, "/scripts/" + path);
+        }
+
+        for (size_t i = 0; i < candidates.size(); i++)
+        {
+            if (FileExists(candidates[i].c_str()))
+            {
+                resolvedPath = candidates[i];
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static int storeLoadedShader(const Shader &shader)
+    {
+        for (size_t i = 0; i < loadedShaders.size(); i++)
+        {
+            if (!loadedShaders[i].alive)
+            {
+                loadedShaders[i].shader = shader;
+                loadedShaders[i].alive = true;
+                return (int)i;
+            }
+        }
+
+        LoadedShader slot;
+        slot.shader = shader;
+        slot.alive = true;
+        loadedShaders.push_back(slot);
+        return (int)loadedShaders.size() - 1;
+    }
+
+    static inline void beginCurrentShader()
+    {
+        Shader *shader = getLoadedShader(currentShaderId);
+        if (shader)
+            BeginShaderMode(*shader);
+    }
+
+    static inline void endCurrentShader()
+    {
+        if (getLoadedShader(currentShaderId))
+            EndShaderMode();
+    }
+
+#define DRAW_IMMEDIATE(stmt) \
+    do                       \
+    {                        \
+        beginCurrentShader();\
+        beginCurrentBlend(); \
+        stmt;                \
+        endCurrentBlend();   \
+        endCurrentShader();  \
+    } while (0)
 
     static std::vector<Font> loadedFonts;
     enum class DrawCommandType
@@ -54,6 +177,7 @@ namespace BindingsDraw
     {
         DrawCommandType type = DrawCommandType::Line;
         Color color = WHITE;
+        int blendMode = BLEND_ALPHA;
         std::string text;
         int x1 = 0;
         int y1 = 0;
@@ -66,6 +190,7 @@ namespace BindingsDraw
         int radius = 0;
         int size = 0;
         int graphId = -1;
+        int shaderId = -1;
         int fontId = -1;
         float rotation = 0.0f;
         float spacing = 0.0f;
@@ -84,11 +209,18 @@ namespace BindingsDraw
     static std::vector<DrawCommand> screenCommands;
     static int activeClipDepth = 0;
 
+    static inline void applyCurrentRenderState(DrawCommand &cmd)
+    {
+        cmd.blendMode = currentBlendMode;
+        cmd.shaderId = currentShaderId;
+    }
+
     static void enqueueScreenCommand(DrawCommandType type, Color color, const LineCmd &p)
     {
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.x1 = p.x1; cmd.y1 = p.y1; cmd.x2 = p.x2; cmd.y2 = p.y2;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const PointCmd &p)
@@ -96,6 +228,7 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.x1 = p.x; cmd.y1 = p.y;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const TextCmd &p)
@@ -103,6 +236,7 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.text = p.text; cmd.x1 = p.x; cmd.y1 = p.y; cmd.size = p.size;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const FontTextCmd &p)
@@ -110,6 +244,7 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.text = p.text; cmd.x1 = p.x; cmd.y1 = p.y; cmd.size = p.size; cmd.spacing = p.spacing; cmd.fontId = p.fontId;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const FontTextRotateCmd &p)
@@ -118,6 +253,7 @@ namespace BindingsDraw
         cmd.type = type; cmd.color = color;
         cmd.text = p.text; cmd.x1 = p.x; cmd.y1 = p.y; cmd.size = p.size;
         cmd.rotation = p.rotation; cmd.spacing = p.spacing; cmd.pivotX = p.pivotX; cmd.pivotY = p.pivotY; cmd.fontId = p.fontId;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const CircleCmd &p)
@@ -125,6 +261,7 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.x1 = p.x; cmd.y1 = p.y; cmd.radius = p.radius; cmd.fill = p.fill;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const RectangleCmd &p)
@@ -132,6 +269,7 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.x1 = p.x; cmd.y1 = p.y; cmd.width = p.width; cmd.height = p.height; cmd.fill = p.fill;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const RotatedRectangleCmd &p)
@@ -139,6 +277,7 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.x1 = p.x; cmd.y1 = p.y; cmd.width = p.width; cmd.height = p.height; cmd.rotation = p.rotation; cmd.fill = p.fill;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const RotatedRectangleExCmd &p)
@@ -147,6 +286,7 @@ namespace BindingsDraw
         cmd.type = type; cmd.color = color;
         cmd.x1 = p.x; cmd.y1 = p.y; cmd.width = p.width; cmd.height = p.height; cmd.rotation = p.rotation; cmd.fill = p.fill;
         cmd.originX = p.originX; cmd.originY = p.originY;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const LineExCmd &p)
@@ -154,6 +294,7 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.x1 = p.x1; cmd.y1 = p.y1; cmd.x2 = p.x2; cmd.y2 = p.y2; cmd.thickness = p.thickness;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const TriangleCmd &p)
@@ -161,6 +302,7 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.x1 = p.x1; cmd.y1 = p.y1; cmd.x2 = p.x2; cmd.y2 = p.y2; cmd.x3 = p.x3; cmd.y3 = p.y3; cmd.fill = p.fill;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const GraphCmd &p)
@@ -168,6 +310,7 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.graphId = p.graphId; cmd.x1 = p.x; cmd.y1 = p.y;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const GraphExCmd &p)
@@ -176,6 +319,7 @@ namespace BindingsDraw
         cmd.type = type; cmd.color = color;
         cmd.graphId = p.graphId; cmd.x1 = p.x; cmd.y1 = p.y; cmd.rotation = p.rotation;
         cmd.sizeX = p.sizeX; cmd.sizeY = p.sizeY; cmd.flipX = p.flipX; cmd.flipY = p.flipY;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const ClipCmd &p)
@@ -183,12 +327,14 @@ namespace BindingsDraw
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
         cmd.x1 = p.x; cmd.y1 = p.y; cmd.width = p.width; cmd.height = p.height;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
     static void enqueueScreenCommand(DrawCommandType type, Color color)
     {
         DrawCommand cmd;
         cmd.type = type; cmd.color = color;
+        applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
 
@@ -393,7 +539,7 @@ namespace BindingsDraw
         y1 -= l.scroll_y;
         x2 -= l.scroll_x;
         y2 -= l.scroll_y;
-        DrawLine(x1, y1, x2, y2, currentColor);
+        DRAW_IMMEDIATE(DrawLine(x1, y1, x2, y2, currentColor));
         return 0;
     }
 
@@ -420,7 +566,7 @@ namespace BindingsDraw
         Layer &l = gScene.layers[layer];
         x -= l.scroll_x;
         y -= l.scroll_y;
-        DrawPixel(x, y, currentColor);
+        DRAW_IMMEDIATE(DrawPixel(x, y, currentColor));
         return 0;
     }
 
@@ -449,7 +595,7 @@ namespace BindingsDraw
         Layer &l = gScene.layers[layer];
         x -= l.scroll_x;
         y -= l.scroll_y;
-        DrawText(text->chars(), x, y, size, currentColor);
+        DRAW_IMMEDIATE(DrawText(text->chars(), x, y, size, currentColor));
         return 0;
     }
 
@@ -480,7 +626,7 @@ namespace BindingsDraw
         Layer &l = gScene.layers[layer];
         x -= l.scroll_x;
         y -= l.scroll_y;
-        draw_font_impl(text, x, y, size, spacing, currentColor, fontId);
+        DRAW_IMMEDIATE(draw_font_impl(text, x, y, size, spacing, currentColor, fontId));
         return 0;
     }
 
@@ -514,7 +660,7 @@ namespace BindingsDraw
         Layer &l = gScene.layers[layer];
         x -= l.scroll_x;
         y -= l.scroll_y;
-        draw_font_rotate_impl(text, x, y, size, rotation, spacing, pivot_x, pivot_y, currentColor, fontId);
+        DRAW_IMMEDIATE(draw_font_rotate_impl(text, x, y, size, rotation, spacing, pivot_x, pivot_y, currentColor, fontId));
         return 0;
     }
 
@@ -542,9 +688,9 @@ namespace BindingsDraw
         centerY -= l.scroll_y;
 
         if (fill)
-            DrawCircle(centerX, centerY, radius, currentColor);
+            DRAW_IMMEDIATE(DrawCircle(centerX, centerY, radius, currentColor));
         else
-            DrawCircleLines(centerX, centerY, radius, currentColor);
+            DRAW_IMMEDIATE(DrawCircleLines(centerX, centerY, radius, currentColor));
         return 0;
     }
 
@@ -572,9 +718,9 @@ namespace BindingsDraw
         y -= l.scroll_y;
 
         if (fill)
-            DrawRectangle(x, y, width, height, currentColor);
+            DRAW_IMMEDIATE(DrawRectangle(x, y, width, height, currentColor));
         else
-            DrawRectangleLines(x, y, width, height, currentColor);
+            DRAW_IMMEDIATE(DrawRectangleLines(x, y, width, height, currentColor));
         return 0;
     }
 
@@ -610,9 +756,9 @@ namespace BindingsDraw
         y -= l.scroll_y;
 
         if (fill)
-            DrawRectanglePro({(float)x, (float)y, (float)width, (float)height}, origin, rotation, currentColor);
+            DRAW_IMMEDIATE(DrawRectanglePro({(float)x, (float)y, (float)width, (float)height}, origin, rotation, currentColor));
         else
-            DrawRectanglePro({(float)x, (float)y, (float)width, (float)height}, origin, rotation, currentColor);
+            DRAW_IMMEDIATE(DrawRectanglePro({(float)x, (float)y, (float)width, (float)height}, origin, rotation, currentColor));
         return 0;
     }
 
@@ -645,9 +791,9 @@ namespace BindingsDraw
         y -= l.scroll_y;
 
         if (fill)
-            DrawRectanglePro({(float)x, (float)y, (float)width, (float)height}, {(float)width / 2, (float)height / 2}, rotation, currentColor);
+            DRAW_IMMEDIATE(DrawRectanglePro({(float)x, (float)y, (float)width, (float)height}, {(float)width / 2, (float)height / 2}, rotation, currentColor));
         else
-            DrawRectanglePro({(float)x, (float)y, (float)width, (float)height}, {(float)width / 2, (float)height / 2}, rotation, currentColor);
+            DRAW_IMMEDIATE(DrawRectanglePro({(float)x, (float)y, (float)width, (float)height}, {(float)width / 2, (float)height / 2}, rotation, currentColor));
         return 0;
     }
 
@@ -676,7 +822,7 @@ namespace BindingsDraw
         y1 -= l.scroll_y;
         x2 -= l.scroll_x;
         y2 -= l.scroll_y;
-        DrawLineEx({(float)x1, (float)y1}, {(float)x2, (float)y2}, thickness, currentColor);
+        DRAW_IMMEDIATE(DrawLineEx({(float)x1, (float)y1}, {(float)x2, (float)y2}, thickness, currentColor));
         return 0;
     }
 
@@ -711,9 +857,9 @@ namespace BindingsDraw
         v3.y -= l.scroll_y;
 
         if (fill)
-            DrawTriangle(v1, v2, v3, currentColor);
+            DRAW_IMMEDIATE(DrawTriangle(v1, v2, v3, currentColor));
         else
-            DrawTriangleLines(v1, v2, v3, currentColor);
+            DRAW_IMMEDIATE(DrawTriangleLines(v1, v2, v3, currentColor));
         return 0;
     }
 
@@ -743,7 +889,7 @@ namespace BindingsDraw
         if (!graph) return 0;
         Texture2D *tex = gGraphLib.getTexture(graph->texture);
         if (!tex) return 0;
-        DrawTextureRec(*tex, graph->clip, {x, y}, currentColor);
+        DRAW_IMMEDIATE(DrawTextureRec(*tex, graph->clip, {x, y}, currentColor));
         return 0;
     }
 
@@ -784,16 +930,374 @@ namespace BindingsDraw
 
         if (angle == 0 && sizeX == 100 && sizeY == 100 && !flipX && !flipY)
         {
-            DrawTextureRec(*tex, graph->clip, {x, y}, currentColor);
+            DRAW_IMMEDIATE(DrawTextureRec(*tex, graph->clip, {x, y}, currentColor));
         }
         else
         {
             int pivotX = (int)(graph->clip.width / 2);
             int pivotY = (int)(graph->clip.height / 2);
-            RenderTexturePivotRotateSizeXY(*tex, pivotX, pivotY, graph->clip,
-                                          x, y, angle, sizeX, sizeY,
-                                          flipX, flipY, currentColor);
+            DRAW_IMMEDIATE(RenderTexturePivotRotateSizeXY(*tex, pivotX, pivotY, graph->clip,
+                                                          x, y, angle, sizeX, sizeY,
+                                                          flipX, flipY, currentColor));
         }
+        return 0;
+    }
+
+    static int native_set_blend_mode(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        if (argCount != 1 || !args[0].isNumber())
+        {
+            Error("set_blend_mode expects 1 number argument (blend mode)");
+            return 0;
+        }
+
+        int mode = (int)args[0].asNumber();
+        if (mode < BLEND_ALPHA || mode > BLEND_CUSTOM_SEPARATE)
+        {
+            Error("set_blend_mode invalid mode");
+            return 0;
+        }
+
+        currentBlendMode = mode;
+        return 0;
+    }
+
+    static int native_reset_blend_mode(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        (void)args;
+        if (argCount != 0)
+        {
+            Error("reset_blend_mode expects 0 arguments");
+            return 0;
+        }
+        currentBlendMode = BLEND_ALPHA;
+        return 0;
+    }
+
+    static int native_load_shader(Interpreter *vm, int argCount, Value *args)
+    {
+        if (argCount != 2 || !args[0].isString() || !args[1].isString())
+        {
+            Error("load_shader expects 2 string arguments (vertexPath, fragmentPath)");
+            vm->pushInt(-1);
+            return 1;
+        }
+
+        const char *vsPathRaw = args[0].asStringChars();
+        const char *fsPathRaw = args[1].asStringChars();
+        std::string vsResolved;
+        std::string fsResolved;
+        const char *vsPath = nullptr;
+        const char *fsPath = nullptr;
+
+        if (vsPathRaw && vsPathRaw[0] != '\0')
+        {
+            if (resolveExistingPath(vsPathRaw, vsResolved))
+                vsPath = vsResolved.c_str();
+            else
+                vsPath = vsPathRaw;
+        }
+        if (fsPathRaw && fsPathRaw[0] != '\0')
+        {
+            if (resolveExistingPath(fsPathRaw, fsResolved))
+                fsPath = fsResolved.c_str();
+            else
+                fsPath = fsPathRaw;
+        }
+
+        Shader shader = LoadShader(vsPath, fsPath);
+        if (shader.id == 0)
+        {
+            Error("load_shader failed");
+            vm->pushInt(-1);
+            return 1;
+        }
+
+        vm->pushInt(storeLoadedShader(shader));
+        return 1;
+    }
+
+    static int native_load_shader_file(Interpreter *vm, int argCount, Value *args)
+    {
+        if (argCount != 1 || !args[0].isString())
+        {
+            Error("load_shader_file expects 1 string argument (fragmentPath)");
+            vm->pushInt(-1);
+            return 1;
+        }
+
+        const char *fragmentPathRaw = args[0].asStringChars();
+        std::string fragmentResolved;
+        const char *fragmentPath = fragmentPathRaw;
+        if (resolveExistingPath(fragmentPathRaw, fragmentResolved))
+            fragmentPath = fragmentResolved.c_str();
+
+        Shader shader = LoadShader(nullptr, fragmentPath);
+        if (shader.id == 0)
+        {
+            Error("load_shader_file failed");
+            vm->pushInt(-1);
+            return 1;
+        }
+
+        vm->pushInt(storeLoadedShader(shader));
+        return 1;
+    }
+
+    static int native_load_shader_auto(Interpreter *vm, int argCount, Value *args)
+    {
+        if (argCount != 1 || !args[0].isString())
+        {
+            Error("load_shader_auto expects 1 string argument (basePath)");
+            vm->pushInt(-1);
+            return 1;
+        }
+
+        const std::string base = args[0].asStringChars();
+        if (base.empty())
+        {
+            Error("load_shader_auto basePath is empty");
+            vm->pushInt(-1);
+            return 1;
+        }
+
+#if defined(PLATFORM_ANDROID) || defined(__EMSCRIPTEN__)
+        const char *glsl = "100";
+#else
+        const char *glsl = "330";
+#endif
+
+        std::string vsPath;
+        std::string fsPath;
+        const char *vs = nullptr;
+        const char *fs = nullptr;
+
+        const std::string versionedVs = base + "_" + glsl + ".vs";
+        const std::string versionedFs = base + "_" + glsl + ".fs";
+        const std::string plainVs = base + ".vs";
+        const std::string plainFs = base + ".fs";
+
+        if (!resolveExistingPath(versionedVs, vsPath))
+            resolveExistingPath(plainVs, vsPath);
+
+        if (!resolveExistingPath(versionedFs, fsPath))
+            resolveExistingPath(plainFs, fsPath);
+
+        if (!vsPath.empty())
+            vs = vsPath.c_str();
+        if (!fsPath.empty())
+            fs = fsPath.c_str();
+
+        if (!vs && !fs)
+        {
+            Error("load_shader_auto: no shader files found for base '%s'", base.c_str());
+            vm->pushInt(-1);
+            return 1;
+        }
+
+        Shader shader = LoadShader(vs, fs);
+        if (shader.id == 0)
+        {
+            Error("load_shader_auto failed for base '%s'", base.c_str());
+            vm->pushInt(-1);
+            return 1;
+        }
+
+        vm->pushInt(storeLoadedShader(shader));
+        return 1;
+    }
+
+    static int native_unload_shader(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        if (argCount != 1 || !args[0].isNumber())
+        {
+            Error("unload_shader expects 1 number argument (shaderId)");
+            return 0;
+        }
+
+        int shaderId = (int)args[0].asNumber();
+        Shader *shader = getLoadedShader(shaderId);
+        if (!shader)
+            return 0;
+
+        if (currentShaderId == shaderId)
+            currentShaderId = -1;
+
+        UnloadShader(*shader);
+        loadedShaders[(size_t)shaderId].alive = false;
+        loadedShaders[(size_t)shaderId].shader = Shader{};
+        return 0;
+    }
+
+    static int native_set_shader(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        if (argCount != 1 || !args[0].isNumber())
+        {
+            Error("set_shader expects 1 number argument (shaderId)");
+            return 0;
+        }
+
+        int shaderId = (int)args[0].asNumber();
+        if (shaderId < 0)
+        {
+            currentShaderId = -1;
+            return 0;
+        }
+
+        if (!getLoadedShader(shaderId))
+        {
+            Error("set_shader invalid shaderId");
+            return 0;
+        }
+
+        currentShaderId = shaderId;
+        return 0;
+    }
+
+    static int native_reset_shader(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        (void)args;
+        if (argCount != 0)
+        {
+            Error("reset_shader expects 0 arguments");
+            return 0;
+        }
+        currentShaderId = -1;
+        return 0;
+    }
+
+    static int native_set_shader_uniform_float(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        if (argCount != 3 || !args[0].isNumber() || !args[1].isString() || !args[2].isNumber())
+        {
+            Error("set_shader_uniform_float expects (shaderId, name, value)");
+            return 0;
+        }
+
+        int shaderId = (int)args[0].asNumber();
+        Shader *shader = getLoadedShader(shaderId);
+        if (!shader)
+        {
+            Error("set_shader_uniform_float invalid shaderId");
+            return 0;
+        }
+
+        int loc = GetShaderLocation(*shader, args[1].asStringChars());
+        if (loc < 0)
+            return 0;
+
+        float value = (float)args[2].asNumber();
+        SetShaderValue(*shader, loc, &value, SHADER_UNIFORM_FLOAT);
+        return 0;
+    }
+
+    static int native_set_shader_uniform_int(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        if (argCount != 3 || !args[0].isNumber() || !args[1].isString() || !args[2].isNumber())
+        {
+            Error("set_shader_uniform_int expects (shaderId, name, value)");
+            return 0;
+        }
+
+        int shaderId = (int)args[0].asNumber();
+        Shader *shader = getLoadedShader(shaderId);
+        if (!shader)
+        {
+            Error("set_shader_uniform_int invalid shaderId");
+            return 0;
+        }
+
+        int loc = GetShaderLocation(*shader, args[1].asStringChars());
+        if (loc < 0)
+            return 0;
+
+        int value = (int)args[2].asNumber();
+        SetShaderValue(*shader, loc, &value, SHADER_UNIFORM_INT);
+        return 0;
+    }
+
+    static int native_set_shader_uniform_vec2(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        if (argCount != 4 || !args[0].isNumber() || !args[1].isString() || !args[2].isNumber() || !args[3].isNumber())
+        {
+            Error("set_shader_uniform_vec2 expects (shaderId, name, x, y)");
+            return 0;
+        }
+
+        int shaderId = (int)args[0].asNumber();
+        Shader *shader = getLoadedShader(shaderId);
+        if (!shader)
+        {
+            Error("set_shader_uniform_vec2 invalid shaderId");
+            return 0;
+        }
+
+        int loc = GetShaderLocation(*shader, args[1].asStringChars());
+        if (loc < 0)
+            return 0;
+
+        float values[2] = {(float)args[2].asNumber(), (float)args[3].asNumber()};
+        SetShaderValue(*shader, loc, values, SHADER_UNIFORM_VEC2);
+        return 0;
+    }
+
+    static int native_set_shader_uniform_vec3(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        if (argCount != 5 || !args[0].isNumber() || !args[1].isString() || !args[2].isNumber() || !args[3].isNumber() || !args[4].isNumber())
+        {
+            Error("set_shader_uniform_vec3 expects (shaderId, name, x, y, z)");
+            return 0;
+        }
+
+        int shaderId = (int)args[0].asNumber();
+        Shader *shader = getLoadedShader(shaderId);
+        if (!shader)
+        {
+            Error("set_shader_uniform_vec3 invalid shaderId");
+            return 0;
+        }
+
+        int loc = GetShaderLocation(*shader, args[1].asStringChars());
+        if (loc < 0)
+            return 0;
+
+        float values[3] = {(float)args[2].asNumber(), (float)args[3].asNumber(), (float)args[4].asNumber()};
+        SetShaderValue(*shader, loc, values, SHADER_UNIFORM_VEC3);
+        return 0;
+    }
+
+    static int native_set_shader_uniform_vec4(Interpreter *vm, int argCount, Value *args)
+    {
+        (void)vm;
+        if (argCount != 6 || !args[0].isNumber() || !args[1].isString() || !args[2].isNumber() || !args[3].isNumber() || !args[4].isNumber() || !args[5].isNumber())
+        {
+            Error("set_shader_uniform_vec4 expects (shaderId, name, x, y, z, w)");
+            return 0;
+        }
+
+        int shaderId = (int)args[0].asNumber();
+        Shader *shader = getLoadedShader(shaderId);
+        if (!shader)
+        {
+            Error("set_shader_uniform_vec4 invalid shaderId");
+            return 0;
+        }
+
+        int loc = GetShaderLocation(*shader, args[1].asStringChars());
+        if (loc < 0)
+            return 0;
+
+        float values[4] = {(float)args[2].asNumber(), (float)args[3].asNumber(), (float)args[4].asNumber(), (float)args[5].asNumber()};
+        SetShaderValue(*shader, loc, values, SHADER_UNIFORM_VEC4);
         return 0;
     }
 
@@ -926,7 +1430,7 @@ namespace BindingsDraw
             Error("draw_fps expects 2 arguments (x, y)");
             return 0;
         }
-        DrawFPS((int)args[0].asNumber(), (int)args[1].asNumber());
+        DRAW_IMMEDIATE(DrawFPS((int)args[0].asNumber(), (int)args[1].asNumber()));
         return 0;
     }
 
@@ -1107,10 +1611,38 @@ namespace BindingsDraw
 
     void RenderScreenCommands()
     {
+        int activeBlendMode = BLEND_ALPHA;
+        int activeShaderId = -1;
         for (size_t i = 0; i < screenCommands.size(); i++)
         {
-            renderCommand(screenCommands[i]);
+            const DrawCommand &cmd = screenCommands[i];
+
+            if (cmd.blendMode != activeBlendMode)
+            {
+                if (activeBlendMode != BLEND_ALPHA)
+                    EndBlendMode();
+                activeBlendMode = cmd.blendMode;
+                if (activeBlendMode != BLEND_ALPHA)
+                    BeginBlendMode(activeBlendMode);
+            }
+
+            if (cmd.shaderId != activeShaderId)
+            {
+                if (getLoadedShader(activeShaderId))
+                    EndShaderMode();
+
+                activeShaderId = cmd.shaderId;
+                Shader *shader = getLoadedShader(activeShaderId);
+                if (shader)
+                    BeginShaderMode(*shader);
+            }
+
+            renderCommand(cmd);
         }
+        if (getLoadedShader(activeShaderId))
+            EndShaderMode();
+        if (activeBlendMode != BLEND_ALPHA)
+            EndBlendMode();
         while (activeClipDepth > 0)
         {
             EndScissorMode();
@@ -1148,6 +1680,23 @@ namespace BindingsDraw
 
         vm.registerNative("set_color", native_set_color, 3);
         vm.registerNative("set_alpha", native_set_alpha, 1);
+        vm.registerNative("set_blend_mode", native_set_blend_mode, 1);
+        vm.registerNative("reset_blend_mode", native_reset_blend_mode, 0);
+        vm.registerNative("set_blend", native_set_blend_mode, 1);
+        vm.registerNative("reset_blend", native_reset_blend_mode, 0);
+        vm.registerNative("load_shader", native_load_shader, 2);
+        vm.registerNative("load_shader_file", native_load_shader_file, 1);
+        vm.registerNative("load_shader_auto", native_load_shader_auto, 1);
+        vm.registerNative("unload_shader", native_unload_shader, 1);
+        vm.registerNative("set_shader", native_set_shader, 1);
+        vm.registerNative("reset_shader", native_reset_shader, 0);
+        vm.registerNative("set_shader_uniform_float", native_set_shader_uniform_float, 3);
+        vm.registerNative("set_shader_uniform_int", native_set_shader_uniform_int, 3);
+        vm.registerNative("set_shader_uniform_vec2", native_set_shader_uniform_vec2, 4);
+        vm.registerNative("set_shader_uniform_vec3", native_set_shader_uniform_vec3, 5);
+        vm.registerNative("set_shader_uniform_vec4", native_set_shader_uniform_vec4, 6);
+        vm.registerNative("set_material_shader", native_set_shader, 1);
+        vm.registerNative("reset_material_shader", native_reset_shader, 0);
 
         vm.registerNative("draw_fps", native_draw_fps, 2);
         vm.registerNative("clip_begin", native_clip_begin, 4);
@@ -1163,6 +1712,14 @@ namespace BindingsDraw
 
         vm.registerNative("load_font", native_load_font, 1);
 
+        vm.addGlobal("BLEND_ALPHA", vm.makeInt(BLEND_ALPHA));
+        vm.addGlobal("BLEND_ADDITIVE", vm.makeInt(BLEND_ADDITIVE));
+        vm.addGlobal("BLEND_MULTIPLIED", vm.makeInt(BLEND_MULTIPLIED));
+        vm.addGlobal("BLEND_ADD_COLORS", vm.makeInt(BLEND_ADD_COLORS));
+        vm.addGlobal("BLEND_SUBTRACT_COLORS", vm.makeInt(BLEND_SUBTRACT_COLORS));
+        vm.addGlobal("BLEND_ALPHA_PREMULTIPLY", vm.makeInt(BLEND_ALPHA_PREMULTIPLY));
+        vm.addGlobal("SHADER_NONE", vm.makeInt(-1));
+
         registerColor(vm);
         registerVector2(vm);
     }
@@ -1174,6 +1731,18 @@ namespace BindingsDraw
             UnloadFont(loadedFonts[i]);
         }
         loadedFonts.clear();
+
+        for (size_t i = 0; i < loadedShaders.size(); i++)
+        {
+            if (loadedShaders[i].alive)
+            {
+                UnloadShader(loadedShaders[i].shader);
+                loadedShaders[i].alive = false;
+            }
+        }
+        loadedShaders.clear();
+        currentShaderId = -1;
+        currentBlendMode = BLEND_ALPHA;
     }
 
 }

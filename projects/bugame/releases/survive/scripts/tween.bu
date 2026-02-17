@@ -1,0 +1,136 @@
+class Tween
+{
+    var start_value = 0;
+    var end_value = 0;
+    var duration = 1.0;
+    var elapsed = 0.0;
+    var value = 0.0;
+    var playing = false;
+    var finished = true;
+    var ease_name = "linear";
+
+    def init(_from, _to, _duration, _ease_name)
+    {
+        self.start(_from, _to, _duration, _ease_name);
+    }
+
+    def start(_from, _to, _duration, _ease_name)
+    {
+        self.start_value = _from;
+        self.end_value = _to;
+        self.duration = _duration;
+        if (self.duration <= 0)
+        {
+            self.duration = 0.0001;
+        }
+        self.ease_name = _ease_name;
+        self.elapsed = 0.0;
+        self.value = self.start_value;
+        self.playing = true;
+        self.finished = false;
+    }
+
+    def stop()
+    {
+        self.playing = false;
+    }
+
+    def restart()
+    {
+        self.elapsed = 0.0;
+        self.value = self.start_value;
+        self.playing = true;
+        self.finished = false;
+    }
+
+    def done()
+    {
+        return self.finished;
+    }
+
+    def set_progress(_t)
+    {
+        var t = _t;
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+
+        self.elapsed = t * self.duration;
+        var e = self._ease(t);
+        self.value = self.start_value + (self.end_value - self.start_value) * e;
+
+        if (t >= 1)
+        {
+            self.finished = true;
+            self.playing = false;
+        }
+        else
+        {
+            self.finished = false;
+        }
+
+        return self.value;
+    }
+
+    def update(_dt)
+    {
+        if (!self.playing)
+        {
+            return self.value;
+        }
+
+        self.elapsed += _dt;
+        var t = self.elapsed / self.duration;
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+
+        var e = self._ease(t);
+        self.value = self.start_value + (self.end_value - self.start_value) * e;
+
+        if (t >= 1)
+        {
+            self.finished = true;
+            self.playing = false;
+        }
+
+        return self.value;
+    }
+
+    def _ease(t)
+    {
+        if (self.ease_name == "linear") return ease_linear(t);
+
+        if (self.ease_name == "sine_in") return ease_sine_in(t);
+        if (self.ease_name == "sine_out") return ease_sine_out(t);
+        if (self.ease_name == "sine_in_out") return ease_sine_in_out(t);
+
+        if (self.ease_name == "quad_in") return ease_quad_in(t);
+        if (self.ease_name == "quad_out") return ease_quad_out(t);
+        if (self.ease_name == "quad_in_out") return ease_quad_in_out(t);
+
+        if (self.ease_name == "cubic_in") return ease_cubic_in(t);
+        if (self.ease_name == "cubic_out") return ease_cubic_out(t);
+        if (self.ease_name == "cubic_in_out") return ease_cubic_in_out(t);
+
+        if (self.ease_name == "expo_in") return ease_expo_in(t);
+        if (self.ease_name == "expo_out") return ease_expo_out(t);
+        if (self.ease_name == "expo_in_out") return ease_expo_in_out(t);
+
+        if (self.ease_name == "circ_in") return ease_circ_in(t);
+        if (self.ease_name == "circ_out") return ease_circ_out(t);
+        if (self.ease_name == "circ_in_out") return ease_circ_in_out(t);
+
+        if (self.ease_name == "back_in") return ease_back_in(t);
+        if (self.ease_name == "back_out") return ease_back_out(t);
+        if (self.ease_name == "back_in_out") return ease_back_in_out(t);
+
+        if (self.ease_name == "elastic_in") return ease_elastic_in(t);
+        if (self.ease_name == "elastic_out") return ease_elastic_out(t);
+        if (self.ease_name == "elastic_in_out") return ease_elastic_in_out(t);
+
+        if (self.ease_name == "bounce_in") return ease_bounce_in(t);
+        if (self.ease_name == "bounce_out") return ease_bounce_out(t);
+        if (self.ease_name == "bounce_in_out") return ease_bounce_in_out(t);
+
+        return ease_linear(t);
+    }
+}

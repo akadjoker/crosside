@@ -1,0 +1,127 @@
+import math;
+
+var WINDOW_WIDTH = 1280;
+var WINDOW_HEIGHT = 720;
+
+var KEY_ESCAPE = 256;
+var KEY_R = 82;
+
+var OUTER = [
+    120, 120,
+    1160, 110,
+    1120, 280,
+    1210, 420,
+    1080, 610,
+    880, 660,
+    650, 620,
+    420, 680,
+    180, 560,
+    90, 360,
+    130, 240
+];
+
+var HOLE = [
+    420, 260,
+    860, 250,
+    900, 430,
+    730, 530,
+    500, 500,
+    380, 390
+];
+
+var TRIANGLES = [];
+var TRI_COUNT = 0;
+
+def rebuild_mesh()
+{
+    var cdt = CDT(OUTER);
+    cdt.add_hole(HOLE);
+    cdt.triangulate();
+    TRIANGLES = cdt.get_triangles();
+    TRI_COUNT = len(TRIANGLES) / 6;
+    print(format("poly2tri triangles: {}", TRI_COUNT));
+}
+
+def draw_polyline(poly, r, g, b, thickness)
+{
+    set_color(r, g, b);
+    var i = 0;
+    while (i < len(poly))
+    {
+        var x1 = poly[i];
+        var y1 = poly[i + 1];
+
+        var j = i + 2;
+        if (j >= len(poly)) j = 0;
+        var x2 = poly[j];
+        var y2 = poly[j + 1];
+
+        draw_line_ex(x1, y1, x2, y2, thickness);
+        draw_circle(x1, y1, 3, true);
+        i += 2;
+    }
+}
+
+def draw_triangles()
+{
+    var i = 0;
+    var t = 0;
+    while (i + 5 < len(TRIANGLES))
+    {
+        var x1 = TRIANGLES[i];
+        var y1 = TRIANGLES[i + 1];
+        var x2 = TRIANGLES[i + 2];
+        var y2 = TRIANGLES[i + 3];
+        var x3 = TRIANGLES[i + 4];
+        var y3 = TRIANGLES[i + 5];
+
+        var r = 60 + ((t * 53) % 160);
+        var g = 70 + ((t * 37) % 140);
+        var b = 80 + ((t * 29) % 120);
+        set_color(r, g, b);
+        draw_triangle(x1, y1, x2, y2, x3, y3, true);
+
+        set_color(16, 16, 20);
+        draw_triangle(x1, y1, x2, y2, x3, y3, false);
+
+        i += 6;
+        t += 1;
+    }
+}
+
+set_window_size(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_window_title("Poly2Tri Draw Test (No Box2D)");
+set_design_resolution(WINDOW_WIDTH, WINDOW_HEIGHT);
+set_virtual_screen_enabled(true);
+set_draw_screen(true);
+
+rebuild_mesh();
+
+loop
+{
+    set_color(12, 14, 20);
+    draw_rectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, true);
+
+    draw_triangles();
+
+    draw_polyline(OUTER, 255, 235, 140, 3);
+    draw_polyline(HOLE, 255, 120, 120, 3);
+
+    set_color(230, 230, 230);
+    draw_text(format("Triangles: {}", TRI_COUNT), 20, 20, 22);
+    draw_text("R rebuild  |  ESC quit", 20, 50, 18);
+    draw_fps(20, 80);
+
+    if (key_pressed(KEY_R))
+    {
+        rebuild_mesh();
+    }
+
+    if (key_down(KEY_ESCAPE))
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}

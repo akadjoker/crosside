@@ -979,14 +979,15 @@ namespace crosside::build
             copyLibraryArtifacts(localOut, outDir, moduleNameLower, ctx);
             copyLibraryArtifacts(module.dir / "obj" / "local" / abi.name, outDir, moduleNameLower, ctx);
 
-            auto built = findPrebuiltModuleOutputAndroid(outDir, module.name, module.staticLib);
+            const bool moduleStaticLib = crosside::model::moduleStaticForAndroid(module);
+            auto built = findPrebuiltModuleOutputAndroid(outDir, module.name, moduleStaticLib);
             if (!built.has_value())
             {
-                built = findPrebuiltModuleOutputAndroid(localOut, module.name, module.staticLib);
+                built = findPrebuiltModuleOutputAndroid(localOut, module.name, moduleStaticLib);
             }
             if (!built.has_value())
             {
-                built = findPrebuiltModuleOutputAndroid(module.dir / "obj" / "local" / abi.name, module.name, module.staticLib);
+                built = findPrebuiltModuleOutputAndroid(module.dir / "obj" / "local" / abi.name, module.name, moduleStaticLib);
             }
             if (!built.has_value())
             {
@@ -2754,6 +2755,16 @@ namespace crosside::build
                 }
             }
 
+            fs::path contentRoot = project.androidContentRoot.empty() ? project.root : project.androidContentRoot;
+            if (!fs::exists(contentRoot) || !fs::is_directory(contentRoot))
+            {
+                if (!project.androidContentRoot.empty())
+                {
+                    ctx.warn("Android CONTENT_ROOT not found, fallback to project root: ", contentRoot.string());
+                }
+                contentRoot = project.root;
+            }
+
             const std::vector<std::pair<std::string, std::string>> assets = {
                 {"scripts", "assets/scripts"},
                 {"assets", "assets/assets"},
@@ -2764,7 +2775,7 @@ namespace crosside::build
 
             for (const auto &[hostName, apkName] : assets)
             {
-                const fs::path src = project.root / hostName;
+                const fs::path src = contentRoot / hostName;
                 const fs::path dst = stageRoot / apkName;
                 const std::size_t count = copyDirectoryTree(src, dst);
                 if (count > 0)
@@ -2941,7 +2952,8 @@ namespace crosside::build
             bool fullBuild)
         {
             const fs::path outDir = module.dir / "Android" / abi.name;
-            const fs::path outLib = outDir / ("lib" + module.name + (module.staticLib ? ".a" : ".so"));
+            const bool moduleStaticLib = crosside::model::moduleStaticForAndroid(module);
+            const fs::path outLib = outDir / ("lib" + module.name + (moduleStaticLib ? ".a" : ".so"));
 
             const auto sources = collectModuleSourcesAndroid(module, ctx);
             if (sources.empty())
@@ -2970,7 +2982,7 @@ namespace crosside::build
                     return true;
                 }
 
-                const auto prebuilt = findPrebuiltModuleOutputAndroid(outDir, module.name, module.staticLib);
+                const auto prebuilt = findPrebuiltModuleOutputAndroid(outDir, module.name, moduleStaticLib);
                 if (!prebuilt.has_value())
                 {
                     ctx.warn("No Android sources for module ", module.name, " and no prebuilt output at ", outLib.string());
@@ -3018,7 +3030,7 @@ namespace crosside::build
                 return false;
             }
 
-            if (module.staticLib)
+            if (moduleStaticLib)
             {
                 return archiveAndroidStatic(ctx, tc, outLib, compiled.objects);
             }
@@ -3060,7 +3072,8 @@ namespace crosside::build
             appendUnique(ldFlags, "-u");
             appendUnique(ldFlags, "ANativeActivity_onCreate");
 
-            const fs::path objRoot = project.root / "obj" / "Android" / project.name / abi.name;
+            const std::string buildCacheKey = crosside::model::projectBuildCacheKey(project);
+            const fs::path objRoot = project.root / "obj" / "Android" / buildCacheKey / abi.name;
             CompileResult compiled;
             if (!compileAndroidSources(ctx, tc, project.root, objRoot, sources, ccFlags, cppFlags, abi, fullBuild, compiled))
             {

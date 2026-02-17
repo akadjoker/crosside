@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.noid",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "Noid",
+    "CONTENT_ROOT": "releases/noid"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/noid"
+  }
+}

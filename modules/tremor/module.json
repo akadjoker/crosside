@@ -1,0 +1,66 @@
+{
+  "module": "tremor",
+  "about": "Tremor integer Ogg Vorbis decoder",
+  "author": "djokersoft",
+  "version": "1.0.0",
+  "depends": [
+    "ogg"
+  ],
+  "static": true,
+  "priority": 0,
+  "system": [
+    "linux",
+    "android",
+    "emscripten",
+    "windows"
+  ],
+  "src": [
+    "src/block.c",
+    "src/codebook.c",
+    "src/floor0.c",
+    "src/floor1.c",
+    "src/info.c",
+    "src/mapping0.c",
+    "src/mdct.c",
+    "src/registry.c",
+    "src/res012.c",
+    "src/sharedbook.c",
+    "src/synthesis.c",
+    "src/vorbisfile.c",
+    "src/window.c"
+  ],
+  "include": [
+    "src"
+  ],
+  "plataforms": {
+    "linux": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-DHAVE_ALLOCA",
+      "LD_ARGS": "",
+      "src": [],
+      "include": []
+    },
+    "windows": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-DHAVE_ALLOCA",
+      "LD_ARGS": "",
+      "src": [],
+      "include": []
+    },
+    "android": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-DHAVE_ALLOCA",
+      "LD_ARGS": "",
+      "src": [],
+      "include": []
+    },
+    "emscripten": {
+      "template": "",
+      "CPP_ARGS": "",
+      "CC_ARGS": "-DHAVE_ALLOCA",
+      "LD_ARGS": "",
+      "src": [],
+      "include": []
+    }
+  }
+}

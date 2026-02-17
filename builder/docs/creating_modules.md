@@ -96,6 +96,10 @@ Copy this as a starting point:
 - `depends` must use module names (the value of each dependency module `module` field).
 - `src` and `include` paths are relative to the module folder.
 - `static: true` produces `lib<name>.a`; `static: false` produces shared output (`.so` for current pipelines).
+- You can override static/shared per target inside `plataforms.<target>` with:
+  - `"static": true|false` or
+  - `"shared": true|false`
+  If omitted, builder uses top-level `static`.
 - `CPP_ARGS`, `CC_ARGS`, and `LD_ARGS` can be a single string or an array of strings.
 
 ## How includes are resolved

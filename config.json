@@ -1,21 +1,16 @@
 {
   "Configuration": {
-    "Modules": [
-      "sfml"
-    ],
-    "Projects": [
-      "/media/projectos/projects/python/crosside/projects/bugame/main.mk"
-    ],
-    "Files": [
-      "/media/projectos/projects/python/crosside/projects/raylib/examples/core/core_2d_camera_platformer.c",
-      "/media/projectos/projects/python/crosside/projects/bugame/main.cpp",
-      "/media/projectos/projects/python/crosside/projects/bugame/src/bindings.cpp",
-      "/media/projectos/projects/python/crosside/projects/sdl/tutorial_1.cpp"
-    ],
-    "Session": {
-      "CurrentPlatform": 0,
-      "Theme": "dark"
+    "Toolchain": {
+      "AndroidSdk": "/home/djoker/android/android-sdk",
+      "AndroidNdk": "/home/djoker/android/android-ndk-r27d",
+      "JavaSdk": "/usr/lib/jvm/java-11-openjdk-amd64",
+      "BuildTools": "30.0.3",
+      "Platform": "android-31",
+      "Emsdk": "/media/projectos/projects/emsdk"
     },
+    "Modules": [
+      "sdl2"
+    ],
     "Desktop": {
       "ArgCPP": [],
       "ArgCC": [],
@@ -29,6 +24,7 @@
       "ArgLD": []
     },
     "Web": {
+      "SHELL": "Templates/Web/shell.html",
       "ArgCPP": [],
       "ArgCC": [],
       "ArgLD": []

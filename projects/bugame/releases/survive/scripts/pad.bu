@@ -1,0 +1,183 @@
+// ============================================
+// TOUCH CONTROLS SYSTEM
+// ============================================
+
+import os;
+
+var PLATFORM_NAME = os.platform;
+var ENV_ANDROID_ROOT = os.getenv("ANDROID_ROOT");
+var ENV_ANDROID_DATA = os.getenv("ANDROID_DATA");
+var IS_ANDROID_ENV = (ENV_ANDROID_ROOT != nil || ENV_ANDROID_DATA != nil);
+var IS_TOUCH_PLATFORM =true;// (PLATFORM_NAME == "android" || PLATFORM_NAME == "emscripten" || IS_ANDROID_ENV);
+
+var TOUCH_UI_ENABLED = IS_TOUCH_PLATFORM;
+var TOUCH_UI_VISIBLE = IS_TOUCH_PLATFORM;
+var TOUCH_RUNTIME_AUTO = false;
+
+// Posições e tamanhos dos botões touch
+var BTN_LEFT_X = 0.0;
+var BTN_LEFT_Y = 0.0;
+var BTN_LEFT_W = 0.0;
+var BTN_LEFT_H = 0.0;
+
+var BTN_RIGHT_X = 0.0;
+var BTN_RIGHT_Y = 0.0;
+var BTN_RIGHT_W = 0.0;
+var BTN_RIGHT_H = 0.0;
+
+var BTN_JUMP_X = 0.0;
+var BTN_JUMP_Y = 0.0;
+var BTN_JUMP_W = 0.0;
+var BTN_JUMP_H = 0.0;
+
+var BTN_SHOOT_X = 0.0;
+var BTN_SHOOT_Y = 0.0;
+var BTN_SHOOT_W = 0.0;
+var BTN_SHOOT_H = 0.0;
+
+var BTN_DOWN_X = 0.0;
+var BTN_DOWN_Y = 0.0;
+var BTN_DOWN_W = 0.0;
+var BTN_DOWN_H = 0.0;
+
+// Função auxiliar para verificar se ponto está dentro de retângulo
+def point_in_rect(px, py, rx, ry, rw, rh)
+{
+    if (px < rx) return false;
+    if (py < ry) return false;
+    if (px > rx + rw) return false;
+    if (py > ry + rh) return false;
+    return true;
+}
+
+// Configurar os botões de controlo touch
+def setup_touch_controls()
+{
+    vkey_clear();
+    
+ 
+    
+    var margin = 26;
+    var dpad_size = 72;
+    var dpad_gap = 8;
+    var button_size = 86;
+    
+    // D-PAD esquerdo (movimento)
+    // Botão ESQUERDA
+    BTN_LEFT_W = dpad_size;
+    BTN_LEFT_H = dpad_size;
+    BTN_LEFT_X = margin;
+    BTN_LEFT_Y = WINDOW_HEIGHT - margin - dpad_size * 2 - dpad_gap;
+    vkey_add(KEY_LEFT, BTN_LEFT_X, BTN_LEFT_Y, BTN_LEFT_W, BTN_LEFT_H);
+    
+    // Botão DIREITA
+    BTN_RIGHT_W = dpad_size;
+    BTN_RIGHT_H = dpad_size;
+    BTN_RIGHT_X = margin + dpad_size + dpad_gap;
+    BTN_RIGHT_Y = BTN_LEFT_Y;
+    vkey_add(KEY_RIGHT, BTN_RIGHT_X, BTN_RIGHT_Y, BTN_RIGHT_W, BTN_RIGHT_H);
+    
+    // Botão BAIXO (crouch)
+    BTN_DOWN_W = dpad_size;
+    BTN_DOWN_H = dpad_size;
+    BTN_DOWN_X = margin;
+    BTN_DOWN_Y = WINDOW_HEIGHT - margin - dpad_size;
+    vkey_add(KEY_DOWN, BTN_DOWN_X, BTN_DOWN_Y, BTN_DOWN_W, BTN_DOWN_H);
+    
+    // Botões direita (ação)
+    // Botão JUMP (em cima)
+    BTN_JUMP_W = button_size;
+    BTN_JUMP_H = button_size;
+    BTN_JUMP_X = WINDOW_WIDTH - margin - button_size;
+    BTN_JUMP_Y = WINDOW_HEIGHT - margin - button_size * 2 - 12;
+    vkey_add(KEY_UP, BTN_JUMP_X, BTN_JUMP_Y, BTN_JUMP_W, BTN_JUMP_H);
+    
+    // Botão SHOOT (em baixo)
+    BTN_SHOOT_W = button_size;
+    BTN_SHOOT_H = button_size;
+    BTN_SHOOT_X = WINDOW_WIDTH - margin - button_size;
+    BTN_SHOOT_Y = WINDOW_HEIGHT - margin - button_size;
+    vkey_add(KEY_SPACE, BTN_SHOOT_X, BTN_SHOOT_Y, BTN_SHOOT_W, BTN_SHOOT_H);
+    
+    vkey_set_visible(TOUCH_UI_VISIBLE);
+}
+
+// Fallback: deteta touch em plataforma desktop por engano
+def ensure_touch_ui_runtime()
+{
+   
+    
+    TOUCH_UI_ENABLED = true;
+    TOUCH_UI_VISIBLE = true;
+    TOUCH_RUNTIME_AUTO = true;
+    setup_touch_controls();
+}
+
+// Desenhar os controlos touch
+def draw_touch_controls()
+{
+   
+    
+    // D-Pad de movimento (esquerda)
+    // Botão LEFT
+    set_alpha(120);
+    set_color(26, 36, 62);
+    draw_rectangle(BTN_LEFT_X, BTN_LEFT_Y, BTN_LEFT_W, BTN_LEFT_H, true);
+    set_alpha(180);
+    set_color(146, 188, 255);
+    draw_rectangle(BTN_LEFT_X, BTN_LEFT_Y, BTN_LEFT_W, BTN_LEFT_H, false);
+    set_alpha(255);
+    set_color(180, 215, 255);
+    draw_text("<", BTN_LEFT_X + BTN_LEFT_W / 2 - 8, BTN_LEFT_Y + BTN_LEFT_H / 2 - 12, 24);
+    
+    // Botão RIGHT
+    set_alpha(120);
+    set_color(26, 36, 62);
+    draw_rectangle(BTN_RIGHT_X, BTN_RIGHT_Y, BTN_RIGHT_W, BTN_RIGHT_H, true);
+    set_alpha(180);
+    set_color(146, 188, 255);
+    draw_rectangle(BTN_RIGHT_X, BTN_RIGHT_Y, BTN_RIGHT_W, BTN_RIGHT_H, false);
+    set_alpha(255);
+    set_color(180, 215, 255);
+    draw_text(">", BTN_RIGHT_X + BTN_RIGHT_W / 2 - 8, BTN_RIGHT_Y + BTN_RIGHT_H / 2 - 12, 24);
+    
+    // Botão DOWN
+    set_alpha(120);
+    set_color(26, 36, 62);
+    draw_rectangle(BTN_DOWN_X, BTN_DOWN_Y, BTN_DOWN_W, BTN_DOWN_H, true);
+    set_alpha(180);
+    set_color(146, 188, 255);
+    draw_rectangle(BTN_DOWN_X, BTN_DOWN_Y, BTN_DOWN_W, BTN_DOWN_H, false);
+    set_alpha(255);
+    set_color(180, 215, 255);
+    draw_text("v", BTN_DOWN_X + BTN_DOWN_W / 2 - 8, BTN_DOWN_Y + BTN_DOWN_H / 2 - 12, 24);
+    
+    // Botão JUMP (direita, em cima)
+    var jump_pressed = key_down(KEY_UP);
+    set_alpha(120);
+    if (jump_pressed) set_color(90, 180, 255);
+    else set_color(62, 95, 140);
+    draw_rectangle(BTN_JUMP_X, BTN_JUMP_Y, BTN_JUMP_W, BTN_JUMP_H, true);
+    set_alpha(200);
+    set_color(146, 220, 255);
+    draw_rectangle(BTN_JUMP_X, BTN_JUMP_Y, BTN_JUMP_W, BTN_JUMP_H, false);
+    set_alpha(255);
+    set_color(220, 240, 255);
+    draw_text("JUMP", BTN_JUMP_X + 16, BTN_JUMP_Y + BTN_JUMP_H / 2 - 10, 18);
+    
+    // Botão SHOOT (direita, em baixo)
+    var shoot_pressed = key_down(KEY_SPACE);
+    set_alpha(120);
+    if (shoot_pressed) set_color(255, 140, 90);
+    else set_color(140, 62, 50);
+    draw_rectangle(BTN_SHOOT_X, BTN_SHOOT_Y, BTN_SHOOT_W, BTN_SHOOT_H, true);
+    set_alpha(200);
+    set_color(255, 180, 120);
+    draw_rectangle(BTN_SHOOT_X, BTN_SHOOT_Y, BTN_SHOOT_W, BTN_SHOOT_H, false);
+    set_alpha(255);
+    set_color(255, 230, 200);
+    draw_text("FIRE", BTN_SHOOT_X + 20, BTN_SHOOT_Y + BTN_SHOOT_H / 2 - 10, 18);
+    
+    set_alpha(255);
+}
+

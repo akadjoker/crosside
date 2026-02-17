@@ -15,7 +15,11 @@ std::string defaultTargetFromConfig(const std::filesystem::path &repoRoot);
 
 ModuleMap discoverModules(const std::filesystem::path &modulesRoot, const crosside::Context &ctx);
 std::optional<ModuleSpec> loadModuleFile(const std::filesystem::path &moduleFile, const crosside::Context &ctx);
-std::optional<ProjectSpec> loadProjectFile(const std::filesystem::path &projectFile, const crosside::Context &ctx);
+std::optional<ProjectSpec> loadProjectFile(
+    const std::filesystem::path &projectFile,
+    const crosside::Context &ctx,
+    const std::string &releaseOverride = "",
+    bool useProjectDefaultRelease = true);
 
 std::filesystem::path resolveModuleFile(
     const std::filesystem::path &repoRoot,

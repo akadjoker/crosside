@@ -36,36 +36,36 @@ namespace crosside::commands
         if (what == "all" || what == "modules")
         {
             auto modules = crosside::model::discoverModules(repoRoot / "modules", ctx);
-            std::vector<std::string> names;
-            names.reserve(modules.size());
+            std::vector<const crosside::model::ModuleSpec *> ordered;
+            ordered.reserve(modules.size());
             for (const auto &item : modules)
             {
-                names.push_back(item.first);
+                ordered.push_back(&item.second);
             }
-            std::sort(names.begin(), names.end());
+            std::sort(ordered.begin(), ordered.end(), [](const auto *a, const auto *b)
+                      { return a->name < b->name; });
 
             ctx.log("Modules:");
-            if (names.empty())
+            if (ordered.empty())
             {
                 ctx.log("  <none>");
             }
-            for (const auto &name : names)
+            for (const auto *module : ordered)
             {
-                const auto &module = modules.at(name);
                 std::string systems;
-                for (size_t i = 0; i < module.systems.size(); ++i)
+                for (size_t i = 0; i < module->systems.size(); ++i)
                 {
                     if (i > 0)
                     {
                         systems += ",";
                     }
-                    systems += module.systems[i];
+                    systems += module->systems[i];
                 }
                 if (systems.empty())
                 {
                     systems = "-";
                 }
-                ctx.log("  ", module.name, "  [", systems, "]  ", module.dir.string());
+                ctx.log("  ", module->name, "  [", systems, "]  ", module->dir.string());
             }
         }
 
@@ -87,7 +87,12 @@ namespace crosside::commands
                     ctx.log("  ", file.string(), "  [invalid]");
                     continue;
                 }
-                ctx.log("  ", project->root.filename().string(), " (name=", project->name, ")  ", file.string());
+                std::string rootLabel = project->root.filename().string();
+                if (rootLabel.empty())
+                {
+                    rootLabel = file.parent_path().filename().string();
+                }
+                ctx.log("  ", rootLabel, " (name=", project->name, ")  ", file.string());
             }
         }
 

@@ -11,10 +11,12 @@
 
 #include "io/fs_utils.hpp"
 #include "io/http_server.hpp"
+#include "io/json_reader.hpp"
 #include "io/process.hpp"
 #include "model/loader.hpp"
 
 namespace fs = std::filesystem;
+using nlohmann::json;
 
 namespace crosside::build {
 namespace {
@@ -94,7 +96,53 @@ std::string envValue(const char *name) {
     return std::string(value);
 }
 
-fs::path resolveTool(const std::vector<std::string> &envKeys, const fs::path &defaultPath, const std::string &fallbackCmd) {
+json readToolchainConfig(const fs::path &repoRoot, const crosside::Context &ctx) {
+    const fs::path configPath = repoRoot / "config.json";
+    if (!fs::exists(configPath)) {
+        return json::object();
+    }
+
+    try {
+        json data = crosside::io::loadJsonFile(configPath);
+        json root = data;
+        if (data.contains("Configuration") && data["Configuration"].is_object()) {
+            root = data["Configuration"];
+        }
+        if (root.contains("Toolchain") && root["Toolchain"].is_object()) {
+            return root["Toolchain"];
+        }
+    } catch (const std::exception &e) {
+        ctx.warn("Failed parse config.json toolchain: ", e.what());
+    }
+
+    return json::object();
+}
+
+std::string configString(const json &obj, std::initializer_list<const char *> keys) {
+    if (!obj.is_object()) {
+        return "";
+    }
+
+    for (const char *key : keys) {
+        if (!key || !obj.contains(key) || !obj[key].is_string()) {
+            continue;
+        }
+        const std::string value = trim(obj[key].get<std::string>());
+        if (!value.empty()) {
+            return value;
+        }
+    }
+
+    return "";
+}
+
+fs::path resolveTool(
+    const std::vector<std::string> &envKeys,
+    const fs::path &defaultPath,
+    const std::string &fallbackCmd,
+    const std::string &configValue,
+    const fs::path &configPathFallback
+) {
     for (const auto &key : envKeys) {
         const std::string value = trim(envValue(key.c_str()));
         if (!value.empty()) {
@@ -102,7 +150,16 @@ fs::path resolveTool(const std::vector<std::string> &envKeys, const fs::path &de
         }
     }
 
+    const std::string configured = trim(configValue);
+    if (!configured.empty()) {
+        return fs::path(configured);
+    }
+
     std::error_code ec;
+    if (!configPathFallback.empty() && fs::exists(configPathFallback, ec)) {
+        return configPathFallback;
+    }
+
     if (!defaultPath.empty() && fs::exists(defaultPath, ec)) {
         return defaultPath;
     }
@@ -110,11 +167,55 @@ fs::path resolveTool(const std::vector<std::string> &envKeys, const fs::path &de
     return fs::path(fallbackCmd);
 }
 
-WebToolchain resolveToolchain() {
+WebToolchain resolveToolchain(const fs::path &repoRoot, const crosside::Context &ctx) {
+    const json config = readToolchainConfig(repoRoot, ctx);
+    const std::string emsdkRootText =
+        configString(config, {"Emsdk", "EMSDK", "emsdk", "EmscriptenRoot", "EmscriptenSdk"});
+    fs::path emsdkRoot = trim(emsdkRootText);
+    if (!emsdkRoot.empty()) {
+        emsdkRoot = fs::absolute(emsdkRoot);
+    }
+    const fs::path emscriptenDir = emsdkRoot.empty() ? fs::path() : (emsdkRoot / "upstream" / "emscripten");
+
+#ifdef _WIN32
+    const std::vector<std::string> suffixes = {".bat", ".cmd", ".exe", ""};
+#else
+    const std::vector<std::string> suffixes = {""};
+#endif
+
+    auto toolFromEmsdk = [&](const std::string &name) -> fs::path {
+        if (emscriptenDir.empty()) {
+            return {};
+        }
+        std::error_code ec;
+        for (const auto &suffix : suffixes) {
+            fs::path candidate = emscriptenDir / (name + suffix);
+            if (fs::exists(candidate, ec)) {
+                return candidate;
+            }
+        }
+        return {};
+    };
+
     WebToolchain out;
-    out.emcc = resolveTool({"EMCC"}, fs::path(kDefaultEmcc), "emcc");
-    out.emcpp = resolveTool({"EMCPP", "EMXX"}, fs::path(kDefaultEmcpp), "em++");
-    out.emar = resolveTool({"EMAR"}, fs::path(kDefaultEmar), "emar");
+    out.emcc = resolveTool(
+        {"EMCC"},
+        fs::path(kDefaultEmcc),
+        "emcc",
+        configString(config, {"Emcc", "EMCC", "EmscriptenEmcc"}),
+        toolFromEmsdk("emcc"));
+    out.emcpp = resolveTool(
+        {"EMCPP", "EMXX"},
+        fs::path(kDefaultEmcpp),
+        "em++",
+        configString(config, {"Emcpp", "EMCPP", "EMXX", "EmscriptenEmcpp"}),
+        toolFromEmsdk("em++"));
+    out.emar = resolveTool(
+        {"EMAR"},
+        fs::path(kDefaultEmar),
+        "emar",
+        configString(config, {"Emar", "EMAR", "EmscriptenEmar"}),
+        toolFromEmsdk("emar"));
     return out;
 }
 
@@ -577,6 +678,14 @@ void appendWebTemplateAndAssets(
         appendUnique(ld, pathString(templateFile));
     }
 
+    fs::path contentRoot = project.webContentRoot.empty() ? project.root : project.webContentRoot;
+    if (!fs::exists(contentRoot) || !fs::is_directory(contentRoot)) {
+        if (!project.webContentRoot.empty()) {
+            ctx.warn("Web CONTENT_ROOT not found, fallback to project root: ", contentRoot.string());
+        }
+        contentRoot = project.root;
+    }
+
     const std::vector<std::pair<std::string, std::string>> preload = {
         {"scripts", "scripts"},
         {"assets", "assets"},
@@ -586,7 +695,7 @@ void appendWebTemplateAndAssets(
     };
 
     for (const auto &[folder, mount] : preload) {
-        const fs::path host = project.root / folder;
+        const fs::path host = contentRoot / folder;
         if (fs::exists(host) && fs::is_directory(host)) {
             ld.push_back("--preload-file");
             ld.push_back(pathString(host) + "@/" + mount);
@@ -736,7 +845,7 @@ bool buildModuleWeb(
         return true;
     }
 
-    const WebToolchain tc = resolveToolchain();
+    const WebToolchain tc = resolveToolchain(repoRoot, ctx);
     if (!validateToolchain(ctx, tc)) {
         return false;
     }
@@ -764,7 +873,7 @@ bool buildModuleWeb(
     }
 
     const fs::path webRoot = module.dir / "Web";
-    if (!module.staticLib) {
+    if (!crosside::model::moduleStaticForWeb(module)) {
         const fs::path outHtml = webRoot / (module.name + ".html");
         if (!linkWebApp(ctx, repoRoot, tc, module.name, compiled.objects, ldFlags, compiled.hasCpp, outHtml, true)) {
             return false;
@@ -788,7 +897,7 @@ bool buildProjectWeb(
     bool autoBuildModules,
     int port
 ) {
-    const WebToolchain tc = resolveToolchain();
+    const WebToolchain tc = resolveToolchain(repoRoot, ctx);
     if (!validateToolchain(ctx, tc)) {
         return false;
     }
@@ -828,7 +937,8 @@ bool buildProjectWeb(
     collectProjectModuleFlagsWeb(repoRoot, modules, activeModules, ccFlags, cppFlags, ldFlags, ctx);
     appendWebTemplateAndAssets(ctx, project, activeModules, modules, ldFlags);
 
-    const fs::path objRoot = project.root / "obj" / "Web" / project.name;
+    const std::string buildCacheKey = crosside::model::projectBuildCacheKey(project);
+    const fs::path objRoot = project.root / "obj" / "Web" / buildCacheKey;
     CompileResult compiled;
     if (!compileWebSources(ctx, tc, project.root, objRoot, sources, ccFlags, cppFlags, fullBuild, compiled)) {
         return false;

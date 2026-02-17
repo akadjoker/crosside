@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -14,6 +15,7 @@ struct PlatformBlock {
     std::vector<std::string> ccArgs;
     std::vector<std::string> ldArgs;
     std::string shellTemplate;
+    std::optional<bool> staticLib;
 };
 
 struct BuildArgs {
@@ -37,6 +39,7 @@ struct ModuleSpec {
 
 struct ProjectSpec {
     std::string name;
+    std::string buildCache;
     std::filesystem::path root;
     std::filesystem::path filePath;
 
@@ -65,9 +68,36 @@ struct ProjectSpec {
     bool androidAdaptiveRound = true;
     std::filesystem::path androidManifestTemplate;
     std::unordered_map<std::string, std::string> androidManifestVars;
+    std::filesystem::path androidContentRoot;
+    std::filesystem::path desktopContentRoot;
     std::string webShell;
+    std::filesystem::path webContentRoot;
 };
 
+inline std::string projectBuildCacheKey(const ProjectSpec &project)
+{
+    if (!project.buildCache.empty())
+    {
+        return project.buildCache;
+    }
+    return project.name;
+}
+
 using ModuleMap = std::unordered_map<std::string, ModuleSpec>;
+
+inline bool moduleStaticForDesktop(const ModuleSpec &module)
+{
+    return module.desktop.staticLib.value_or(module.staticLib);
+}
+
+inline bool moduleStaticForAndroid(const ModuleSpec &module)
+{
+    return module.android.staticLib.value_or(module.staticLib);
+}
+
+inline bool moduleStaticForWeb(const ModuleSpec &module)
+{
+    return module.web.staticLib.value_or(module.staticLib);
+}
 
 } // namespace crosside::model

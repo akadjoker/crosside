@@ -1,0 +1,103 @@
+{
+  "module": "webp",
+  "about": "libwebp decoder + demux from SDL2_image external/libwebp",
+  "author": "djokersoft",
+  "version": "1.0.0",
+  "depends": [],
+  "static": true,
+  "priority": 0,
+  "system": [
+    "linux",
+    "android",
+    "emscripten",
+    "windows"
+  ],
+  "src": [
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/alpha_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/buffer_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/frame_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/idec_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/io_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/quant_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/tree_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/vp8_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/vp8l_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dec/webp_dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/demux/anim_decode.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/demux/demux.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/alpha_processing.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/alpha_processing_neon.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/alpha_processing_sse2.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/alpha_processing_sse41.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/cpu.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/dec.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/dec_clip_tables.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/dec_neon.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/dec_sse2.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/dec_sse41.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/filters.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/filters_neon.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/filters_sse2.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/lossless.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/lossless_neon.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/lossless_sse2.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/rescaler.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/rescaler_neon.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/rescaler_sse2.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/upsampling.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/upsampling_neon.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/upsampling_sse2.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/upsampling_sse41.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/yuv.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/yuv_neon.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/yuv_sse2.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/dsp/yuv_sse41.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/utils/bit_reader_utils.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/utils/color_cache_utils.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/utils/filters_utils.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/utils/huffman_utils.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/utils/quant_levels_dec_utils.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/utils/random_utils.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/utils/rescaler_utils.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/utils/thread_utils.c",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src/utils/utils.c"
+  ],
+  "include": [
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp/src",
+    "../../third_party_src/SDL2_image-2.8.4/external/libwebp"
+  ],
+  "CPP_ARGS": "",
+  "CC_ARGS": "",
+  "LD_ARGS": "",
+  "plataforms": {
+    "linux": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-fPIC",
+      "LD_ARGS": "-lm",
+      "src": [],
+      "include": []
+    },
+    "windows": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-fPIC",
+      "LD_ARGS": "",
+      "src": [],
+      "include": []
+    },
+    "android": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-fPIC",
+      "LD_ARGS": "-lm",
+      "src": [],
+      "include": []
+    },
+    "emscripten": {
+      "template": "",
+      "CPP_ARGS": "",
+      "CC_ARGS": "-fPIC",
+      "LD_ARGS": "-lm",
+      "src": [],
+      "include": []
+    }
+  }
+}

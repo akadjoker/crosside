@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.chaos",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "Chaos Cars",
+    "CONTENT_ROOT": "releases/chaos"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/chaos"
+  }
+}

@@ -1,0 +1,1605 @@
+
+import math;
+import os;
+
+var KEY_ESCAPE = 256;
+var KEY_R = 82;
+var KEY_H = 72;
+var KEY_X = 88;
+var MOUSE_LEFT = 0;
+
+var SCREEN_W = 1024;
+var SCREEN_H = 720;
+
+var GRID_COLS = 8;
+var GRID_ROWS = 9;
+var CELL = 64;
+var BOARD_X = 220;
+var BOARD_Y = 80;
+var CELL_PAD = 6;
+
+var CANDY_TYPES = 6;
+
+var board = [];
+var selected = -1;
+var score = 0;
+var moves_left = 40;
+var cascades_last = 0;
+var message = "";
+var message_t = 0.0;
+var status_line = "Seleciona 2 pecas adjacentes";
+var anim_y = [];
+var FALL_SPEED = 900.0;
+var resolving = false;
+var resolve_combo = 0;
+var resolve_removed = 0;
+var swapping = false;
+var swap_a = -1;
+var swap_b = -1;
+var swap_t = 0.0;
+var swap_back = false;
+var SWAP_SPEED = 9.0;
+var SPECIAL_NONE = 0;
+var SPECIAL_LINE = 1;
+var SPECIAL_COLOR = 2;
+var spawn_idx = [];
+var spawn_val = [];
+var step_bonus = 0;
+
+set_window_size(SCREEN_W, SCREEN_H);
+set_window_title("CandiCrash 3 - Juicy");
+set_design_resolution(SCREEN_W, SCREEN_H);
+set_virtual_screen_enabled(true);
+set_screen_scale_mode(1);
+
+var candy_r = [235, 80, 255, 255, 115, 255];
+var candy_g = [70, 185, 180, 210, 230, 120];
+var candy_b = [90, 85, 90, 80, 120, 245];
+
+var hover_cell = -1;
+var combo_flash_t = 0.0;
+var hint_a = -1;
+var hint_b = -1;
+var hint_t = 0.0;
+
+var pop_text = [];
+var pop_x = [];
+var pop_y = [];
+var pop_vy = [];
+var pop_life = [];
+var pop_max = [];
+var pop_r = [];
+var pop_g = [];
+var pop_b = [];
+
+// Burst visual por celula (leve)
+var burst_t = [];
+var burst_r = [];
+var burst_g = [];
+var burst_b = [];
+var BURST_TIME = 0.28;
+
+// Banner combo/bonus
+var combo_banner = "";
+var combo_banner_t = 0.0;
+var combo_banner_max = 0.0;
+var combo_banner_r = 255;
+var combo_banner_g = 220;
+var combo_banner_b = 120;
+
+// Touch UI (mobile/web)
+var PLATFORM_NAME = os.platform;
+var ENV_ANDROID_ROOT = os.getenv("ANDROID_ROOT");
+var ENV_ANDROID_DATA = os.getenv("ANDROID_DATA");
+var TOUCH_UI_ENABLED = (PLATFORM_NAME == "android" || PLATFORM_NAME == "emscripten" || ENV_ANDROID_ROOT != nil || ENV_ANDROID_DATA != nil);
+var TOUCH_UI_VISIBLE = TOUCH_UI_ENABLED;
+var LOW_FX_MODE = TOUCH_UI_ENABLED;
+var ENABLE_MATCH_FX = true;
+var FX_DYNAMIC = true;
+var FX_QUALITY = 2; // 0=low 1=medium 2=high
+var FX_BUDGET = 8;
+var FX_USED = 0;
+var PERF_DT_AVG = 0.016;
+var PERF_SLOW = 0;
+var PERF_FAST = 0;
+
+def setup_touch_keys()
+{
+    vkey_clear();
+
+    if (!TOUCH_UI_ENABLED)
+    {
+        vkey_set_visible(false);
+        TOUCH_UI_VISIBLE = false;
+        return;
+    }
+
+    var btn_w = 64;
+    var btn_h = 42;
+    var gap = 10;
+    var x = 36;
+    var y = SCREEN_H - btn_h - 18;
+
+    // H = hint, R = reset
+    vkey_add(KEY_H, x, y, btn_w, btn_h);
+    vkey_add(KEY_R, x + btn_w + gap, y, btn_w, btn_h);
+    vkey_add(KEY_X, 18, 18, 72, 44); // Exit no topo esquerdo
+
+    vkey_set_visible(TOUCH_UI_VISIBLE);
+}
+
+def ensure_touch_keys_runtime()
+{
+    if (TOUCH_UI_ENABLED) return;
+    if (touch_count() <= 0) return;
+    TOUCH_UI_ENABLED = true;
+    TOUCH_UI_VISIBLE = true;
+    setup_touch_keys();
+}
+
+def update_fx_quality(dt)
+{
+    if (!FX_DYNAMIC) return;
+
+    PERF_DT_AVG = PERF_DT_AVG * 0.92 + dt * 0.08;
+
+    if (PERF_DT_AVG > 0.038)
+    {
+        PERF_SLOW += 1;
+        if (PERF_FAST > 0) PERF_FAST -= 1;
+    }
+    elif (PERF_DT_AVG < 0.023)
+    {
+        PERF_FAST += 1;
+        if (PERF_SLOW > 0) PERF_SLOW -= 1;
+    }
+    else
+    {
+        if (PERF_SLOW > 0) PERF_SLOW -= 1;
+        if (PERF_FAST > 0) PERF_FAST -= 1;
+    }
+
+    if (PERF_SLOW > 40)
+    {
+        if (FX_QUALITY > 0) FX_QUALITY -= 1;
+        PERF_SLOW = 0;
+    }
+    elif (PERF_FAST > 200)
+    {
+        if (FX_QUALITY < 2) FX_QUALITY += 1;
+        PERF_FAST = 0;
+    }
+}
+
+def begin_fx_frame()
+{
+    FX_USED = 0;
+    if (FX_QUALITY >= 2)
+    {
+        FX_BUDGET = 10;
+    }
+    elif (FX_QUALITY == 1)
+    {
+        FX_BUDGET = 4;
+    }
+    else
+    {
+        FX_BUDGET = 2;
+    }
+}
+
+def init_burst_arrays()
+{
+    burst_t = [];
+    burst_r = [];
+    burst_g = [];
+    burst_b = [];
+
+    var total = GRID_ROWS * GRID_COLS;
+    var i = 0;
+    while (i < total)
+    {
+        burst_t.push(0);
+        burst_r.push(255);
+        burst_g.push(255);
+        burst_b.push(255);
+        i += 1;
+    }
+}
+
+def trigger_burst(cell, base, power)
+{
+    if (cell < 0) return;
+    if (cell >= GRID_ROWS * GRID_COLS) return;
+
+    var t = BURST_TIME + power * 0.03;
+    if (t > 0.45) t = 0.45;
+    if (burst_t[cell] < t) burst_t[cell] = t;
+
+    var b = base;
+    if (b < 0 || b >= CANDY_TYPES) b = 0;
+    burst_r[cell] = candy_r[b];
+    burst_g[cell] = candy_g[b];
+    burst_b[cell] = candy_b[b];
+}
+
+def update_burst(dt)
+{
+    var total = GRID_ROWS * GRID_COLS;
+    var i = 0;
+    while (i < total)
+    {
+        if (burst_t[i] > 0)
+        {
+            burst_t[i] =burst_t[i] - dt;
+            if (burst_t[i] < 0) burst_t[i] = 0;
+        }
+        i += 1;
+    }
+}
+
+
+
+def show_combo_banner(text, secs, r, g, b)
+{
+    combo_banner = text;
+    combo_banner_t = secs;
+    combo_banner_max = secs;
+    combo_banner_r = r;
+    combo_banner_g = g;
+    combo_banner_b = b;
+}
+
+def draw_combo_banner()
+{
+    if (combo_banner_t <= 0) return;
+
+    var p = combo_banner_t / combo_banner_max;
+    if (p < 0) p = 0;
+    if (p > 1) p = 1;
+
+    var pulse = 1.0 + (sin(time() * 16) * 0.08);
+    var sz = int(28 * pulse);
+    if (sz < 18) sz = 18;
+
+    var tw = len(combo_banner) * (sz * 0.58);
+    var tx = int(BOARD_X + GRID_COLS * CELL * 0.5 - tw * 0.5);
+    var ty = BOARD_Y - 38 + int((1.0 - p) * 6);
+    var a = int(255 * p);
+
+    set_alpha(a);
+    set_color(0, 0, 0);
+    draw_text(combo_banner, tx + 2, ty + 2, sz);
+    set_color(combo_banner_r, combo_banner_g, combo_banner_b);
+    draw_text(combo_banner, tx, ty, sz);
+    set_alpha(255);
+}
+
+
+def clamp(v, lo, hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+
+def idx(r, c)
+{
+    return r * GRID_COLS + c;
+}
+
+def make_candy(base, special)
+{
+    return base + special * CANDY_TYPES;
+}
+
+def candy_base(v)
+{
+    if (v < 0) return -1;
+    return v % CANDY_TYPES;
+}
+
+def candy_special(v)
+{
+    if (v < 0) return SPECIAL_NONE;
+    return int(v / CANDY_TYPES);
+}
+
+
+def rand_candy()
+{
+    var b = int(math.rand(0, 1000000)) % CANDY_TYPES;
+    return make_candy(b, SPECIAL_NONE);
+}
+
+
+def cell_row(cell)
+{
+    return int(cell / GRID_COLS);
+}
+
+
+def cell_col(cell)
+{
+    return cell % GRID_COLS;
+}
+
+
+def is_adjacent(a, b)
+{
+    var ar = cell_row(a);
+    var ac = cell_col(a);
+    var br = cell_row(b);
+    var bc = cell_col(b);
+    var dr = abs(ar - br);
+    var dc = abs(ac - bc);
+    if ((dr + dc) == 1) return true;
+    return false;
+}
+
+
+def cell_from_mouse(mx, my)
+{
+    var lx = mx - BOARD_X;
+    var ly = my - BOARD_Y;
+    if (lx < 0 || ly < 0) return -1;
+
+    var c = int(lx / CELL);
+    var r = int(ly / CELL);
+
+    if (c < 0 || c >= GRID_COLS) return -1;
+    if (r < 0 || r >= GRID_ROWS) return -1;
+
+    return idx(r, c);
+}
+
+
+def clear_marks()
+{
+    var marks = [];
+    var total = GRID_ROWS * GRID_COLS;
+    var i = 0;
+    while (i < total)
+    {
+        marks.push(0);
+        i += 1;
+    }
+    return marks;
+}
+
+def init_anim_array()
+{
+    anim_y = [];
+    var total = GRID_ROWS * GRID_COLS;
+    var i = 0;
+    while (i < total)
+    {
+        anim_y.push(0);
+        i += 1;
+    }
+}
+
+def any_anim_active()
+{
+    var total = GRID_ROWS * GRID_COLS;
+    var i = 0;
+    while (i < total)
+    {
+        if (abs(anim_y[i]) > 0.5) return true;
+        i += 1;
+    }
+    return false;
+}
+
+def update_fall_anim(dt)
+{
+    var total = GRID_ROWS * GRID_COLS;
+    var i = 0;
+    while (i < total)
+    {
+        if (anim_y[i] < 0)
+        {
+            anim_y[i] = anim_y[i] + FALL_SPEED * dt;
+            if (anim_y[i] > 0) anim_y[i] = 0;
+        }
+        elif (anim_y[i] > 0)
+        {
+            anim_y[i] = anim_y[i] - FALL_SPEED * dt;
+            if (anim_y[i] < 0) anim_y[i] = 0;
+        }
+        i += 1;
+    }
+}
+
+def swap_cells(a, b)
+{
+    var t = board[a];
+    board[a] = board[b];
+    board[b] = t;
+}
+
+def has_any_match()
+{
+    var r = 0;
+    while (r < GRID_ROWS)
+    {
+        var c = 0;
+        while (c < GRID_COLS)
+        {
+            var v = candy_base(board[idx(r, c)]);
+            if (v < 0)
+            {
+                c += 1;
+                continue;
+            }
+
+            var run = 1;
+            while (c + run < GRID_COLS && candy_base(board[idx(r, c + run)]) == v)
+            {
+                run += 1;
+            }
+            if (run >= 3) return true;
+            c += run;
+        }
+        r += 1;
+    }
+
+    var c2 = 0;
+    while (c2 < GRID_COLS)
+    {
+        var r2 = 0;
+        while (r2 < GRID_ROWS)
+        {
+            var v2 = candy_base(board[idx(r2, c2)]);
+            if (v2 < 0)
+            {
+                r2 += 1;
+                continue;
+            }
+
+            var run2 = 1;
+            while (r2 + run2 < GRID_ROWS && candy_base(board[idx(r2 + run2, c2)]) == v2)
+            {
+                run2 += 1;
+            }
+            if (run2 >= 3) return true;
+            r2 += run2;
+        }
+        c2 += 1;
+    }
+
+    return false;
+}
+
+def has_possible_moves()
+{
+    var r = 0;
+    while (r < GRID_ROWS)
+    {
+        var c = 0;
+        while (c < GRID_COLS)
+        {
+            var a = idx(r, c);
+
+            if (c + 1 < GRID_COLS)
+            {
+                var b = idx(r, c + 1);
+                swap_cells(a, b);
+                var ok_h = has_any_match();
+                swap_cells(a, b);
+                if (ok_h) return true;
+            }
+
+            if (r + 1 < GRID_ROWS)
+            {
+                var b2 = idx(r + 1, c);
+                swap_cells(a, b2);
+                var ok_v = has_any_match();
+                swap_cells(a, b2);
+                if (ok_v) return true;
+            }
+
+            c += 1;
+        }
+        r += 1;
+    }
+    return false;
+}
+
+def clear_hint()
+{
+    hint_a = -1;
+    hint_b = -1;
+    hint_t = 0;
+}
+
+def find_hint_move()
+{
+    clear_hint();
+
+    var r = 0;
+    while (r < GRID_ROWS)
+    {
+        var c = 0;
+        while (c < GRID_COLS)
+        {
+            var a = idx(r, c);
+
+            if (c + 1 < GRID_COLS)
+            {
+                var b = idx(r, c + 1);
+                swap_cells(a, b);
+                var ok_h = has_any_match();
+                swap_cells(a, b);
+                if (ok_h)
+                {
+                    hint_a = a;
+                    hint_b = b;
+                    return true;
+                }
+            }
+
+            if (r + 1 < GRID_ROWS)
+            {
+                var b2 = idx(r + 1, c);
+                swap_cells(a, b2);
+                var ok_v = has_any_match();
+                swap_cells(a, b2);
+                if (ok_v)
+                {
+                    hint_a = a;
+                    hint_b = b2;
+                    return true;
+                }
+            }
+
+            c += 1;
+        }
+        r += 1;
+    }
+    return false;
+}
+
+def generate_board_playable()
+{
+    var attempts = 0;
+    while (attempts < 64)
+    {
+        board = [];
+
+        var r = 0;
+        while (r < GRID_ROWS)
+        {
+            var c = 0;
+            while (c < GRID_COLS)
+            {
+                var cand = rand_candy();
+                var guard = 0;
+
+                while (guard < 40)
+                {
+                    var bad = false;
+
+                    if (c >= 2)
+                    {
+                        var left1 = board[idx(r, c - 1)];
+                        var left2 = board[idx(r, c - 2)];
+                        if (left1 == cand && left2 == cand)
+                        {
+                            bad = true;
+                        }
+                    }
+
+                    if (r >= 2)
+                    {
+                        var up1 = board[idx(r - 1, c)];
+                        var up2 = board[idx(r - 2, c)];
+                        if (up1 == cand && up2 == cand)
+                        {
+                            bad = true;
+                        }
+                    }
+
+                    if (!bad) break;
+                    cand = rand_candy();
+                    guard += 1;
+                }
+
+                board.push(cand);
+                c += 1;
+            }
+            r += 1;
+        }
+
+        if (has_possible_moves()) return;
+        attempts += 1;
+    }
+}
+
+def popup_emit(text, px, py, r, g, b)
+{
+    pop_text.push(text);
+    pop_x.push(px);
+    pop_y.push(py);
+    pop_vy.push(-30);
+    pop_life.push(0.9);
+    pop_max.push(0.9);
+    pop_r.push(r);
+    pop_g.push(g);
+    pop_b.push(b);
+}
+
+def fx_emit(px, py, base, power)
+{
+    if (!ENABLE_MATCH_FX) return;
+    if (FX_USED >= FX_BUDGET) return;
+    if (base < 0 || base >= CANDY_TYPES) return;
+    FX_USED += 1;
+
+    var col = Color(candy_r[base], candy_g[base], candy_b[base], 255);
+    if (LOW_FX_MODE || FX_QUALITY <= 0)
+    {
+        create_sparkle(px, py, 0);
+        return;
+    }
+    if (FX_QUALITY == 1)
+    {
+        create_sparks(px, py, 0, col);
+        return;
+    }
+    if (power >= 3)
+    {
+        create_explosion(px, py, 0, col);
+    }
+    elif (power >= 2)
+    {
+        create_sparks(px, py, 0, col);
+    }
+    else
+    {
+        create_sparkle(px, py, 0);
+    }
+}
+
+def popup_update_draw(dt)
+{
+    if (len(pop_text) <= 0) return;
+
+    var write = 0;
+    var i = 0;
+    while (i < len(pop_text))
+    {
+        var life = pop_life[i] - dt;
+        if (life > 0)
+        {
+            var vy = pop_vy[i] - 12 * dt;
+            var x = pop_x[i];
+            var y = pop_y[i] + vy * dt;
+            var a = int(255 * (life / pop_max[i]));
+
+            set_alpha(a);
+            set_color(pop_r[i], pop_g[i], pop_b[i]);
+            draw_text(pop_text[i], x, y, 20);
+            set_alpha(255);
+
+            pop_x[write] = x;
+            pop_y[write] = y;
+            pop_vy[write] = vy;
+            pop_life[write] = life;
+            if (write != i)
+            {
+                pop_text[write] = pop_text[i];
+                pop_max[write] = pop_max[i];
+                pop_r[write] = pop_r[i];
+                pop_g[write] = pop_g[i];
+                pop_b[write] = pop_b[i];
+            }
+            write += 1;
+        }
+        i += 1;
+    }
+
+    while (len(pop_text) > write)
+    {
+        pop_text.pop();
+        pop_x.pop();
+        pop_y.pop();
+        pop_vy.pop();
+        pop_life.pop();
+        pop_max.pop();
+        pop_r.pop();
+        pop_g.pop();
+        pop_b.pop();
+    }
+}
+
+
+def clear_spawns()
+{
+    spawn_idx = [];
+    spawn_val = [];
+}
+
+def set_spawn(i, v)
+{
+    var j = 0;
+    while (j < len(spawn_idx))
+    {
+        if (spawn_idx[j] == i)
+        {
+            if (candy_special(v) > candy_special(spawn_val[j]))
+            {
+                spawn_val[j] = v;
+            }
+            return;
+        }
+        j += 1;
+    }
+    spawn_idx.push(i);
+    spawn_val.push(v);
+}
+
+def get_spawn(i)
+{
+    var j = 0;
+    while (j < len(spawn_idx))
+    {
+        if (spawn_idx[j] == i) return spawn_val[j];
+        j += 1;
+    }
+    return -1;
+}
+
+def expand_special_effects(marks)
+{
+    var total = GRID_ROWS * GRID_COLS;
+    var done = [];
+    var i = 0;
+    while (i < total)
+    {
+        done.push(0);
+        i += 1;
+    }
+
+    var changed = true;
+    while (changed)
+    {
+        changed = false;
+        var k = 0;
+        while (k < total)
+        {
+            if (marks[k] == 1 && done[k] == 0)
+            {
+                done[k] = 1;
+                var sp = candy_special(board[k]);
+
+                if (sp == SPECIAL_LINE)
+                {
+                    var rr = cell_row(k);
+                    var cc = cell_col(k);
+
+                    var c = 0;
+                    while (c < GRID_COLS)
+                    {
+                        var ti = idx(rr, c);
+                        if (marks[ti] == 0)
+                        {
+                            marks[ti] = 1;
+                            changed = true;
+                        }
+                        c += 1;
+                    }
+
+                    var r = 0;
+                    while (r < GRID_ROWS)
+                    {
+                        var ti2 = idx(r, cc);
+                        if (marks[ti2] == 0)
+                        {
+                            marks[ti2] = 1;
+                            changed = true;
+                        }
+                        r += 1;
+                    }
+                }
+                elif (sp == SPECIAL_COLOR)
+                {
+                    var target = candy_base(board[k]);
+                    if (target >= 0)
+                    {
+                        var t = 0;
+                        while (t < total)
+                        {
+                            if (candy_base(board[t]) == target && marks[t] == 0)
+                            {
+                                marks[t] = 1;
+                                changed = true;
+                            }
+                            t += 1;
+                        }
+                    }
+                }
+            }
+            k += 1;
+        }
+    }
+}
+
+def find_matches_marks()
+{
+    clear_spawns();
+    step_bonus = 0;
+    var marks = clear_marks();
+
+    var r = 0;
+    while (r < GRID_ROWS)
+    {
+        var c = 0;
+        while (c < GRID_COLS)
+        {
+            var v = candy_base(board[idx(r, c)]);
+            if (v < 0)
+            {
+                c += 1;
+                continue;
+            }
+
+            var run = 1;
+            while (c + run < GRID_COLS && candy_base(board[idx(r, c + run)]) == v)
+            {
+                run += 1;
+            }
+
+            if (run >= 3)
+            {
+                var k = 0;
+                while (k < run)
+                {
+                    marks[idx(r, c + k)] = 1;
+                    k += 1;
+                }
+
+                if (run == 4)
+                {
+                    set_spawn(idx(r, c + 1), make_candy(v, SPECIAL_LINE));
+                    step_bonus += 40;
+                }
+                elif (run >= 5)
+                {
+                    set_spawn(idx(r, c + 2), make_candy(v, SPECIAL_COLOR));
+                    step_bonus += 120;
+                }
+            }
+
+            c += run;
+        }
+        r += 1;
+    }
+
+    var c2 = 0;
+    while (c2 < GRID_COLS)
+    {
+        var r2 = 0;
+        while (r2 < GRID_ROWS)
+        {
+            var v2 = candy_base(board[idx(r2, c2)]);
+            if (v2 < 0)
+            {
+                r2 += 1;
+                continue;
+            }
+
+            var run2 = 1;
+            while (r2 + run2 < GRID_ROWS && candy_base(board[idx(r2 + run2, c2)]) == v2)
+            {
+                run2 += 1;
+            }
+
+            if (run2 >= 3)
+            {
+                var k2 = 0;
+                while (k2 < run2)
+                {
+                    marks[idx(r2 + k2, c2)] = 1;
+                    k2 += 1;
+                }
+
+                if (run2 == 4)
+                {
+                    set_spawn(idx(r2 + 1, c2), make_candy(v2, SPECIAL_LINE));
+                    step_bonus += 40;
+                }
+                elif (run2 >= 5)
+                {
+                    set_spawn(idx(r2 + 2, c2), make_candy(v2, SPECIAL_COLOR));
+                    step_bonus += 120;
+                }
+            }
+
+            r2 += run2;
+        }
+        c2 += 1;
+    }
+
+    return marks;
+}
+
+
+def remove_marked(marks)
+{
+    expand_special_effects(marks);
+
+    var removed = 0;
+    var total = GRID_ROWS * GRID_COLS;
+    var i = 0;
+    while (i < total)
+    {
+        if (marks[i] == 1)
+        {
+            var rr = cell_row(i);
+            var cc = cell_col(i);
+            var oldv = board[i];
+            var base = candy_base(oldv);
+            var sp = candy_special(oldv);
+
+            var sv = get_spawn(i);
+            if (sv >= 0)
+            {
+                var px = BOARD_X + cc * CELL + CELL * 0.5 - 8;
+                var py = BOARD_Y + rr * CELL + CELL * 0.5 - 10;
+                board[i] = sv;
+                anim_y[i] = 0;
+                trigger_burst(i, candy_base(sv), 2);
+                fx_emit(px, py, candy_base(sv), 2);
+                popup_emit("+" + str(50), px - 2, py - 4, 255, 240, 130);
+            }
+            else
+            {
+                board[i] = -1;
+                removed += 1;
+                trigger_burst(i, base, sp + 1);
+                if (sp > SPECIAL_NONE || (removed % 5) == 0)
+                {
+                    var px2 = BOARD_X + cc * CELL + CELL * 0.5 - 8;
+                    var py2 = BOARD_Y + rr * CELL + CELL * 0.5 - 10;
+                    fx_emit(px2, py2, base, sp + 1);
+                }
+            }
+        }
+        i += 1;
+    }
+    return removed;
+}
+
+
+def apply_gravity()
+{
+    var c = 0;
+    while (c < GRID_COLS)
+    {
+        var write_r = GRID_ROWS - 1;
+        var r = GRID_ROWS - 1;
+
+        while (r >= 0)
+        {
+            var from_i = idx(r, c);
+            var v = board[from_i];
+            if (v >= 0)
+            {
+                var to_i = idx(write_r, c);
+                board[to_i] = v;
+                if (write_r != r)
+                {
+                    board[from_i] = -1;
+                    anim_y[to_i] = -((write_r - r) * CELL);
+                }
+                write_r -= 1;
+            }
+            r -= 1;
+        }
+
+        while (write_r >= 0)
+        {
+            board[idx(write_r, c)] = rand_candy();
+            anim_y[idx(write_r, c)] = -((write_r + 2) * CELL);
+            write_r -= 1;
+        }
+
+        c += 1;
+    }
+}
+
+
+def resolve_board()
+{
+    var total_removed = 0;
+    var cascades = 0;
+
+    while (true)
+    {
+        var marks = find_matches_marks();
+        var removed = remove_marked(marks);
+
+        if (removed <= 0) break;
+
+        cascades += 1;
+        total_removed += removed;
+        score += removed * 10 * cascades;
+
+        apply_gravity();
+
+        if (cascades > 16) break;
+    }
+
+    cascades_last = cascades;
+    return total_removed;
+}
+
+
+def init_board()
+{
+    selected = -1;
+    score = 0;
+    moves_left = 40;
+    cascades_last = 0;
+    message = "";
+    message_t = 0;
+    status_line = "Seleciona 2 pecas adjacentes";
+    resolving = false;
+    resolve_combo = 0;
+    resolve_removed = 0;
+    swapping = false;
+    swap_a = -1;
+    swap_b = -1;
+    swap_t = 0;
+    swap_back = false;
+    combo_flash_t = 0;
+    combo_banner = "";
+    combo_banner_t = 0;
+    combo_banner_max = 0;
+    clear_hint();
+    pop_text = [];
+    pop_x = [];
+    pop_y = [];
+    pop_vy = [];
+    pop_life = [];
+    pop_max = [];
+    pop_r = [];
+    pop_g = [];
+    pop_b = [];
+    generate_board_playable();
+    init_anim_array();
+    init_burst_arrays();
+}
+
+
+def set_msg(text)
+{
+    message = text;
+    message_t = 1.2;
+}
+
+
+def draw_candy_center(cx, cy, t)
+{
+    var b = candy_base(t);
+    var sp = candy_special(t);
+    if (b < 0) return;
+
+    set_color(candy_r[b], candy_g[b], candy_b[b]);
+    draw_circle(cx, cy, CELL * 0.34, true);
+
+    set_color(255, 255, 255);
+    set_alpha(85);
+    draw_circle(cx - CELL * 0.10, cy - CELL * 0.10, CELL * 0.10, true);
+    set_alpha(255);
+
+    set_color(30, 30, 38);
+    draw_circle(cx, cy, CELL * 0.34, false);
+
+    if (sp == SPECIAL_LINE)
+    {
+        set_color(255, 255, 255);
+        draw_line(cx - CELL * 0.22, cy, cx + CELL * 0.22, cy);
+        draw_line(cx - CELL * 0.22, cy - 2, cx + CELL * 0.22, cy - 2);
+    }
+    elif (sp == SPECIAL_COLOR)
+    {
+        set_color(255, 245, 140);
+        draw_circle(cx, cy, CELL * 0.14, true);
+        set_color(255, 255, 255);
+        draw_circle(cx, cy, CELL * 0.20, false);
+    }
+}
+
+def draw_swap_animation()
+{
+    if (swapping == false) return;
+    if (swap_a < 0 || swap_b < 0) return;
+
+    var ar = cell_row(swap_a);
+    var ac = cell_col(swap_a);
+    var br = cell_row(swap_b);
+    var bc = cell_col(swap_b);
+
+    var ax = BOARD_X + ac * CELL + CELL * 0.5;
+    var ay = BOARD_Y + ar * CELL + CELL * 0.5 + anim_y[swap_a];
+    var bx = BOARD_X + bc * CELL + CELL * 0.5;
+    var by = BOARD_Y + br * CELL + CELL * 0.5 + anim_y[swap_b];
+
+    var px1 = ax + (bx - ax) * swap_t;
+    var py1 = ay + (by - ay) * swap_t;
+    var px2 = bx + (ax - bx) * swap_t;
+    var py2 = by + (ay - by) * swap_t;
+
+    var ta = board[swap_a];
+    var tb = board[swap_b];
+
+    if (ta >= 0) draw_candy_center(px1, py1, ta);
+    if (tb >= 0) draw_candy_center(px2, py2, tb);
+}
+
+def draw_burst()
+{
+    var total = GRID_ROWS * GRID_COLS;
+    var i = 0;
+    while (i < total)
+    {
+        var t = burst_t[i];
+        if (t > 0)
+        {
+            var p = t / BURST_TIME;
+            if (p < 0) p = 0;
+            if (p > 1) p = 1;
+
+            var rr = cell_row(i);
+            var cc = cell_col(i);
+            var cx = BOARD_X + cc * CELL + CELL * 0.5;
+            var cy = BOARD_Y + rr * CELL + CELL * 0.5;
+
+            var RAD = CELL * (0.22 + (1.0 - p) * 0.38);
+            var a_ring = int(190 * p);
+            var a_fill = int(70 * p);
+
+            set_alpha(a_fill);
+            set_color(burst_r[i], burst_g[i], burst_b[i]);
+            draw_circle(cx, cy, RAD * 0.8, true);
+
+            set_alpha(a_ring);
+            set_color(255, 255, 255);
+            draw_circle(cx, cy, RAD, false);
+            draw_circle(cx, cy, RAD * 0.6, false);
+            set_alpha(255);
+        }
+        i += 1;
+    }
+}
+
+def draw_board()
+{
+    set_alpha(85);
+    set_color(0, 0, 0);
+    draw_rectangle(BOARD_X - 4, BOARD_Y - 2, GRID_COLS * CELL + 16, GRID_ROWS * CELL + 16, true);
+    set_alpha(255);
+
+    set_color(34, 36, 52);
+    draw_rectangle(BOARD_X - 10, BOARD_Y - 10, GRID_COLS * CELL + 20, GRID_ROWS * CELL + 20, true);
+
+    var r = 0;
+    while (r < GRID_ROWS)
+    {
+        var c = 0;
+        while (c < GRID_COLS)
+        {
+            var x = BOARD_X + c * CELL;
+            var y = BOARD_Y + r * CELL;
+            var ci = idx(r, c);
+
+            set_color(52, 56, 78);
+            draw_rectangle(x, y, CELL - 1, CELL - 1, true);
+
+            if (swapping && (ci == swap_a || ci == swap_b))
+            {
+                c += 1;
+                continue;
+            }
+
+            var v = board[ci];
+            if (v >= 0)
+            {
+                var aoff = anim_y[ci];
+                draw_candy_center(x + CELL * 0.5, y + CELL * 0.5 + aoff, v);
+            }
+
+            c += 1;
+        }
+        r += 1;
+    }
+
+    draw_swap_animation();
+
+    if (hover_cell >= 0 && selected < 0)
+    {
+        var hr = cell_row(hover_cell);
+        var hc = cell_col(hover_cell);
+        var hx = BOARD_X + hc * CELL;
+        var hy = BOARD_Y + hr * CELL;
+        set_alpha(95);
+        set_color(255, 255, 255);
+        draw_rectangle(hx + 3, hy + 3, CELL - 6, CELL - 6, false);
+        set_alpha(255);
+    }
+
+    if (hint_t > 0 && hint_a >= 0 && hint_b >= 0)
+    {
+        var pulse = 0.5 + (sin(time() * 12) + 1) * 0.5;
+        var alpha = int(80 + 120 * pulse);
+
+        var ar = cell_row(hint_a);
+        var ac = cell_col(hint_a);
+        var br = cell_row(hint_b);
+        var bc = cell_col(hint_b);
+
+        var ax = BOARD_X + ac * CELL;
+        var ay = BOARD_Y + ar * CELL;
+        var bx = BOARD_X + bc * CELL;
+        var by = BOARD_Y + br * CELL;
+
+        set_alpha(alpha);
+        set_color(120, 255, 180);
+        draw_rectangle(ax + 4, ay + 4, CELL - 8, CELL - 8, false);
+        draw_rectangle(ax + 8, ay + 8, CELL - 16, CELL - 16, false);
+        draw_rectangle(bx + 4, by + 4, CELL - 8, CELL - 8, false);
+        draw_rectangle(bx + 8, by + 8, CELL - 16, CELL - 16, false);
+        set_alpha(90);
+        draw_line(ax + CELL * 0.5, ay + CELL * 0.5, bx + CELL * 0.5, by + CELL * 0.5);
+        set_alpha(255);
+    }
+
+    if (selected >= 0)
+    {
+        var sr = cell_row(selected);
+        var sc = cell_col(selected);
+        var sx = BOARD_X + sc * CELL;
+        var sy = BOARD_Y + sr * CELL;
+        var pulse = 0.5 + (sin(time() * 10) + 1) * 0.5;
+
+        set_color(255, 240, 70 + int(40 * pulse));
+        draw_rectangle(sx + 2, sy + 2, CELL - 5, CELL - 5, false);
+        draw_rectangle(sx + 4, sy + 4, CELL - 9, CELL - 9, false);
+        set_alpha(255);
+    }
+}
+
+
+def handle_click()
+{
+    clear_hint();
+
+    var mx = get_mouse_x();
+    var my = get_mouse_y();
+    var cell = cell_from_mouse(mx, my);
+
+    if (cell < 0)
+    {
+        selected = -1;
+        status_line = "Clique dentro do tabuleiro";
+        return;
+    }
+
+    if (selected < 0)
+    {
+        selected = cell;
+        status_line = "Selecionado: " + str(cell_col(cell)) + "," + str(cell_row(cell));
+        return;
+    }
+
+    if (cell == selected)
+    {
+        selected = -1;
+        status_line = "Selecao limpa";
+        return;
+    }
+
+    if (is_adjacent(selected, cell) == false)
+    {
+        selected = cell;
+        status_line = "Escolhe um vizinho (lado a lado)";
+        return;
+    }
+
+    if (moves_left <= 0)
+    {
+        set_msg("Sem movimentos!");
+        status_line = "Sem movimentos";
+        selected = -1;
+        return;
+    }
+
+    var a = selected;
+    var b = cell;
+    swap_a = a;
+    swap_b = b;
+    swap_t = 0;
+    swap_back = false;
+    swapping = true;
+    status_line = "A trocar...";
+
+    selected = -1;
+}
+
+
+init_board();
+setup_touch_keys();
+
+loop
+{
+    var dt = delta();
+    ensure_touch_keys_runtime();
+    update_fx_quality(dt);
+    begin_fx_frame();
+
+    if (message_t > 0)
+    {
+        message_t -= dt;
+        if (message_t < 0) message_t = 0;
+    }
+    if (combo_flash_t > 0)
+    {
+        combo_flash_t -= dt;
+        if (combo_flash_t < 0) combo_flash_t = 0;
+    }
+    if (hint_t > 0)
+    {
+        hint_t -= dt;
+        if (hint_t < 0) hint_t = 0;
+    }
+    if (combo_banner_t > 0)
+    {
+        combo_banner_t -= dt;
+        if (combo_banner_t < 0) combo_banner_t = 0;
+    }
+
+    hover_cell = cell_from_mouse(get_mouse_x(), get_mouse_y());
+
+    update_fall_anim(dt);
+    update_burst(dt);
+    var anim_busy = any_anim_active();
+
+    if (swapping)
+    {
+        swap_t += dt * SWAP_SPEED;
+        if (swap_t >= 1.0)
+        {
+            swap_t = 1.0;
+
+            if (swap_back)
+            {
+                swap_cells(swap_a, swap_b); // volta ao estado original
+                swapping = false;
+                swap_back = false;
+                status_line = "Nao formou match";
+                set_msg("Jogada invalida");
+            }
+            else
+            {
+                swap_cells(swap_a, swap_b); // aplica swap
+                if (has_any_match())
+                {
+                    moves_left -= 1;
+                    resolving = true;
+                    resolve_combo = 0;
+                    resolve_removed = 0;
+                    status_line = "A resolver...";
+                    swapping = false;
+                }
+                else
+                {
+                    // anima swap de volta
+                    swap_back = true;
+                    swap_t = 0;
+                }
+            }
+        }
+    }
+
+    if (resolving && anim_busy == false)
+    {
+        var marks = find_matches_marks();
+        var removed = remove_marked(marks);
+
+        if (removed > 0)
+        {
+            clear_hint();
+            resolve_combo += 1;
+            resolve_removed += removed;
+            score += removed * 10 * resolve_combo;
+            combo_flash_t = 0.18;
+            popup_emit("+" + str(removed * 10 * resolve_combo), BOARD_X + GRID_COLS * CELL + 20, BOARD_Y + 16, 255, 255, 255);
+            if (resolve_combo >= 2)
+            {
+                show_combo_banner("COMBO x" + str(resolve_combo), 0.65, 255, 210, 120);
+            }
+            if (step_bonus > 0)
+            {
+                score += step_bonus * resolve_combo;
+                set_msg("Bonus +" + str(step_bonus * resolve_combo));
+                popup_emit("BONUS +" + str(step_bonus * resolve_combo), BOARD_X + GRID_COLS * CELL + 20, BOARD_Y + 42, 255, 230, 120);
+                show_combo_banner("BONUS +" + str(step_bonus * resolve_combo), 0.75, 255, 240, 140);
+            }
+            apply_gravity();
+            anim_busy = true;
+        }
+        else
+        {
+            resolving = false;
+            status_line = "Removeu " + str(resolve_removed) + " pecas";
+
+            if (resolve_combo > 1)
+            {
+                set_msg("Combo x" + str(resolve_combo));
+                popup_emit("COMBO x" + str(resolve_combo), BOARD_X + GRID_COLS * CELL + 20, BOARD_Y + 68, 255, 180, 120);
+            }
+
+            if (has_possible_moves() == false)
+            {
+                generate_board_playable();
+                init_anim_array();
+                clear_hint();
+                set_msg("Sem jogadas: embaralhou");
+                status_line = "Tabuleiro embaralhado";
+            }
+        }
+    }
+
+    if (swapping == false && resolving == false && anim_busy == false && mouse_pressed(MOUSE_LEFT))
+    {
+        handle_click();
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        init_board();
+        _gc();
+    }
+    if (key_pressed(KEY_H))
+    {
+        if (swapping || resolving || anim_busy)
+        {
+            set_msg("Espera a animacao");
+        }
+        else
+        {
+            var found = find_hint_move();
+            if (found)
+            {
+                hint_t = 1.8;
+                var ar = cell_row(hint_a);
+                var ac = cell_col(hint_a);
+                var br = cell_row(hint_b);
+                var bc = cell_col(hint_b);
+                status_line = "Dica: (" + str(ac) + "," + str(ar) + ") <-> (" + str(bc) + "," + str(br) + ")";
+                set_msg("Dica ativa");
+            }
+            else
+            {
+                status_line = "Sem jogadas possiveis";
+                set_msg("Sem jogadas");
+            }
+        }
+    }
+
+    // Fundo em camadas
+    set_color(16, 18, 28);
+    draw_rectangle(0, 0, SCREEN_W, SCREEN_H, true);
+
+    var bg_i = 0;
+    while (bg_i < 9)
+    {
+        var yy = bg_i * 80;
+        var k = 22 + bg_i * 3;
+        set_color(k, k + 4, k + 16);
+        draw_rectangle(0, yy, SCREEN_W, 78, true);
+        bg_i += 1;
+    }
+
+    // Brilhos decorativos
+    var tbg = time();
+    set_alpha(40);
+    set_color(255, 255, 255);
+    draw_circle(130 + sin(tbg * 1.3) * 16, 52 + cos(tbg * 0.9) * 10, 18, true);
+    draw_circle(860 + sin(tbg * 0.8) * 22, 80 + cos(tbg * 1.2) * 12, 22, true);
+    set_alpha(255);
+
+    // Painel lateral
+    set_alpha(90);
+    set_color(0, 0, 0);
+    draw_rectangle(22, 84, 172, 364, true);
+    set_alpha(255);
+    set_color(34, 36, 52);
+    draw_rectangle(20, 80, 170, 360, true);
+    set_color(74, 82, 112);
+    draw_rectangle(20, 80, 170, 360, false);
+
+    set_color(255, 255, 255);
+    draw_text("BuLang", 28, 24, 28);
+
+    draw_text("Score", 36, 106, 18);
+    draw_text(str(score), 36, 130, 28);
+
+    draw_text("Moves", 36, 186, 18);
+    if (moves_left <= 8)
+    {
+        set_color(255, 120, 120);
+    }
+    else
+    {
+        set_color(210, 220, 255);
+    }
+    draw_text(str(moves_left), 36, 210, 28);
+    set_color(72, 76, 98);
+    draw_rectangle(36, 244, 118, 8, true);
+    set_color(120, 220, 255);
+    draw_rectangle(36, 244, int(118 * (moves_left / 40.0)), 8, true);
+
+    set_color(200, 210, 230);
+    draw_text("Click 2 pecas", 36, 280, 16);
+    draw_text("adjacentes", 36, 300, 16);
+    draw_text("H dica", 36, 318, 16);
+    draw_text("R reset", 36, 336, 16);
+    draw_text("4=linha  5=bomba", 36, 352, 14);
+    draw_text(status_line, 36, 372, 14);
+    if (resolving)
+    {
+        set_color(255, 230, 120);
+        draw_text("A resolver...", 36, 398, 14);
+    }
+
+    draw_board();
+    draw_burst();
+    draw_combo_banner();
+
+    if (combo_flash_t > 0)
+    {
+        set_alpha(int(80 * (combo_flash_t / 0.18)));
+        set_color(255, 230, 120);
+        draw_rectangle(BOARD_X, BOARD_Y, GRID_COLS * CELL, GRID_ROWS * CELL, true);
+        set_alpha(255);
+    }
+
+    popup_update_draw(dt);
+
+    if (moves_left <= 0)
+    {
+        set_alpha(180);
+        set_color(0, 0, 0);
+        draw_rectangle(BOARD_X + 60, BOARD_Y + 220, 390, 120, true);
+        set_alpha(255);
+
+        set_color(255, 230, 120);
+        draw_text("Fim de jogo!", BOARD_X + 165, BOARD_Y + 250, 28);
+        set_color(255, 255, 255);
+        draw_text("Pressiona R para reiniciar", BOARD_X + 95, BOARD_Y + 288, 20);
+    }
+
+    if (message_t > 0)
+    {
+        set_alpha(int(255 * message_t / 1.2));
+        set_color(255, 255, 255);
+        draw_text(message, BOARD_X + 180, BOARD_Y + GRID_ROWS * CELL + 20, 22);
+        set_alpha(255);
+    }
+
+    draw_fps(SCREEN_W - 100, 20);
+
+    if (key_down(KEY_ESCAPE) || key_down(KEY_X))
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}
+
+print("Bye CandiCrash");

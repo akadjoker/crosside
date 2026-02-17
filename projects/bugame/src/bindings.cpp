@@ -2075,6 +2075,7 @@ namespace Bindings
         BindingsImage::registerAll(vm);
         BindingsProcess::registerAll(vm);
         BindingsBox2D::registerAll(vm);
+        BindingsPoly2Tri::registerAll(vm);
         BindingsDraw::registerAll(vm);
         BindingsParticles::registerAll(vm);
         BindingsEase::registerAll(vm);

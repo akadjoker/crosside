@@ -28,12 +28,13 @@ namespace crosside::commands
             std::string mode = "release";
             std::string projectFile;
             std::string moduleFile;
+            std::string release;
 
             bool full = false;
             bool run = false;
             bool detach = false;
             bool skipModules = true;
-            bool noDeps = false;
+            bool noDeps = true;
             bool dryRun = false;
             std::vector<int> abis = {0, 1};
             int port = 8080;
@@ -386,6 +387,11 @@ namespace crosside::commands
                     opt.noDeps = true;
                     continue;
                 }
+                if (arg == "--with-deps")
+                {
+                    opt.noDeps = false;
+                    continue;
+                }
                 if (arg == "--dry-run")
                 {
                     opt.dryRun = true;
@@ -424,6 +430,16 @@ namespace crosside::commands
                         return false;
                     }
                     opt.projectFile = args[++i];
+                    continue;
+                }
+                if (arg == "--release")
+                {
+                    if (i + 1 >= args.size())
+                    {
+                        ctx.error("--release requires value");
+                        return false;
+                    }
+                    opt.release = args[++i];
                     continue;
                 }
                 if (arg == "--module-file")
@@ -581,6 +597,10 @@ namespace crosside::commands
         }
         ctx.log("Targets: ", targetText);
         ctx.log("Desktop mode: ", opt.mode);
+        if (!opt.release.empty())
+        {
+            ctx.log("Release profile: ", opt.release);
+        }
         if (opt.detach && !opt.run)
         {
             ctx.warn("--detach has no effect without --run");
@@ -613,6 +633,10 @@ namespace crosside::commands
 
             if (opt.kind == "module")
             {
+                if (!opt.release.empty())
+                {
+                    ctx.warn("--release ignored for module builds");
+                }
                 const fs::path moduleFile = crosside::model::resolveModuleFile(repoRoot, opt.name, opt.moduleFile);
                 auto rootModule = crosside::model::loadModuleFile(moduleFile, ctx);
                 if (!rootModule.has_value())
@@ -665,7 +689,12 @@ namespace crosside::commands
             if (!project.has_value())
             {
                 const fs::path projectFile = crosside::model::resolveProjectFile(repoRoot, opt.name, opt.projectFile);
-                project = crosside::model::loadProjectFile(projectFile, ctx);
+                const bool useProjectDefaultRelease = !(target == "desktop" && opt.release.empty());
+                if (!useProjectDefaultRelease)
+                {
+                    ctx.log("Desktop build without --release: using base project content");
+                }
+                project = crosside::model::loadProjectFile(projectFile, ctx, opt.release, useProjectDefaultRelease);
                 if (!project.has_value())
                 {
                     ctx.error("Project not found: ", projectFile.string());
@@ -674,6 +703,10 @@ namespace crosside::commands
             }
             else
             {
+                if (!opt.release.empty())
+                {
+                    ctx.warn("--release ignored in single-file mode");
+                }
                 ctx.log("Single file mode: ", project->filePath.string(), " (no main.mk)");
                 std::string mods;
                 for (std::size_t i = 0; i < project->modules.size(); ++i)
@@ -701,6 +734,13 @@ namespace crosside::commands
                                                          : project->modules;
 
             ctx.log("Build app ", project->name, " from ", project->filePath.string());
+            {
+                const std::string buildCacheKey = crosside::model::projectBuildCacheKey(project.value());
+                if (!buildCacheKey.empty() && buildCacheKey != project->name)
+                {
+                    ctx.log("Build cache key: ", buildCacheKey);
+                }
+            }
             ctx.log("Auto-build modules: ", opt.skipModules ? "off" : "on");
             if (opt.dryRun)
             {

@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.bucandycrash",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "CandyCrash",
+    "CONTENT_ROOT": "releases/candycrash"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/candycrash"
+  }
+}

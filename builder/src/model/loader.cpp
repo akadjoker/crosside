@@ -156,6 +156,76 @@ namespace crosside::model
             return out;
         }
 
+        void mergeJsonObjects(json &base, const json &overlay)
+        {
+            if (!base.is_object() || !overlay.is_object())
+            {
+                return;
+            }
+
+            for (auto it = overlay.begin(); it != overlay.end(); ++it)
+            {
+                const std::string key = it.key();
+                const json &value = it.value();
+                if (base.contains(key) && base[key].is_object() && value.is_object())
+                {
+                    mergeJsonObjects(base[key], value);
+                }
+                else
+                {
+                    base[key] = value;
+                }
+            }
+        }
+
+        fs::path resolveProjectRootFromData(const fs::path &projectFile, const json &data)
+        {
+            const fs::path rootBase = fs::absolute(projectFile.parent_path());
+            if (data.contains("Path") && data["Path"].is_string())
+            {
+                fs::path fromJson(data["Path"].get<std::string>());
+                return (fromJson.is_absolute() ? fromJson : fs::absolute(rootBase / fromJson)).lexically_normal();
+            }
+            return rootBase.lexically_normal();
+        }
+
+        std::optional<fs::path> resolveReleaseFile(const fs::path &projectRoot, const std::string &releaseRef)
+        {
+            if (releaseRef.empty())
+            {
+                return std::nullopt;
+            }
+
+            fs::path raw(releaseRef);
+            std::vector<fs::path> candidates;
+            if (raw.is_absolute())
+            {
+                candidates.push_back(raw);
+            }
+            else
+            {
+                candidates.push_back(projectRoot / raw);
+
+                const bool hasDirHints = releaseRef.find('/') != std::string::npos || releaseRef.find('\\') != std::string::npos;
+                if (!hasDirHints && raw.extension().empty())
+                {
+                    candidates.push_back(projectRoot / "releases" / (releaseRef + ".json"));
+                }
+            }
+
+            std::error_code ec;
+            for (const auto &candidate : candidates)
+            {
+                const fs::path path = fs::absolute(candidate).lexically_normal();
+                if (fs::exists(path, ec) && fs::is_regular_file(path, ec))
+                {
+                    return path;
+                }
+            }
+
+            return std::nullopt;
+        }
+
         BuildArgs parseBuildArgs(const json &node)
         {
             BuildArgs out;
@@ -254,6 +324,15 @@ namespace crosside::model
             if (node.contains("template") && node["template"].is_string())
             {
                 out.shellTemplate = node["template"].get<std::string>();
+            }
+
+            if (node.contains("static") && node["static"].is_boolean())
+            {
+                out.staticLib = node["static"].get<bool>();
+            }
+            else if (node.contains("shared") && node["shared"].is_boolean())
+            {
+                out.staticLib = !node["shared"].get<bool>();
             }
 
             return out;
@@ -375,26 +454,54 @@ namespace crosside::model
         }
     }
 
-    std::optional<ProjectSpec> loadProjectFile(const fs::path &projectFile, const crosside::Context &ctx)
+    std::optional<ProjectSpec> loadProjectFile(
+        const fs::path &projectFile,
+        const crosside::Context &ctx,
+        const std::string &releaseOverride,
+        bool useProjectDefaultRelease)
     {
         try
         {
             json data = io::loadJsonFile(projectFile);
+            const fs::path projectRoot = resolveProjectRootFromData(projectFile, data);
+            std::string releaseRef = releaseOverride;
+            if (releaseRef.empty() && useProjectDefaultRelease && data.contains("Release") && data["Release"].is_string())
+            {
+                releaseRef = data["Release"].get<std::string>();
+            }
+            if (!releaseRef.empty())
+            {
+                const auto releaseFile = resolveReleaseFile(projectRoot, releaseRef);
+                if (!releaseFile.has_value())
+                {
+                    ctx.error("Release file not found: ", releaseRef);
+                    return std::nullopt;
+                }
+
+                json releaseData = io::loadJsonFile(releaseFile.value());
+                if (!releaseData.is_object())
+                {
+                    ctx.error("Release file must be a JSON object: ", releaseFile->string());
+                    return std::nullopt;
+                }
+
+                mergeJsonObjects(data, releaseData);
+            }
 
             ProjectSpec project;
             project.filePath = fs::absolute(projectFile);
             project.name = data.value("Name", projectFile.stem().string());
+            project.buildCache = data.value("BuildCache", "");
+            if (project.buildCache.empty())
+            {
+                project.buildCache = data.value("BUILD_CACHE", "");
+            }
+            if (project.buildCache.empty())
+            {
+                project.buildCache = data.value("CACHE_KEY", "");
+            }
 
-            fs::path rootBase = fs::absolute(projectFile.parent_path());
-            if (data.contains("Path") && data["Path"].is_string())
-            {
-                fs::path fromJson(data["Path"].get<std::string>());
-                project.root = fromJson.is_absolute() ? fromJson : fs::absolute(rootBase / fromJson);
-            }
-            else
-            {
-                project.root = rootBase;
-            }
+            project.root = resolveProjectRootFromData(projectFile, data);
 
             project.modules = toStringList(data.value("Modules", json::array()));
 
@@ -505,6 +612,20 @@ namespace crosside::model
                 parsePathListField(android, "JAVA", project.androidJavaSources);
                 parsePathListField(android, "JAVA_DIRS", project.androidJavaSources);
 
+                std::string contentRoot = android.value("CONTENT_ROOT", "");
+                if (contentRoot.empty())
+                {
+                    contentRoot = android.value("ASSET_ROOT", "");
+                }
+                if (contentRoot.empty())
+                {
+                    contentRoot = android.value("RELEASE_ROOT", "");
+                }
+                if (!contentRoot.empty())
+                {
+                    project.androidContentRoot = toAbsolute(project.root, contentRoot);
+                }
+
                 if (android.contains("ADAPTIVE_ICON") && android["ADAPTIVE_ICON"].is_object())
                 {
                     const auto &adaptive = android["ADAPTIVE_ICON"];
@@ -567,9 +688,42 @@ namespace crosside::model
                     project.androidManifestVars = toStringMap(android["MANIFEST_VARS"]);
                 }
             }
+            if (data.contains("Desktop") && data["Desktop"].is_object())
+            {
+                const auto &desktop = data["Desktop"];
+
+                std::string contentRoot = desktop.value("CONTENT_ROOT", "");
+                if (contentRoot.empty())
+                {
+                    contentRoot = desktop.value("ASSET_ROOT", "");
+                }
+                if (contentRoot.empty())
+                {
+                    contentRoot = desktop.value("RELEASE_ROOT", "");
+                }
+                if (!contentRoot.empty())
+                {
+                    project.desktopContentRoot = toAbsolute(project.root, contentRoot);
+                }
+            }
             if (data.contains("Web") && data["Web"].is_object())
             {
-                project.webShell = data["Web"].value("SHELL", "");
+                const auto &web = data["Web"];
+                project.webShell = web.value("SHELL", "");
+
+                std::string contentRoot = web.value("CONTENT_ROOT", "");
+                if (contentRoot.empty())
+                {
+                    contentRoot = web.value("ASSET_ROOT", "");
+                }
+                if (contentRoot.empty())
+                {
+                    contentRoot = web.value("RELEASE_ROOT", "");
+                }
+                if (!contentRoot.empty())
+                {
+                    project.webContentRoot = toAbsolute(project.root, contentRoot);
+                }
             }
 
             return project;
@@ -617,6 +771,23 @@ namespace crosside::model
         const std::string &projectHint,
         const std::string &explicitFile)
     {
+        auto resolveFromDir = [](const fs::path &dir) -> fs::path
+        {
+            const fs::path mainMk = dir / "main.mk";
+            if (fs::exists(mainMk))
+            {
+                return fs::absolute(mainMk);
+            }
+
+            const fs::path projectMk = dir / "project.mk";
+            if (fs::exists(projectMk))
+            {
+                return fs::absolute(projectMk);
+            }
+
+            return fs::absolute(mainMk);
+        };
+
         if (!explicitFile.empty())
         {
             fs::path path(explicitFile);
@@ -632,7 +803,7 @@ namespace crosside::model
         {
             if (fs::is_directory(hint))
             {
-                return fs::absolute(hint / "main.mk");
+                return resolveFromDir(hint);
             }
             return fs::absolute(hint);
         }
@@ -642,9 +813,15 @@ namespace crosside::model
         {
             if (fs::is_directory(fromRepo))
             {
-                return fs::absolute(fromRepo / "main.mk");
+                return resolveFromDir(fromRepo);
             }
             return fromRepo;
+        }
+
+        const fs::path projectsDir = fs::absolute(repoRoot / "projects" / projectHint);
+        if (fs::exists(projectsDir) && fs::is_directory(projectsDir))
+        {
+            return resolveFromDir(projectsDir);
         }
 
         return fs::absolute(repoRoot / "projects" / projectHint / "main.mk");

@@ -34,6 +34,8 @@ make release
 
 # Build a module
 ./bin/builder build module raylib desktop --mode debug
+# Build module + dependency closure (optional)
+./bin/builder build module raylib desktop --with-deps
 
 # Build a single source file (no main.mk)
 ./bin/builder build projects/sdl/tutorial_2.c desktop
@@ -71,9 +73,17 @@ make release
 - Android and Web builds are release-oriented by default.
 - App builds expect module binaries to already exist by default.
   Use `--build-modules` when you want builder to compile module dependencies automatically.
+- Module builds compile only the requested module by default.
+  Use `--with-deps` to also compile its dependency closure.
 - Single-file app build is supported (`.c/.cpp/...`) without a `main.mk` project file.
+- App build accepts explicit project files/dirs, e.g.
+  `builder build projects/bugame/releases/chaos web`
+  (directory can contain `project.mk`; fallback is `main.mk`).
 - Module/project `Src` supports `@` source patterns, e.g. `src/@.c` and `src/@.cpp`
   to auto-include files recursively.
+- Modules can override `static/shared` per platform inside `plataforms`:
+  use `"static": true|false` (or `"shared": true|false`) in `linux/windows/android/emscripten`.
+  When omitted, it falls back to top-level `"static"`.
 - You can set default modules for single-file builds in `config.json` with `Configuration.SingleFileModules`.
 - You can set a default Web shell template in `config.json` with `Configuration.Web.SHELL`
   (example: `Templates/Web/shell.html`).
@@ -81,6 +91,15 @@ make release
   round icons via `Android.ROUND_ICON` / `Android.ROUND_ICONS`,
   adaptive icons via `Android.ADAPTIVE_ICON`,
   plus manifest modes (`Android.MANIFEST_MODE`) and Java source copy (`Android.JAVA_SOURCES`/`JAVA`).
+- You can isolate release-only content for packaging:
+  set `Android.CONTENT_ROOT` and/or `Web.CONTENT_ROOT` in `main.mk`.
+  Builder then packs/preloads only `<CONTENT_ROOT>/scripts`, `<CONTENT_ROOT>/assets`, `<CONTENT_ROOT>/resources`, `<CONTENT_ROOT>/data`, `<CONTENT_ROOT>/media`.
+- To avoid recompiling the same C/C++ core for each release variant, set `BuildCache` in project JSON.
+  Releases that share the same `BuildCache` reuse `obj/<target>/<BuildCache>` artifacts.
+- You can drive release variants from one main project file with `Release: "path/to/release.json"`.
+  The release JSON overrides project fields (for example `Name`, `Android`, `Web`, `CONTENT_ROOT`, package/label).
+- CLI override is supported: `builder build bugame android --release chaos`
+  or `builder build bugame web --release releases/candycrash.json`.
 - Legacy Python tools are still available while migration to C++ continues.
 
 ## Module authoring
@@ -139,5 +158,15 @@ make test
 ```
 
 Current test suite validates process execution, path resolution, and web helper behavior.
+
+Dependency smoke test for codec modules (`zlib/jpeg/png`, plus `webp` when available):
+
+```bash
+# desktop build + run
+./tools/test_codecs.sh desktop
+
+# android build/package check
+./tools/test_codecs.sh android
+```
 
 adb pair 192.168.1.92:34011
