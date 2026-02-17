@@ -52,6 +52,9 @@ make release
 
 # Build Web app, start server in background, open browser
 ./bin/builder build bugame web --run --detach --port 8080
+
+# Clean all modules for desktop/android/web
+./bin/builder clean module all desktop android web
 ```
 
 ## Command summary
@@ -69,6 +72,8 @@ make release
 - App builds expect module binaries to already exist by default.
   Use `--build-modules` when you want builder to compile module dependencies automatically.
 - Single-file app build is supported (`.c/.cpp/...`) without a `main.mk` project file.
+- Module/project `Src` supports `@` source patterns, e.g. `src/@.c` and `src/@.cpp`
+  to auto-include files recursively.
 - You can set default modules for single-file builds in `config.json` with `Configuration.SingleFileModules`.
 - You can set a default Web shell template in `config.json` with `Configuration.Web.SHELL`
   (example: `Templates/Web/shell.html`).
@@ -81,6 +86,49 @@ make release
 ## Module authoring
 
 - Module creation guide: `builder/docs/creating_modules.md`
+
+## Third-party source updates (no git clone)
+
+Use the manifest + fetch script to track and download upstream library sources as release archives (`.tar.gz`/`.zip`) without `.git` folders:
+
+```bash
+# Show tracked libraries and upstream repos
+python3 tools/fetch_third_party_release.py list
+
+# Check latest release/tag for all tracked libraries
+python3 tools/fetch_third_party_release.py check
+
+# Optional: avoid GitHub API limit
+GITHUB_TOKEN=ghp_xxx python3 tools/fetch_third_party_release.py sync all
+
+# Download latest archives for selected libs
+python3 tools/fetch_third_party_release.py fetch png zlib glfw
+
+# Download and extract latest for all tracked libs
+python3 tools/fetch_third_party_release.py fetch all --extract
+
+# Sync upstream src/include into modules/<lib> (clean old files + backup first)
+python3 tools/fetch_third_party_release.py sync glfw sfml
+
+# Sync all tracked module libs in one run
+python3 tools/fetch_third_party_release.py sync all
+
+# Dry-run sync (no file changes)
+python3 tools/fetch_third_party_release.py sync glfw --dry-run
+
+
+# ver primeiro
+./builder/bin/builder clean module all desktop android web --dry-run
+
+# limpar mesmo
+./builder/bin/builder clean module all desktop android web
+
+# só android arm64
+./builder/bin/builder clean module all android --abis arm64
+
+```
+
+Manifest file: `tools/third_party_releases.json`
 
 ## Tests
 

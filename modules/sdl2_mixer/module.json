@@ -1,0 +1,84 @@
+{
+  "module": "sdl2_mixer",
+  "about": "SDL2_mixer using vendored codecs (stb_vorbis/minimp3/dr_flac)",
+  "author": "djokersoft",
+  "version": "1.0.0",
+  "depends": [
+    "sdl2"
+  ],
+  "static": true,
+  "priority": 0,
+  "system": [
+    "linux",
+    "android",
+    "emscripten",
+    "windows"
+  ],
+  "src": [
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/mixer.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/music.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/utils.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/effects_internal.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/effect_position.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/effect_stereoreverse.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/codecs/load_aiff.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/codecs/load_voc.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/codecs/mp3utils.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/codecs/music_wav.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/codecs/music_ogg_stb.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/codecs/music_minimp3.c",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/codecs/music_drflac.c"
+  ],
+  "include": [
+    "../../third_party_src/SDL_mixer-release-2.8.1/include",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src",
+    "../../third_party_src/SDL_mixer-release-2.8.1/src/codecs"
+  ],
+  "plataforms": {
+    "linux": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-DMUSIC_WAV -DMUSIC_OGG -DOGG_USE_STB -DMUSIC_MP3_MINIMP3 -DMUSIC_FLAC_DRFLAC",
+      "LD_ARGS": "",
+      "src": [
+        ""
+      ],
+      "include": [
+        ""
+      ]
+    },
+    "windows": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-DMUSIC_WAV -DMUSIC_OGG -DOGG_USE_STB -DMUSIC_MP3_MINIMP3 -DMUSIC_FLAC_DRFLAC",
+      "LD_ARGS": "",
+      "src": [
+        ""
+      ],
+      "include": [
+        ""
+      ]
+    },
+    "android": {
+      "CPP_ARGS": "",
+      "CC_ARGS": "-DMUSIC_WAV -DMUSIC_OGG -DOGG_USE_STB -DMUSIC_MP3_MINIMP3 -DMUSIC_FLAC_DRFLAC",
+      "LD_ARGS": "",
+      "src": [
+        ""
+      ],
+      "include": [
+        ""
+      ]
+    },
+    "emscripten": {
+      "template": "",
+      "CPP_ARGS": "",
+      "CC_ARGS": "-DMUSIC_WAV -DMUSIC_OGG -DOGG_USE_STB -DMUSIC_MP3_MINIMP3 -DMUSIC_FLAC_DRFLAC",
+      "LD_ARGS": "",
+      "src": [
+        ""
+      ],
+      "include": [
+        ""
+      ]
+    }
+  }
+}

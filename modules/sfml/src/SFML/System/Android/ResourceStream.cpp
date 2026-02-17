@@ -26,91 +26,66 @@
 ////////////////////////////////////////////////////////////
 // Headers
 ////////////////////////////////////////////////////////////
-#include <SFML/System/Android/ResourceStream.hpp>
 #include <SFML/System/Android/Activity.hpp>
-#include <SFML/System/Lock.hpp>
+#include <SFML/System/Android/ResourceStream.hpp>
+
+#include <mutex>
 
 
-namespace sf
+namespace sf::priv
 {
-namespace priv
-{
-
 ////////////////////////////////////////////////////////////
-ResourceStream::ResourceStream(const std::string& filename) :
-m_file (NULL)
+bool ResourceStream::open(const std::filesystem::path& filename)
 {
-    ActivityStates* states = getActivity(NULL);
-    Lock(states->mutex);
-    m_file = AAssetManager_open(states->activity->assetManager, filename.c_str(), AASSET_MODE_UNKNOWN);
+    ActivityStates&       states = getActivity();
+    const std::lock_guard lock(states.mutex);
+    m_file.reset(AAssetManager_open(states.activity->assetManager, filename.c_str(), AASSET_MODE_UNKNOWN));
+    return m_file != nullptr;
 }
 
 
 ////////////////////////////////////////////////////////////
-ResourceStream::~ResourceStream()
+std::optional<std::size_t> ResourceStream::read(void* data, std::size_t size)
 {
-    if (m_file)
-    {
-        AAsset_close(m_file);
-    }
+    assert(m_file && "ResourceStream::read() cannot be called when file is not initialized");
+    const auto numBytesRead = AAsset_read(m_file.get(), data, size);
+    if (numBytesRead < 0)
+        return std::nullopt;
+    return numBytesRead;
 }
 
 
 ////////////////////////////////////////////////////////////
-Int64 ResourceStream::read(void *data, Int64 size)
+std::optional<std::size_t> ResourceStream::seek(std::size_t position)
 {
-    if (m_file)
-    {
-        return AAsset_read(m_file, data, size);
-    }
-    else
-    {
-        return -1;
-    }
+    assert(m_file && "ResourceStream::seek() cannot be called when file is not initialized");
+    const auto newPosition = AAsset_seek(m_file.get(), static_cast<off_t>(position), SEEK_SET);
+    if (newPosition < 0)
+        return std::nullopt;
+    return newPosition;
 }
 
 
 ////////////////////////////////////////////////////////////
-Int64 ResourceStream::seek(Int64 position)
+std::optional<std::size_t> ResourceStream::tell()
 {
-    if (m_file)
-    {
-        return AAsset_seek(m_file, position, SEEK_SET);
-    }
-    else
-    {
-        return -1;
-    }
+    assert(m_file && "ResourceStream::tell() cannot be called when file is not initialized");
+    return getSize().value() - static_cast<std::size_t>(AAsset_getRemainingLength(m_file.get()));
 }
 
 
 ////////////////////////////////////////////////////////////
-Int64 ResourceStream::tell()
+std::optional<std::size_t> ResourceStream::getSize()
 {
-    if (m_file)
-    {
-        return getSize() - AAsset_getRemainingLength(m_file);
-    }
-    else
-    {
-        return -1;
-    }
+    assert(m_file && "ResourceStream::getSize() cannot be called when file is not initialized");
+    return AAsset_getLength(m_file.get());
 }
 
 
 ////////////////////////////////////////////////////////////
-Int64 ResourceStream::getSize()
+void ResourceStream::AAssetDeleter::operator()(AAsset* file)
 {
-    if (m_file)
-    {
-        return AAsset_getLength(m_file);
-    }
-    else
-    {
-        return -1;
-    }
+    AAsset_close(file);
 }
 
-
-} // namespace priv
-} // namespace sf
+} // namespace sf::priv

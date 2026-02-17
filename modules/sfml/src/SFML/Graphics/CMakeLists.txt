@@ -1,4 +1,3 @@
-
 set(INCROOT ${PROJECT_SOURCE_DIR}/include/SFML/Graphics)
 set(SRCROOT ${PROJECT_SOURCE_DIR}/src/SFML/Graphics)
 
@@ -6,8 +5,9 @@ set(SRCROOT ${PROJECT_SOURCE_DIR}/src/SFML/Graphics)
 set(SRC
     ${SRCROOT}/BlendMode.cpp
     ${INCROOT}/BlendMode.hpp
-    ${SRCROOT}/Color.cpp
     ${INCROOT}/Color.hpp
+    ${INCROOT}/Color.inl
+    ${INCROOT}/CoordinateType.hpp
     ${INCROOT}/Export.hpp
     ${SRCROOT}/Font.cpp
     ${INCROOT}/Font.hpp
@@ -21,8 +21,6 @@ set(SRC
     ${SRCROOT}/GLExtensions.cpp
     ${SRCROOT}/Image.cpp
     ${INCROOT}/Image.hpp
-    ${SRCROOT}/ImageLoader.cpp
-    ${SRCROOT}/ImageLoader.hpp
     ${INCROOT}/PrimitiveType.hpp
     ${INCROOT}/Rect.hpp
     ${INCROOT}/Rect.inl
@@ -36,23 +34,21 @@ set(SRC
     ${INCROOT}/RenderWindow.hpp
     ${SRCROOT}/Shader.cpp
     ${INCROOT}/Shader.hpp
+    ${SRCROOT}/StencilMode.cpp
+    ${INCROOT}/StencilMode.hpp
     ${SRCROOT}/Texture.cpp
     ${INCROOT}/Texture.hpp
     ${SRCROOT}/TextureSaver.cpp
     ${SRCROOT}/TextureSaver.hpp
     ${SRCROOT}/Transform.cpp
     ${INCROOT}/Transform.hpp
+    ${INCROOT}/Transform.inl
     ${SRCROOT}/Transformable.cpp
     ${INCROOT}/Transformable.hpp
     ${SRCROOT}/View.cpp
     ${INCROOT}/View.hpp
-    ${SRCROOT}/Vertex.cpp
     ${INCROOT}/Vertex.hpp
 )
-if(NOT SFML_OPENGL_ES)
-    list(APPEND SRC ${SRCROOT}/GLLoader.cpp)
-    list(APPEND SRC ${SRCROOT}/GLLoader.hpp)
-endif()
 source_group("" FILES ${SRC})
 
 # drawables sources
@@ -79,7 +75,6 @@ source_group("drawables" FILES ${DRAWABLES_SRC})
 
 # render-texture sources
 set(RENDER_TEXTURE_SRC
-    ${SRCROOT}/RenderTextureImpl.cpp
     ${SRCROOT}/RenderTextureImpl.hpp
     ${SRCROOT}/RenderTextureImplFBO.cpp
     ${SRCROOT}/RenderTextureImplFBO.hpp
@@ -90,58 +85,81 @@ source_group("render texture" FILES ${RENDER_TEXTURE_SRC})
 
 
 # define the sfml-graphics target
-sfml_add_library(sfml-graphics
-                 SOURCES ${SRC} ${DRAWABLES_SRC} ${RENDER_TEXTURE_SRC} ${STB_SRC})
+sfml_add_library(Graphics
+                 SOURCES ${SRC} ${DRAWABLES_SRC} ${RENDER_TEXTURE_SRC}
+                 DEPENDENCIES "Dependencies.cmake.in")
 
 # setup dependencies
-target_link_libraries(sfml-graphics PUBLIC sfml-window)
+target_link_libraries(sfml-graphics PUBLIC SFML::Window)
 
 # stb_image sources
-target_include_directories(sfml-graphics PRIVATE "${PROJECT_SOURCE_DIR}/extlibs/headers/stb_image")
+target_include_directories(sfml-graphics SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/extlibs/headers/stb_image")
 
-# let CMake know about our additional graphics libraries paths
-if(SFML_OS_WINDOWS)
-    set(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH} "${PROJECT_SOURCE_DIR}/extlibs/headers/freetype2")
-elseif(SFML_OS_MACOSX)
-    set(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH} "${PROJECT_SOURCE_DIR}/extlibs/headers/freetype2")
-    set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} "${PROJECT_SOURCE_DIR}/extlibs/libs-osx/Frameworks")
-elseif(SFML_OS_IOS)
-    set(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH} "${PROJECT_SOURCE_DIR}/extlibs/headers/freetype2")
-elseif(SFML_OS_ANDROID)
-    set(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH} "${PROJECT_SOURCE_DIR}/extlibs/headers/freetype2")
-endif()
+# glad sources
+target_include_directories(sfml-graphics SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/extlibs/headers/glad/include")
 
 # find external libraries
-if(SFML_OPENGL_ES)
-    if(SFML_OS_LINUX)
-        sfml_find_package(EGL INCLUDE "EGL_INCLUDE_DIR" LINK "EGL_LIBRARY")
-        sfml_find_package(GLES INCLUDE "GLES_INCLUDE_DIR" LINK "GLES_LIBRARY")
-        target_link_libraries(sfml-graphics PRIVATE EGL GLES)
-    elseif(SFML_OS_IOS)
-        target_link_libraries(sfml-graphics PRIVATE "-framework OpenGLES")
-    endif()
-else()
-    # Target OpenGL already defined for Window component so no sfml_find_package() here
-    target_link_libraries(sfml-graphics PRIVATE OpenGL)
-
-    if(SFML_OS_LINUX)
-        # Target X11 already defined for Window component so no sfml_find_package() here
-        target_link_libraries(sfml-graphics PRIVATE X11)
-    endif()
-endif()
-
 if(SFML_OS_ANDROID)
-    target_link_libraries(sfml-graphics PRIVATE z EGL GLESv1_CM)
+    target_link_libraries(sfml-graphics PRIVATE z)
+elseif(SFML_OS_IOS)
+    target_link_libraries(sfml-graphics PRIVATE z bz2)
 endif()
 
-sfml_find_package(Freetype INCLUDE "FREETYPE_INCLUDE_DIRS" LINK "FREETYPE_LIBRARY")
-target_link_libraries(sfml-graphics PRIVATE Freetype)
+if(SFML_USE_SYSTEM_DEPS)
+    find_package(Freetype REQUIRED)
+else()
+    # use an immediately invoked function to scope option variables we have to set
+    function(sfml_add_graphics_dependencies)
+        include(FetchContent)
+
+        # remember whether we are building SFML as a shared library
+        if(BUILD_SHARED_LIBS)
+            set(SFML_BUILD_SHARED_LIBS ON)
+        endif()
+
+        set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+        set(BUILD_SHARED_LIBS OFF)
+        set(SKIP_INSTALL_HEADERS ON)
+        set(FT_DISABLE_ZLIB ON)
+        set(FT_DISABLE_BZIP2 ON)
+        set(FT_DISABLE_PNG ON)
+        set(FT_DISABLE_HARFBUZZ ON)
+        set(FT_DISABLE_BROTLI ON)
+        set(FT_ENABLE_ERROR_STRINGS ON)
+
+        FetchContent_Declare(Freetype
+            GIT_REPOSITORY https://github.com/freetype/freetype.git
+            GIT_TAG VER-2-13-2
+            GIT_SHALLOW ON
+            # patch out parts we don't want of the FreeType CMake configuration
+            # - installing pkgconfig files
+            PATCH_COMMAND ${CMAKE_COMMAND} -DFREETYPE_DIR=${FETCHCONTENT_BASE_DIR}/freetype-src -P ${PROJECT_SOURCE_DIR}/tools/freetype/PatchFreetype.cmake)
+        FetchContent_MakeAvailable(Freetype)
+
+        set_target_properties(freetype PROPERTIES FOLDER "Dependencies")
+
+        # if building SFML as a shared library and linking our dependencies in
+        # as static libraries we need to build them with -fPIC
+        if(SFML_BUILD_SHARED_LIBS)
+            set_target_properties(freetype PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        endif()
+
+        # disable building dependencies as part of a unity build, they don't support it
+        set_target_properties(freetype PROPERTIES UNITY_BUILD OFF)
+
+        sfml_set_stdlib(freetype)
+        add_library(Freetype::Freetype ALIAS freetype)
+    endfunction()
+    sfml_add_graphics_dependencies()
+endif()
+
+target_link_libraries(sfml-graphics PRIVATE Freetype::Freetype)
 
 # add preprocessor symbols
 target_compile_definitions(sfml-graphics PRIVATE "STBI_FAILURE_USERMSG")
 
-# ImageLoader.cpp must be compiled with the -fno-strict-aliasing
+# Image.cpp must be compiled with the -fno-strict-aliasing
 # when gcc is used; otherwise saving PNGs may crash in stb_image_write
 if(SFML_COMPILER_GCC)
-    set_source_files_properties(${SRCROOT}/ImageLoader.cpp PROPERTIES COMPILE_FLAGS -fno-strict-aliasing)
+    set_source_files_properties(${SRCROOT}/Image.cpp PROPERTIES COMPILE_FLAGS -fno-strict-aliasing)
 endif()

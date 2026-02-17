@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////
 //
 // SFML - Simple and Fast Multimedia Library
-// Copyright (C) 2007-2018 Laurent Gomila (laurent@sfml-dev.org)
+// Copyright (C) 2007-2025 Laurent Gomila (laurent@sfml-dev.org)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,19 +25,40 @@
 ////////////////////////////////////////////////////////////
 // Headers
 ////////////////////////////////////////////////////////////
-#include <SFML/Network/Win32/SocketImpl.hpp>
-#include <cstring>
+#include <SFML/Network/SocketImpl.hpp>
+
+#include <cstdint>
 
 
-namespace sf
-{
-namespace priv
+namespace
 {
 ////////////////////////////////////////////////////////////
-sockaddr_in SocketImpl::createAddress(Uint32 address, unsigned short port)
+// Windows needs some initialization and cleanup to get
+// sockets working properly... so let's create a class that will
+// do it automatically
+////////////////////////////////////////////////////////////
+struct SocketInitializer
 {
-    sockaddr_in addr;
-    std::memset(&addr, 0, sizeof(addr));
+    SocketInitializer()
+    {
+        WSADATA init;
+        WSAStartup(MAKEWORD(2, 2), &init);
+    }
+
+    ~SocketInitializer()
+    {
+        WSACleanup();
+    }
+} globalInitializer;
+} // namespace
+
+
+namespace sf::priv
+{
+////////////////////////////////////////////////////////////
+sockaddr_in SocketImpl::createAddress(std::uint32_t address, unsigned short port)
+{
+    auto addr            = sockaddr_in();
     addr.sin_addr.s_addr = htonl(address);
     addr.sin_family      = AF_INET;
     addr.sin_port        = htons(port);
@@ -64,49 +85,26 @@ void SocketImpl::close(SocketHandle sock)
 void SocketImpl::setBlocking(SocketHandle sock, bool block)
 {
     u_long blocking = block ? 0 : 1;
-    ioctlsocket(sock, FIONBIO, &blocking);
+    ioctlsocket(sock, static_cast<long>(FIONBIO), &blocking);
 }
 
 
 ////////////////////////////////////////////////////////////
 Socket::Status SocketImpl::getErrorStatus()
 {
+    // clang-format off
     switch (WSAGetLastError())
     {
-        case WSAEWOULDBLOCK:  return Socket::NotReady;
-        case WSAEALREADY:     return Socket::NotReady;
-        case WSAECONNABORTED: return Socket::Disconnected;
-        case WSAECONNRESET:   return Socket::Disconnected;
-        case WSAETIMEDOUT:    return Socket::Disconnected;
-        case WSAENETRESET:    return Socket::Disconnected;
-        case WSAENOTCONN:     return Socket::Disconnected;
-        case WSAEISCONN:      return Socket::Done; // when connecting a non-blocking socket
-        default:              return Socket::Error;
+        case WSAEWOULDBLOCK:  return Socket::Status::NotReady;
+        case WSAEALREADY:     return Socket::Status::NotReady;
+        case WSAECONNABORTED: return Socket::Status::Disconnected;
+        case WSAECONNRESET:   return Socket::Status::Disconnected;
+        case WSAETIMEDOUT:    return Socket::Status::Disconnected;
+        case WSAENETRESET:    return Socket::Status::Disconnected;
+        case WSAENOTCONN:     return Socket::Status::Disconnected;
+        case WSAEISCONN:      return Socket::Status::Done; // when connecting a non-blocking socket
+        default:              return Socket::Status::Error;
     }
+    // clang-format on
 }
-
-
-////////////////////////////////////////////////////////////
-// Windows needs some initialization and cleanup to get
-// sockets working properly... so let's create a class that will
-// do it automatically
-////////////////////////////////////////////////////////////
-struct SocketInitializer
-{
-    SocketInitializer()
-    {
-        WSADATA init;
-        WSAStartup(MAKEWORD(2, 2), &init);
-    }
-
-    ~SocketInitializer()
-    {
-        WSACleanup();
-    }
-};
-
-SocketInitializer globalInitializer;
-
-} // namespace priv
-
-} // namespace sf
+} // namespace sf::priv

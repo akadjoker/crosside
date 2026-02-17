@@ -1,6 +1,0 @@
-for
-print
-while
-do
-println
-print

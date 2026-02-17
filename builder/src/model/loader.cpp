@@ -1,6 +1,7 @@
 #include "model/loader.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <set>
 #include <stdexcept>
@@ -39,6 +40,99 @@ namespace crosside::model
                     out.push_back(value);
                 }
             }
+            return out;
+        }
+
+        std::string lower(std::string value)
+        {
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c)
+                           { return static_cast<char>(std::tolower(c)); });
+            return value;
+        }
+
+        bool isAtSourcePattern(const std::string &value)
+        {
+            fs::path src(value);
+            const std::string filename = src.filename().string();
+            if (filename.size() < 3)
+            {
+                return false;
+            }
+            return filename[0] == '@' && src.has_extension();
+        }
+
+        void appendUnique(std::vector<std::string> &items, const std::string &value)
+        {
+            if (value.empty())
+            {
+                return;
+            }
+            if (std::find(items.begin(), items.end(), value) == items.end())
+            {
+                items.push_back(value);
+            }
+        }
+
+        std::vector<std::string> expandAtSourceEntries(const fs::path &baseDir, const std::vector<std::string> &items)
+        {
+            std::vector<std::string> out;
+
+            for (const auto &item : items)
+            {
+                if (item.empty())
+                {
+                    continue;
+                }
+
+                if (!isAtSourcePattern(item))
+                {
+                    appendUnique(out, item);
+                    continue;
+                }
+
+                const fs::path patternPath(item);
+                const std::string expectedExt = lower(patternPath.extension().string());
+                const fs::path searchRoot = fs::absolute(baseDir / patternPath.parent_path());
+
+                std::error_code ec;
+                if (!fs::exists(searchRoot, ec) || !fs::is_directory(searchRoot, ec))
+                {
+                    continue;
+                }
+
+                std::vector<fs::path> matches;
+                for (const auto &entry : fs::recursive_directory_iterator(searchRoot, ec))
+                {
+                    if (ec || !entry.is_regular_file(ec))
+                    {
+                        continue;
+                    }
+                    const fs::path file = entry.path();
+                    if (lower(file.extension().string()) != expectedExt)
+                    {
+                        continue;
+                    }
+                    matches.push_back(file);
+                }
+
+                std::sort(matches.begin(), matches.end(), [](const fs::path &a, const fs::path &b)
+                          { return a.generic_string() < b.generic_string(); });
+
+                for (const auto &match : matches)
+                {
+                    fs::path rel;
+                    try
+                    {
+                        rel = fs::relative(match, baseDir);
+                    }
+                    catch (...)
+                    {
+                        rel = match;
+                    }
+                    appendUnique(out, rel.generic_string());
+                }
+            }
+
             return out;
         }
 
@@ -106,7 +200,7 @@ namespace crosside::model
             return out;
         }
 
-        PlatformBlock parsePlatformBlock(const json &node)
+        PlatformBlock parsePlatformBlock(const json &node, const fs::path &moduleDir)
         {
             PlatformBlock out;
             if (!node.is_object())
@@ -116,7 +210,7 @@ namespace crosside::model
 
             if (node.contains("src"))
             {
-                out.src = toStringList(node["src"]);
+                out.src = expandAtSourceEntries(moduleDir, toStringList(node["src"]));
             }
             if (node.contains("include"))
             {
@@ -237,7 +331,7 @@ namespace crosside::model
             module.depends = toStringList(data.value("depends", json::array()));
             module.systems = toStringList(data.value("system", json::array()));
 
-            module.main.src = toStringList(data.value("src", json::array()));
+            module.main.src = expandAtSourceEntries(module.dir, toStringList(data.value("src", json::array())));
             module.main.include = toStringList(data.value("include", json::array()));
 
             if (data.contains("CPP_ARGS") && data["CPP_ARGS"].is_string())
@@ -260,15 +354,15 @@ namespace crosside::model
                 std::string desktopKey = hostDesktopKey();
                 if (platforms.contains(desktopKey))
                 {
-                    module.desktop = parsePlatformBlock(platforms[desktopKey]);
+                    module.desktop = parsePlatformBlock(platforms[desktopKey], module.dir);
                 }
                 if (platforms.contains("android"))
                 {
-                    module.android = parsePlatformBlock(platforms["android"]);
+                    module.android = parsePlatformBlock(platforms["android"], module.dir);
                 }
                 if (platforms.contains("emscripten"))
                 {
-                    module.web = parsePlatformBlock(platforms["emscripten"]);
+                    module.web = parsePlatformBlock(platforms["emscripten"], module.dir);
                 }
             }
 
@@ -304,7 +398,8 @@ namespace crosside::model
 
             project.modules = toStringList(data.value("Modules", json::array()));
 
-            for (const auto &item : toStringList(data.value("Src", json::array())))
+            const auto resolvedProjectSrc = expandAtSourceEntries(project.root, toStringList(data.value("Src", json::array())));
+            for (const auto &item : resolvedProjectSrc)
             {
                 project.src.push_back(toAbsolute(project.root, item));
             }

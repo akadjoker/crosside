@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "description": "Third-party upstream sources tracked for archive download (no git clone).",
+  "libraries": {
+    "flac": {
+      "module": "flac",
+      "repo": "xiph/flac",
+      "channel": "release",
+      "default_archive": "tar.gz",
+      "notes": "Header/lib wrapper module; validate integration after update."
+    },
+    "freetype": {
+      "module": "freetype",
+      "repo": "freetype/freetype",
+      "channel": "release",
+      "default_archive": "tar.gz",
+      "sync": {
+        "clean": ["src", "include"],
+        "copy": [
+          {
+            "from": "src",
+            "to": "src"
+          },
+          {
+            "from": "include",
+            "to": "include"
+          }
+        ]
+      }
+    },
+    "glfw": {
+      "module": "glfw",
+      "repo": "glfw/glfw",
+      "channel": "release",
+      "default_archive": "tar.gz",
+      "sync": {
+        "clean": ["src", "include"],
+        "copy": [
+          {
+            "from": "src",
+            "to": "src"
+          },
+          {
+            "from": "include",
+            "to": "include"
+          }
+        ]
+      }
+    },
+    "glew": {
+      "module": "glew",
+      "repo": "nigels-com/glew",
+      "channel": "release",
+      "default_archive": "tar.gz",
+      "sync": {
+        "clean": ["src", "include"],
+        "copy": [
+          {
+            "from": "src",
+            "to": "src"
+          },
+          {
+            "from": "include",
+            "to": "include"
+          }
+        ]
+      }
+    },
+    "jpeg": {
+      "module": "jpeg",
+      "repo": "libjpeg-turbo/libjpeg-turbo",
+      "channel": "release",
+      "default_archive": "tar.gz",
+      "notes": "Current module is IJG-style; migration may require source-list updates."
+    },
+    "openal": {
+      "module": "openal",
+      "repo": "kcat/openal-soft",
+      "channel": "release",
+      "default_archive": "tar.gz"
+    },
+    "opengl_registry": {
+      "module": "",
+      "repo": "KhronosGroup/OpenGL-Registry",
+      "channel": "tag",
+      "default_archive": "zip",
+      "notes": "API headers/spec repository, not a standalone runtime library."
+    },
+    "png": {
+      "module": "png",
+      "repo": "pnggroup/libpng",
+      "channel": "release",
+      "default_archive": "tar.gz"
+    },
+    "sfml": {
+      "module": "sfml",
+      "repo": "SFML/SFML",
+      "channel": "release",
+      "default_archive": "tar.gz",
+      "sync": {
+        "clean": ["src", "include"],
+        "copy": [
+          {
+            "from": "src",
+            "to": "src"
+          },
+          {
+            "from": "include",
+            "to": "include"
+          }
+        ]
+      }
+    },
+    "vorbis": {
+      "module": "vorbis",
+      "repo": "xiph/vorbis",
+      "channel": "tag",
+      "default_archive": "tar.gz",
+      "sync": {
+        "clean": ["src", "include"],
+        "copy": [
+          {
+            "from": "lib",
+            "to": "src"
+          },
+          {
+            "from": "include",
+            "to": "include"
+          }
+        ]
+      }
+    },
+    "zip": {
+      "module": "zip",
+      "repo": "zlib-ng/minizip-ng",
+      "channel": "release",
+      "default_archive": "tar.gz",
+      "notes": "Current module uses classic minizip API; verify compatibility before replacing."
+    },
+    "zlib": {
+      "module": "zlib",
+      "repo": "madler/zlib",
+      "channel": "tag",
+      "default_archive": "tar.gz"
+    }
+  }
+}

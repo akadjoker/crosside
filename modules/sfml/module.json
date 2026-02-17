@@ -3,7 +3,7 @@
 	"about":" ",
 	"author":"djokersoft",
 	"version":"1.0.0",
-	"depends":["freetype","stb-image","openal","vorbis","flac"],
+	"depends":["freetype","stb-image","ogg","vorbis"],
         "static":true,
 	"system":["linux","android","windows"],
 	"src":[
@@ -16,27 +16,33 @@
 "src/SFML/System/Thread.cpp",
 "src/SFML/System/ThreadLocal.cpp",
 "src/SFML/System/Time.cpp",
+"src/SFML/System/Utils.cpp",
+"src/SFML/System/Vector2.cpp",
+"src/SFML/System/Vector3.cpp",
 "src/SFML/System/FileInputStream.cpp",
 "src/SFML/System/MemoryInputStream.cpp",
 "src/SFML/Audio/ALCheck.cpp",
 "src/SFML/Audio/AlResource.cpp",
 "src/SFML/Audio/AudioDevice.cpp",
+"src/SFML/Audio/AudioResource.cpp",
 "src/SFML/Audio/Listener.cpp",
+"src/SFML/Audio/Miniaudio.cpp",
+"src/SFML/Audio/MiniaudioUtils.cpp",
 "src/SFML/Audio/Music.cpp",
 "src/SFML/Audio/Sound.cpp",
 "src/SFML/Audio/SoundBuffer.cpp",
 "src/SFML/Audio/SoundBufferRecorder.cpp",
 "src/SFML/Audio/InputSoundFile.cpp",
 "src/SFML/Audio/OutputSoundFile.cpp",
+"src/SFML/Audio/PlaybackDevice.cpp",
 "src/SFML/Audio/SoundRecorder.cpp",
 "src/SFML/Audio/SoundSource.cpp",
 "src/SFML/Audio/SoundStream.cpp",
 "src/SFML/Audio/SoundFileFactory.cpp",
 "src/SFML/Audio/SoundFileReaderOgg.cpp",
+"src/SFML/Audio/SoundFileReaderMp3.cpp",
 "src/SFML/Audio/SoundFileReaderWav.cpp",
 "src/SFML/Audio/SoundFileWriterOgg.cpp",
-"src/SFML/Audio/SoundFileReaderFlac.cpp",
-"src/SFML/Audio/SoundFileWriterFlac.cpp",
 "src/SFML/Audio/SoundFileWriterWav.cpp",
 "src/SFML/Window/Clipboard.cpp",
 "src/SFML/Window/Context.cpp",
@@ -52,6 +58,7 @@
 "src/SFML/Window/SensorManager.cpp",
 "src/SFML/Window/VideoMode.cpp",
 "src/SFML/Window/Window.cpp",
+"src/SFML/Window/WindowBase.cpp",
 "src/SFML/Window/WindowImpl.cpp",
 "src/SFML/Network/Ftp.cpp",
 "src/SFML/Network/Http.cpp",
@@ -82,6 +89,7 @@
 "src/SFML/Graphics/View.cpp",
 "src/SFML/Graphics/Vertex.cpp",
 "src/SFML/Graphics/GLLoader.cpp",
+"src/SFML/Graphics/StencilMode.cpp",
 "src/SFML/Graphics/Shape.cpp",
 "src/SFML/Graphics/CircleShape.cpp",
 "src/SFML/Graphics/RectangleShape.cpp",
@@ -98,9 +106,9 @@
 	{
 	  "linux":
 	  {
- 	   "CPP_ARGS":"-fPIC -fno-strict-aliasing -DSFML_STATIC -DSFML_SYSTEM_LINUX -DSFML_BUILD_GRAPHICS -DSFML_BUILD_NETWORK -DSFML_USE_STATIC_STD_LIBS -DUNICODE -D_UNICODE -DSFML_BUILD_AUDIO -DOV_EXCLUDE_STATIC_CALLBACKS -DFLAC__NO_DLL -DSTBI_FAILURE_USERMSG",
+ 	   "CPP_ARGS":"-fPIC -fno-strict-aliasing -DSFML_STATIC -DSFML_BUILD_GRAPHICS -DSFML_BUILD_NETWORK -DSFML_USE_STATIC_STD_LIBS -DUNICODE -D_UNICODE -DSFML_BUILD_AUDIO -DOV_EXCLUDE_STATIC_CALLBACKS -DFLAC__NO_DLL -DSTBI_FAILURE_USERMSG -DSFML_VULKAN_IMPLEMENTATION_NOT_AVAILABLE",
  	   "CC_ARGS":"-fPIC -fno-strict-aliasing -DSFML_STATIC -DSFML_SYSTEM_LINUX -DSFML_BUILD_GRAPHICS -DSFML_BUILD_NETWORK  -DSFML_BUILD_AUDIO -DSFML_USE_STATIC_STD_LIBS -DUNICODE -D_UNICODE  ",
- 	   "LD_ARGS":"-lopenal -lvorbis -lFLAC -lGL -lc -lm -lpthread -ludev -ldl -lrt  -lX11 -lXext -lXrandr -lXi",
+	   "LD_ARGS":"-lFLAC -lvorbis -lvorbisfile -lvorbisenc -logg -l:libopenal.so.1 -lfreetype -lstb-image -lGL -lc -lm -lpthread -ludev -ldl -lrt -lX11 -lXext -lXrandr -lXi -lXcursor",
 	   "src":[
 "src/SFML/System/Unix/ClockImpl.cpp",
 "src/SFML/System/Unix/MutexImpl.cpp",
@@ -111,18 +119,23 @@
 "src/SFML/Window/Unix/ClipboardImpl.cpp",
 "src/SFML/Window/Unix/Display.cpp",
 "src/SFML/Window/Unix/InputImpl.cpp",
+"src/SFML/Window/Unix/KeySymToKeyMapping.cpp",
+"src/SFML/Window/Unix/KeySymToUnicodeMapping.cpp",
 "src/SFML/Window/Unix/SensorImpl.cpp",
 "src/SFML/Window/Unix/VideoModeImpl.cpp",
 "src/SFML/Window/Unix/WindowImplX11.cpp",
 "src/SFML/Window/Unix/GlxContext.cpp",
 "src/SFML/Window/Unix/GlxExtensions.cpp",
+"src/SFML/Window/Unix/KeyboardImpl.cpp",
 "src/SFML/Window/Unix/JoystickImpl.cpp",
+"src/SFML/Audio/SoundFileReaderFlac.cpp",
+"src/SFML/Audio/SoundFileWriterFlac.cpp",
 "src/SFML/Network/Unix/SocketImpl.cpp"],
 	   "include":[""]
 	  },
 	  "windows":
 	  {
- 	   "CPP_ARGS":"-std=c++11  -fPIC -fno-strict-aliasing  -DSFML_BUILD_WINDOW -DSFML_BUILD_GRAPHICS -DSFML_BUILD_NETWORK -DSFML_USE_STATIC_STD_LIBS",
+ 	   "CPP_ARGS":"-std=c++17  -fPIC -fno-strict-aliasing  -DSFML_BUILD_WINDOW -DSFML_BUILD_GRAPHICS -DSFML_BUILD_NETWORK -DSFML_USE_STATIC_STD_LIBS",
  	   "CC_ARGS":"",
  	   "LD_ARGS":"-lfreetype -lopenal -lvorbis -lstb-image",
 	    "src":[
@@ -146,9 +159,9 @@
 	  },
 	  "android":
 	  {
- 	   "CPP_ARGS":"-std=c++11  -fPIC -fno-strict-aliasing  -DSFML_BUILD_GRAPHICS -DSFML_BUILD_NETWORK -DSFML_OPENGL_ES -DGL_GLEXT_PROTOTYPES -DSFML_USE_STATIC_STD_LIBS",
+ 	   "CPP_ARGS":"-std=c++17  -fPIC -fno-strict-aliasing -DSFML_SYSTEM_ANDROID  -DSFML_BUILD_GRAPHICS -DSFML_BUILD_NETWORK -DSFML_OPENGL_ES -DGL_GLEXT_PROTOTYPES -DSFML_USE_STATIC_STD_LIBS",
  	   "CC_ARGS":"",
- 	   "LD_ARGS":"-lfreetype -lopenal -lvorbis -lstb-image  -lc -lm  -ldl -lGLESv1_CM -lEGL -ljnigraphics -llog -landroid -lOpenSLES",
+ 	   "LD_ARGS":"-lfreetype -lstb-image  -lc -lm  -ldl -lGLESv1_CM -lEGL -ljnigraphics -llog -landroid -lOpenSLES",
 	    "src":[
 "src/SFML/System/Unix/ClockImpl.cpp",
 "src/SFML/System/Unix/MutexImpl.cpp",
@@ -181,4 +194,3 @@
 	  }
       }
 }  
-

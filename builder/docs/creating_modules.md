@@ -115,6 +115,12 @@ Build source list is:
 - top-level `src`
 - plus per-platform `plataforms.<target>.src`
 
+You can also use source patterns with `@`:
+- `src/@.c` -> include all `.c` files recursively under `src/`
+- `src/@.cpp` -> include all `.cpp` files recursively under `src/`
+
+This works both in top-level `src` and inside `plataforms.<target>.src`.
+
 Only compilable extensions are used:
 - `.c`, `.cc`, `.cpp`, `.cxx`, `.mm`, `.xpp`
 

@@ -171,6 +171,12 @@ namespace crosside::commands
             return true;
         }
 
+        bool isAllKeyword(const std::string &value)
+        {
+            const std::string key = lower(value);
+            return key == "all" || key == "*";
+        }
+
         bool parseOptions(const std::vector<std::string> &args, CleanOptions &opt, const crosside::Context &ctx)
         {
             std::vector<std::string> positionals;
@@ -353,18 +359,47 @@ namespace crosside::commands
         if (opt.kind == "module")
         {
             auto modules = crosside::model::discoverModules(repoRoot / "modules", ctx);
-            const fs::path moduleFile = crosside::model::resolveModuleFile(repoRoot, opt.name, opt.moduleFile);
-            auto module = crosside::model::loadModuleFile(moduleFile, ctx);
-            if (!module.has_value())
-            {
-                ctx.error("Module not found: ", moduleFile.string());
-                return 1;
-            }
-            modules[module->name] = module.value();
+            std::vector<std::string> order;
 
-            std::vector<std::string> order = opt.withDeps
-                                                 ? crosside::model::moduleClosure({module->name}, modules, ctx)
-                                                 : std::vector<std::string>{module->name};
+            if (isAllKeyword(opt.name))
+            {
+                if (!opt.moduleFile.empty())
+                {
+                    ctx.warn("clean module all: ignoring --module-file");
+                }
+                if (opt.withDeps)
+                {
+                    ctx.warn("clean module all: --with-deps has no effect");
+                }
+
+                for (const auto &[moduleName, _] : modules)
+                {
+                    (void)_;
+                    order.push_back(moduleName);
+                }
+                std::sort(order.begin(), order.end());
+            }
+            else
+            {
+                const fs::path moduleFile = crosside::model::resolveModuleFile(repoRoot, opt.name, opt.moduleFile);
+                auto module = crosside::model::loadModuleFile(moduleFile, ctx);
+                if (!module.has_value())
+                {
+                    ctx.error("Module not found: ", moduleFile.string());
+                    return 1;
+                }
+                modules[module->name] = module.value();
+
+                order = opt.withDeps
+                            ? crosside::model::moduleClosure({module->name}, modules, ctx)
+                            : std::vector<std::string>{module->name};
+            }
+
+            if (order.empty())
+            {
+                ctx.warn("No modules to clean");
+                return 0;
+            }
 
             for (const auto &target : opt.targets)
             {

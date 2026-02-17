@@ -1,7 +1,7 @@
 {
   "Configuration": {
     "Modules": [
-      "sdl2"
+      "sfml"
     ],
     "Projects": [
       "/media/projectos/projects/python/crosside/projects/bugame/main.mk"

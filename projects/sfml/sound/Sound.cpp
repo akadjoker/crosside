@@ -1,12 +1,13 @@
-
 ////////////////////////////////////////////////////////////
 // Headers
 ////////////////////////////////////////////////////////////
 #include <SFML/Audio.hpp>
+
 #include <iostream>
-#include <string>
 
 
+namespace
+{
 ////////////////////////////////////////////////////////////
 /// Play a sound
 ///
@@ -14,31 +15,29 @@
 void playSound()
 {
     // Load a sound buffer from a wav file
-    sf::SoundBuffer buffer;
-    if (!buffer.loadFromFile("resources/canary.wav"))
-        return;
+    const sf::SoundBuffer buffer("resources/killdeer.wav");
 
-    // Display sound informations
-    std::cout << "canary.wav:" << std::endl;
-    std::cout << " " << buffer.getDuration().asSeconds() << " seconds"       << std::endl;
-    std::cout << " " << buffer.getSampleRate()           << " samples / sec" << std::endl;
-    std::cout << " " << buffer.getChannelCount()         << " channels"      << std::endl;
+    // Display sound information
+    std::cout << "killdeer.wav:" << '\n'
+              << " " << buffer.getDuration().asSeconds() << " seconds" << '\n'
+              << " " << buffer.getSampleRate() << " samples / sec" << '\n'
+              << " " << buffer.getChannelCount() << " channels" << '\n';
 
     // Create a sound instance and play it
     sf::Sound sound(buffer);
     sound.play();
 
     // Loop while the sound is playing
-    while (sound.getStatus() == sf::Sound::Playing)
+    while (sound.getStatus() == sf::Sound::Status::Playing)
     {
         // Leave some CPU time for other processes
         sf::sleep(sf::milliseconds(100));
 
         // Display the playing position
-        std::cout << "\rPlaying... " << sound.getPlayingOffset().asSeconds() << " sec        ";
-        std::cout << std::flush;
+        std::cout << "\rPlaying... " << sound.getPlayingOffset().asSeconds() << " sec        " << std::flush;
     }
-    std::cout << std::endl << std::endl;
+
+    std::cout << '\n' << std::endl;
 }
 
 
@@ -46,34 +45,33 @@ void playSound()
 /// Play a music
 ///
 ////////////////////////////////////////////////////////////
-void playMusic(const std::string& filename)
+void playMusic(const std::filesystem::path& filename)
 {
     // Load an ogg music file
-    sf::Music music;
-    if (!music.openFromFile("resources/" + filename))
-        return;
+    sf::Music music("resources" / filename);
 
-    // Display music informations
-    std::cout << filename << ":" << std::endl;
-    std::cout << " " << music.getDuration().asSeconds() << " seconds"       << std::endl;
-    std::cout << " " << music.getSampleRate()           << " samples / sec" << std::endl;
-    std::cout << " " << music.getChannelCount()         << " channels"      << std::endl;
+    // Display music information
+    std::cout << filename << ":" << '\n'
+              << " " << music.getDuration().asSeconds() << " seconds" << '\n'
+              << " " << music.getSampleRate() << " samples / sec" << '\n'
+              << " " << music.getChannelCount() << " channels" << '\n';
 
     // Play it
     music.play();
 
     // Loop while the music is playing
-    while (music.getStatus() == sf::Music::Playing)
+    while (music.getStatus() == sf::Music::Status::Playing)
     {
         // Leave some CPU time for other processes
         sf::sleep(sf::milliseconds(100));
 
         // Display the playing position
-        std::cout << "\rPlaying... " << music.getPlayingOffset().asSeconds() << " sec        ";
-        std::cout << std::flush;
+        std::cout << "\rPlaying... " << music.getPlayingOffset().asSeconds() << " sec        " << std::flush;
     }
-    std::cout << std::endl << std::endl;
+
+    std::cout << '\n' << std::endl;
 }
+} // namespace
 
 
 ////////////////////////////////////////////////////////////
@@ -88,14 +86,15 @@ int main()
     playSound();
 
     // Play music from an ogg file
-    playMusic("orchestral.ogg");
+    playMusic("doodle_pop.ogg");
 
     // Play music from a flac file
     playMusic("ding.flac");
 
+    // Play music from a mp3 file
+    playMusic("ding.mp3");
+
     // Wait until the user presses 'enter' key
     std::cout << "Press enter to exit..." << std::endl;
     std::cin.ignore(10000, '\n');
-
-    return EXIT_SUCCESS;
 }
