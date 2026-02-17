@@ -223,7 +223,7 @@ bool Scene::ImportTileMap(const std::string &fileName)
 
     int graphId = -1;
 
-    graphId = gGraphLib.load("tiles.png", "assets/tiles.png");
+   // graphId = gGraphLib.load("tiles.png", "assets/tiles.png");
 
     tinyxml2::XMLElement *tileSetElem = mapElem->FirstChildElement("tileset");
     while (tileSetElem)
@@ -240,28 +240,21 @@ bool Scene::ImportTileMap(const std::string &fileName)
             std::string fullImagePath = filePath + "/" + image;
             std::string androidImagePath =  "assets/" + image;
 
-            if (FileExists(fullImagePath.c_str()))
+            graphId = gGraphLib.load(GetFileNameWithoutExt(fullImagePath.c_str()), fullImagePath.c_str());
+            if (graphId == -1)
             {
-                TraceLog(LOG_INFO, "Load tile set image %s", fullImagePath.c_str());
-                graphId = gGraphLib.load(GetFileNameWithoutExt(fullImagePath.c_str()), fullImagePath.c_str());
-            }
-            else if (FileExists(androidImagePath.c_str()))
-            {
-                TraceLog(LOG_INFO, "Load tile set image %s", androidImagePath.c_str());
                 graphId = gGraphLib.load(GetFileNameWithoutExt(androidImagePath.c_str()), androidImagePath.c_str());
+                if (graphId == -1)
+                {
+                    TraceLog(LOG_ERROR, "Tile set image not found: %s or %s", fullImagePath.c_str(), androidImagePath.c_str());
+                }
+               
             }
-            else
-            {
-                TraceLog(LOG_ERROR, "Tile set image not found: %s or %s", fullImagePath.c_str(), androidImagePath.c_str());
-             //   return false;
-            }
-
-            // Assets::Instance().loadGraph(image, image);
             tileSetElem = tileSetElem->NextSiblingElement("tileset");
         }
     }
 
-    Info("Load tile map %s Tile (%d,%d) Map (%d,%d) Columns: %d", fileName.c_str(), mTileWidth, mTileHeight, mWidth, mHeight, mColumns);
+    TraceLog(LOG_INFO, "Load tile map %s Tile (%d,%d) Map (%d,%d) Columns: %d", fileName.c_str(), mTileWidth, mTileHeight, mWidth, mHeight, mColumns);
 
     int layer = 0;
 
