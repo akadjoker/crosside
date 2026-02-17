@@ -53,6 +53,8 @@ Thumbs.db
 /modules/*/Linux/
 /modules/*/Windows/
 /modules/*/macOS/
+/builder/*/obj/
+/builder/*/bin/
 
 /tirthird_party_src/*
 /tirthird_party_src
