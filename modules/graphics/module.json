@@ -16,6 +16,7 @@
     "src/mask.cpp",
     "src/math.cpp",
     "src/quadtreee.cpp",
+    "src/filebuffer.cpp",
     "src/render.cpp",
     "src/scene.cpp",
     "src/sound.cpp",

@@ -1,6 +1,7 @@
 
 
 #include "engine.hpp"
+#include "filebuffer.hpp"
 #include "interpreter.hpp"
 #include "bindings.hpp"
 #include "camera.hpp"
@@ -18,53 +19,6 @@ extern Scene gScene;
 extern ParticleSystem gParticleSystem;
 extern CameraManager gCamera;
 
-
-class FileBuffer
-{
-public:
-    bool load(const char *path)
-    {
-        data.clear();
-
-        int fileSize = 0;
-        unsigned char *fileData = LoadFileData(path, &fileSize);
-        if (!fileData || fileSize <= 0)
-        {
-            if (fileData)
-                UnloadFileData(fileData);
-            return false;
-        }
-
-        data.assign(fileData, fileData + fileSize);
-        data.push_back(0); // Keep NUL terminator for C-style loaders.
-        UnloadFileData(fileData);
-        return true;
-    }
-
-    const char *c_str() const
-    {
-        if (data.empty())
-            return nullptr;
-        return reinterpret_cast<const char *>(data.data());
-    }
-
-    size_t size() const
-    {
-        if (data.empty())
-            return 0;
-        return data.size() - 1;
-    }
-
-    std::string toString() const
-    {
-        if (data.empty())
-            return "";
-        return std::string(reinterpret_cast<const char *>(data.data()), size());
-    }
-
-private:
-    std::vector<unsigned char> data;
-};
 
 struct FileLoaderContext
 {

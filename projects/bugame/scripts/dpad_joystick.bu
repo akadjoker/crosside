@@ -1,0 +1,93 @@
+// Biblioteca simples de D-Pad e Joystick para projetos BU
+// Extraído de bugame/survive
+
+var DPAD_ENABLED = true;
+var DPAD_BTN = 58;
+var DPAD_GAP = 24;
+var DPAD_MARGIN = 18;
+
+var DPAD_LEFT_X  = 0.0;  var DPAD_LEFT_Y  = 0.0;
+var DPAD_RIGHT_X = 0.0;  var DPAD_RIGHT_Y = 0.0;
+var DPAD_UP_X    = 0.0;  var DPAD_UP_Y    = 0.0;
+var DPAD_DOWN_X  = 0.0;  var DPAD_DOWN_Y  = 0.0;
+var DPAD_SHOOT_X = 0.0;  var DPAD_SHOOT_Y = 0.0;
+var DPAD_SHOOT_W = 72.0; var DPAD_SHOOT_H = 72.0;
+
+def setup_dpad_controls()
+{
+    vkey_clear();
+    if (!DPAD_ENABLED) return;
+    var cx = DPAD_MARGIN + DPAD_BTN + DPAD_BTN / 2;
+    var cy = WINDOW_HEIGHT - DPAD_MARGIN - DPAD_BTN - DPAD_BTN / 2;
+    DPAD_LEFT_X  = cx - DPAD_BTN - DPAD_GAP;
+    DPAD_LEFT_Y  = cy - DPAD_BTN / 2;
+    DPAD_RIGHT_X = cx + DPAD_GAP;
+    DPAD_RIGHT_Y = cy - DPAD_BTN / 2;
+    DPAD_UP_X    = cx - DPAD_BTN / 2;
+    DPAD_UP_Y    = cy - DPAD_BTN - DPAD_GAP;
+    DPAD_DOWN_X  = cx - DPAD_BTN / 2;
+    DPAD_DOWN_Y  = cy + DPAD_GAP;
+    DPAD_SHOOT_X = WINDOW_WIDTH - DPAD_MARGIN - DPAD_SHOOT_W;
+    DPAD_SHOOT_Y = WINDOW_HEIGHT - DPAD_MARGIN - DPAD_SHOOT_H;
+    vkey_add(KEY_LEFT,  DPAD_LEFT_X,  DPAD_LEFT_Y,  DPAD_BTN, DPAD_BTN);
+    vkey_add(KEY_RIGHT, DPAD_RIGHT_X, DPAD_RIGHT_Y, DPAD_BTN, DPAD_BTN);
+    vkey_add(KEY_UP,    DPAD_UP_X,    DPAD_UP_Y,    DPAD_BTN, DPAD_BTN);
+    vkey_add(KEY_DOWN,  DPAD_DOWN_X,  DPAD_DOWN_Y,  DPAD_BTN, DPAD_BTN);
+    vkey_add(KEY_SPACE, DPAD_SHOOT_X, DPAD_SHOOT_Y, DPAD_SHOOT_W, DPAD_SHOOT_H);
+    vkey_set_visible(false);
+}
+
+def draw_dpad_hud()
+{
+    if (!DPAD_ENABLED) return;
+    var s = DPAD_BTN;
+    set_alpha(90);
+    set_color(20, 25, 45);
+    draw_rectangle(DPAD_LEFT_X, DPAD_UP_Y + DPAD_BTN / 2 - s / 2 + DPAD_GAP, s * 2 + DPAD_GAP * 2 + s, s, true);
+    draw_rectangle(DPAD_UP_X, DPAD_UP_Y, s, s * 2 + DPAD_GAP * 2 + s, true);
+    set_alpha(255);
+    // Esquerda
+    if (key_down(KEY_LEFT)) set_color(255, 220, 80);
+    else set_color(80, 110, 170);
+    draw_rectangle(DPAD_LEFT_X, DPAD_LEFT_Y, s, s, true);
+    set_color(180, 210, 255);
+    draw_rectangle(DPAD_LEFT_X, DPAD_LEFT_Y, s, s, false);
+    set_color(235, 242, 255);
+    draw_text("<", DPAD_LEFT_X + s/2 - 7, DPAD_LEFT_Y + s/2 - 9, 18);
+    // Direita
+    if (key_down(KEY_RIGHT)) set_color(255, 220, 80);
+    else set_color(80, 110, 170);
+    draw_rectangle(DPAD_RIGHT_X, DPAD_RIGHT_Y, s, s, true);
+    set_color(180, 210, 255);
+    draw_rectangle(DPAD_RIGHT_X, DPAD_RIGHT_Y, s, s, false);
+    set_color(235, 242, 255);
+    draw_text(">", DPAD_RIGHT_X + s/2 - 7, DPAD_RIGHT_Y + s/2 - 9, 18);
+    // Cima
+    if (key_down(KEY_UP)) set_color(120, 220, 120);
+    else set_color(60, 140, 80);
+    draw_rectangle(DPAD_UP_X, DPAD_UP_Y, s, s, true);
+    set_color(160, 240, 170);
+    draw_rectangle(DPAD_UP_X, DPAD_UP_Y, s, s, false);
+    set_color(235, 255, 240);
+    draw_text("^", DPAD_UP_X + s/2 - 7, DPAD_UP_Y + s/2 - 9, 18);
+    // Baixo
+    if (key_down(KEY_DOWN)) set_color(200, 160, 60);
+    else set_color(100, 80, 40);
+    draw_rectangle(DPAD_DOWN_X, DPAD_DOWN_Y, s, s, true);
+    set_color(220, 190, 120);
+    draw_rectangle(DPAD_DOWN_X, DPAD_DOWN_Y, s, s, false);
+    set_color(255, 240, 200);
+    draw_text("v", DPAD_DOWN_X + s/2 - 5, DPAD_DOWN_Y + s/2 - 9, 18);
+    // Shoot
+    var sw = DPAD_SHOOT_W;
+    var sh = DPAD_SHOOT_H;
+    if (key_down(KEY_SPACE)) set_color(255, 80, 80);
+    else set_color(180, 40, 40);
+    draw_rectangle(DPAD_SHOOT_X, DPAD_SHOOT_Y, sw, sh, true);
+    if (key_down(KEY_SPACE)) set_color(255, 180, 180);
+    else set_color(255, 130, 130);
+    draw_rectangle(DPAD_SHOOT_X, DPAD_SHOOT_Y, sw, sh, false);
+    set_color(255, 240, 240);
+    draw_text("FIRE", DPAD_SHOOT_X + sw/2 - 22, DPAD_SHOOT_Y + sh/2 - 9, 17);
+    set_alpha(255);
+}

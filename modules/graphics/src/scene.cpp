@@ -1,6 +1,7 @@
 #include "engine.hpp"
 #include "render.hpp"
 #include "tinyxml2.h"
+#include "filebuffer.hpp"
 
 extern GraphLib gGraphLib;
 extern Scene gScene;
@@ -174,14 +175,26 @@ Solid *Scene::getSolid(int id)
 bool Scene::ImportTileMap(const std::string &fileName)
 {
 
-    if (!FileExists(fileName.c_str()))
+    FileBuffer file;
+    if (!file.load(fileName.c_str()))
     {
-        Info("Tile map file not found: %s", fileName.c_str());
+        TraceLog(LOG_ERROR, "Failed to load tile map file: %s", fileName.c_str());
         return false;
+    } else 
+    {
+        TraceLog(LOG_INFO, "Tile map file loaded: %s", fileName.c_str());
     }
 
+    // if (!FileExists(fileName.c_str()))
+    // {
+    //     Info("Tile map file not found: %s", fileName.c_str());
+    //     return false;
+    // }
+
+
+
     tinyxml2::XMLDocument document;
-    document.LoadFile(fileName.c_str());
+    document.Inport(file.c_str(), file.size());
 
     std::string filePath = GetDirectoryPath(fileName.c_str());
 
@@ -210,6 +223,8 @@ bool Scene::ImportTileMap(const std::string &fileName)
 
     int graphId = -1;
 
+    graphId = gGraphLib.load("tiles.png", "assets/tiles.png");
+
     tinyxml2::XMLElement *tileSetElem = mapElem->FirstChildElement("tileset");
     while (tileSetElem)
     {
@@ -223,16 +238,22 @@ bool Scene::ImportTileMap(const std::string &fileName)
             image = imageElement->Attribute("source");
 
             std::string fullImagePath = filePath + "/" + image;
+            std::string androidImagePath =  "assets/" + image;
 
             if (FileExists(fullImagePath.c_str()))
             {
-                Info("Load tile set image %s", fullImagePath.c_str());
+                TraceLog(LOG_INFO, "Load tile set image %s", fullImagePath.c_str());
                 graphId = gGraphLib.load(GetFileNameWithoutExt(fullImagePath.c_str()), fullImagePath.c_str());
+            }
+            else if (FileExists(androidImagePath.c_str()))
+            {
+                TraceLog(LOG_INFO, "Load tile set image %s", androidImagePath.c_str());
+                graphId = gGraphLib.load(GetFileNameWithoutExt(androidImagePath.c_str()), androidImagePath.c_str());
             }
             else
             {
-                Info("Tile set image not found: %s", fullImagePath.c_str());
-                return false;
+                TraceLog(LOG_ERROR, "Tile set image not found: %s or %s", fullImagePath.c_str(), androidImagePath.c_str());
+             //   return false;
             }
 
             // Assets::Instance().loadGraph(image, image);

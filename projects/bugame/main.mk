@@ -3,7 +3,7 @@
 "Name":"main",
 "BuildCache":"bugame_core",
 
-"Release":"releases/angrybirds.json",
+"Release":"default.json",
 
 "Modules":["raylib", "box2d", "poly2tri", "miniz", "bu", "graphics"],
 "Src":["/media/projectos/projects/cpp/crosside/projects/bugame/src/bindings.cpp",

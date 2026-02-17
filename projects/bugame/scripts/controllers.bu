@@ -1,0 +1,550 @@
+ 
+var LAYOUT_HORIZONTAL = 0;
+var LAYOUT_VERTICAL   = 1;
+var LAYOUT_GRID       = 2;
+
+  
+def point_in_rect(px, py, rx, ry, rw, rh)
+{
+    if (px < rx) return false;
+    if (py < ry) return false;
+    if (px > rx + rw) return false;
+    if (py > ry + rh) return false;
+    return true;
+}
+
+class TouchButton
+{
+    var key;
+    var x;
+    var y;
+    var w;
+    var h;
+    var visible;
+
+    def init(_key, _x, _y, _w, _h)
+    {
+        self.key = _key;
+        self.x = _x;
+        self.y = _y;
+        self.w = _w;
+        self.h = _h;
+        self.visible = true;
+
+        vkey_add(self.key, self.x, self.y, self.w, self.h);
+    }
+
+    def set_visible(v)
+    {
+        self.visible = v;
+        vkey_set_visible(v);
+    }
+}
+ 
+ class DPad
+{
+    var x;
+    var y;
+    var size;
+    var gap;
+
+    var btn_left;
+    var btn_right;
+    var btn_up;
+    var btn_down;
+
+    var keys;
+
+    def init(_x, _y, _keys)
+    {
+        self.x = _x;
+        self.y = _y;
+        self.size = 80;
+        self.gap = 28;
+        self.keys = _keys;
+
+        self.create();
+    }
+
+    def create()
+    {
+        var s = self.size;
+        var g = self.gap;
+
+        var cx = self.x + s;
+        var cy = self.y + s;
+
+        self.btn_left  = TouchButton(self.keys[0],  cx - s - g, cy - s/2, s, s);
+        self.btn_right = TouchButton(self.keys[1], cx + g,     cy - s/2, s, s);
+        self.btn_up    = TouchButton(self.keys[2],    cx - s/2,   cy - s - g, s, s);
+        self.btn_down  = TouchButton(self.keys[3],  cx - s/2,   cy + g, s, s);
+    }
+
+    def set_visible(v)
+    {
+        self.btn_left.set_visible(v);
+        self.btn_right.set_visible(v);
+        self.btn_up.set_visible(v);
+        self.btn_down.set_visible(v);
+    }
+}
+ 
+ 
+class ActionPad
+{
+    var x;
+    var y;
+    var button_size;
+    var gap;
+
+    var layout;
+    var columns;     // used only in grid mode
+    var actions;     // list of keys
+    var buttons;     // TouchButton list
+    var visible;
+
+    def init(_x, _y, _actions, _layout, _columns)
+    {
+        self.x = _x;
+        self.y = _y;
+        self.actions = _actions;
+        self.layout = _layout;
+
+        self.button_size = 80;
+        self.gap = 8;
+
+        self.columns = _columns;
+        self.buttons = [];
+        self.visible = true;
+
+        self.build();
+    }
+
+    def build()
+    {
+        if (self.layout == LAYOUT_HORIZONTAL)
+        {
+            self.build_horizontal();
+        }
+        else if (self.layout == LAYOUT_VERTICAL)
+        {
+            self.build_vertical();
+        }
+        else if (self.layout == LAYOUT_GRID)
+        {
+            self.build_grid(self.columns);
+        }
+    }
+
+    def build_horizontal()
+    {
+        for (var i = 0; i < len(self.actions); i++)
+        {
+            var bx = self.x + i * (self.button_size + self.gap);
+            var by = self.y;
+
+            var btn = TouchButton(
+                self.actions[i],
+                bx,
+                by,
+                self.button_size,
+                self.button_size
+            );
+
+            self.buttons.push(btn);
+        }
+    }
+
+    def build_vertical()
+    {
+        for (var i = 0; i < len(self.actions); i++)
+        {
+            var bx = self.x;
+            var by = self.y + i * (self.button_size + self.gap);
+
+            var btn = TouchButton(
+                self.actions[i],
+                bx,
+                by,
+                self.button_size,
+                self.button_size
+            );
+
+            self.buttons.push(btn);
+        }
+    }
+
+    def build_grid(cols)
+    {
+        if (cols <= 0)
+        {
+            cols = len(self.actions);
+        }
+
+        for (var i = 0; i < len(self.actions); i++)
+        {
+            // var row = i / cols;
+            // var col = i % cols;
+            var row = floor(i / cols);
+            var col = i % cols;
+            var bx = self.x + col * (self.button_size + self.gap);
+            var by = self.y + row * (self.button_size + self.gap);
+
+            var btn = TouchButton(
+                self.actions[i],
+                bx,
+                by,
+                self.button_size,
+                self.button_size
+            );
+
+            self.buttons.push(btn);
+        }
+    }
+
+    def set_visible(v)
+    {
+        self.visible = v;
+
+        for (var i = 0; i < len(self.buttons); i++)
+        {
+            self.buttons[i].set_visible(v);
+        }
+    }
+
+    def set_position(_x, _y)
+    {
+        self.x = _x;
+        self.y = _y;
+
+        // rebuild layout
+        vkey_clear();
+        self.buttons = [];
+        self.build();
+    }
+}
+ 
+class VirtualJoystick
+{
+    var base_x;
+    var base_y;
+
+    var radius;
+    var capture_radius;
+    var knob_radius;
+    var deadzone;
+
+    var active;
+    var touch_id;
+    var desktop_captured;
+
+    var knob_x;
+    var knob_y;
+
+    var axis_x;
+    var axis_y;
+
+    var animating;
+    var anim_speed;
+
+    def init(_x, _y, _radius)
+    {
+        self.base_x = _x;
+        self.base_y = _y;
+
+        self.radius = _radius;
+        self.capture_radius = _radius * 1.45;
+        self.knob_radius = _radius * 0.47;
+        self.deadzone = 0.14;
+
+        self.anim_speed = 10.0;
+
+        self.reset();
+    }
+
+    def reset()
+    {
+        self.active = false;
+        self.touch_id = -1;
+        self.desktop_captured = false;
+
+        self.axis_x = 0;
+        self.axis_y = 0;
+
+        self.knob_x = self.base_x;
+        self.knob_y = self.base_y;
+
+        self.animating = true;
+    }
+
+    def apply_input(sx, sy)
+    {
+        var dx = sx - self.base_x;
+        var dy = sy - self.base_y;
+
+        var dist = sqrt(dx * dx + dy * dy);
+
+        if (dist > self.radius)
+        {
+            var k = self.radius / dist;
+            dx *= k;
+            dy *= k;
+        }
+
+        self.knob_x = self.base_x + dx;
+        self.knob_y = self.base_y + dy;
+
+        self.axis_x = dx / self.radius;
+        self.axis_y = dy / self.radius;
+
+        if (abs(self.axis_x) < self.deadzone) self.axis_x = 0;
+        if (abs(self.axis_y) < self.deadzone) self.axis_y = 0;
+    }
+
+    def animate(dt)
+    {
+        if (!self.animating) return;
+
+        var dx = self.base_x - self.knob_x;
+        var dy = self.base_y - self.knob_y;
+
+        self.knob_x += dx * self.anim_speed * dt;
+        self.knob_y += dy * self.anim_speed * dt;
+
+        self.axis_x = (self.knob_x - self.base_x) / self.radius;
+        self.axis_y = (self.knob_y - self.base_y) / self.radius;
+
+        if (abs(dx) < 0.5 && abs(dy) < 0.5)
+        {
+            self.knob_x = self.base_x;
+            self.knob_y = self.base_y;
+            self.axis_x = 0;
+            self.axis_y = 0;
+            self.animating = false;
+        }
+    }
+
+
+    def update_desktop()
+    {
+        var mx = get_mouse_x();
+        var my = get_mouse_y();
+
+        var dx = mx - self.base_x;
+        var dy = my - self.base_y;
+        var dist = sqrt(dx * dx + dy * dy);
+
+        if (mouse_pressed(0) && dist <= self.capture_radius)
+        {
+            self.desktop_captured = true;
+            self.animating = false;
+        }
+
+        if (mouse_down(0) && self.desktop_captured)
+        {
+            self.apply_input(mx, my);
+        }
+        else if (mouse_released(0))
+        {
+            self.desktop_captured = false;
+            self.animating = true;
+        }
+    }
+
+    def update(dt)
+    {
+        self.update_desktop();
+        self.animate(dt);
+    }
+
+    def draw()
+    {
+        set_alpha(55);
+        set_color(26, 36, 62);
+        draw_circle(self.base_x, self.base_y, self.capture_radius, true);
+
+        set_alpha(170);
+        set_color(146, 188, 255);
+        draw_circle(self.base_x, self.base_y, self.radius, false);
+
+        set_alpha(95);
+        set_color(180, 215, 255);
+        draw_circle(self.base_x, self.base_y, 12, true);
+
+        if (self.desktop_captured) set_color(255, 186, 90);
+        else set_color(180, 214, 255);
+
+        set_alpha(170);
+        draw_circle(self.knob_x, self.knob_y, self.knob_radius, true);
+
+        set_alpha(235);
+        set_color(245, 248, 255);
+        draw_circle(self.knob_x, self.knob_y, self.knob_radius, false);
+
+        set_alpha(255);
+    }
+
+    def get_axis()
+    {
+        return (self.axis_x, self.axis_y);
+    }
+}
+
+
+class MovePad
+{
+    var x;
+    var y;
+    var w;
+    var h;
+
+    var active;
+    var axis_x;
+    var axis_y;
+
+    var knob_x;
+    var knob_y;
+
+    var alpha;
+    var fade_speed;
+
+    var deadzone;
+
+    def init(_x, _y, _w, _h)
+    {
+        self.x = _x;
+        self.y = _y;
+        self.w = _w;
+        self.h = _h;
+
+        self.active = false;
+        self.axis_x = 0;
+        self.axis_y = 0;
+
+        self.knob_x = _x + _w/2;
+        self.knob_y = _y + _h/2;
+
+        self.alpha = 0;
+        self.fade_speed = 6.0;
+
+        self.deadzone = 0.08;
+    }
+
+    def reset()
+    {
+        self.active = false;
+        self.axis_x = 0;
+        self.axis_y = 0;
+
+        self.knob_x = self.x + self.w/2;
+        self.knob_y = self.y + self.h/2;
+    }
+
+    def update_desktop()
+    {
+        var mx = get_mouse_x();
+        var my = get_mouse_y();
+
+        if (mouse_pressed(0) && point_in_rect(mx, my, self.x, self.y, self.w, self.h))
+        {
+            self.active = true;
+        }
+
+        if (mouse_down(0) && self.active)
+        {
+            self.apply(mx, my);
+        }
+        else if (mouse_released(0))
+        {
+            self.reset();
+        }
+
+        // Fade
+        if (self.active)
+        {
+            self.alpha += self.fade_speed * delta();
+            if (self.alpha > 1) self.alpha = 1;
+        }
+        else
+        {
+            self.alpha -= self.fade_speed * delta();
+            if (self.alpha < 0) self.alpha = 0;
+        }
+    }
+
+    def apply(px, py)
+    {
+        var cx = self.x + self.w / 2;
+        var cy = self.y + self.h / 2;
+
+        var dx = px - cx;
+        var dy = py - cy;
+
+        var half_w = self.w / 2;
+        var half_h = self.h / 2;
+
+        self.axis_x = dx / half_w;
+        self.axis_y = dy / half_h;
+
+        // Clamp RECT
+        if (self.axis_x > 1) self.axis_x = 1;
+        if (self.axis_x < -1) self.axis_x = -1;
+
+        if (self.axis_y > 1) self.axis_y = 1;
+        if (self.axis_y < -1) self.axis_y = -1;
+
+        // Deadzone
+        if (abs(self.axis_x) < self.deadzone) self.axis_x = 0;
+        if (abs(self.axis_y) < self.deadzone) self.axis_y = 0;
+
+        // Knob segue exactamente dentro do rect
+        self.knob_x = cx + self.axis_x * half_w;
+        self.knob_y = cy + self.axis_y * half_h;
+    }
+
+    def get_axis()
+    {
+        return (self.axis_x, self.axis_y);
+    }
+
+    def draw()
+    {
+        
+        var cx = self.x + self.w / 2;
+        var cy = self.y + self.h / 2;
+        
+        var strength = sqrt(self.axis_x*self.axis_x + self.axis_y*self.axis_y);
+        // Border
+        set_alpha(120 );
+        set_color(120, 170, 255);
+        draw_rectangle(self.x, self.y, self.w, self.h, false);
+        
+        if (self.alpha <= 0) return;
+        // Base rect
+        set_alpha(50 + 40 * self.alpha);
+        set_color(50, 70, 110);
+        draw_rectangle(self.x, self.y, self.w, self.h, true);
+
+
+        if (self.active)
+        {
+            // Direction line
+            set_alpha(220 * self.alpha);
+            set_color(255, 190, 90);
+            draw_line_ex(cx, cy, self.knob_x, self.knob_y, 3);
+
+            // Strength feedback
+            set_alpha(120 * self.alpha);
+            set_color(255, 140, 80);
+            draw_circle(cx, cy, 30 * strength, false);
+
+            // Knob
+            set_alpha(230 * self.alpha);
+            set_color(255, 200, 100);
+            draw_circle(self.knob_x, self.knob_y, 14, true);
+        }
+
+        set_alpha(255);
+    }
+}
+

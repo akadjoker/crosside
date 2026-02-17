@@ -1,0 +1,365 @@
+import math;
+import os;
+
+var VIEW_W = 1280;
+var VIEW_H = 720;
+var WORLD_W = 3200;
+var WORLD_H = 2400;
+
+var KEY_W = 87;
+var KEY_A = 65;
+var KEY_S = 83;
+var KEY_D = 68;
+var KEY_UP = 265;
+var KEY_LEFT = 263;
+var KEY_DOWN = 264;
+var KEY_RIGHT = 262;
+var KEY_SPACE = 32;
+var KEY_SHIFT = 340;
+var KEY_R = 82;
+var KEY_ESCAPE = 256;
+var KEY_F = 70;
+var KEY_F1 = 290;
+var KEY_F2 = 291;
+
+var KEY_FIRE = KEY_F;
+
+
+var TOUCH_UI_ENABLED = true;
+var TOUCH_UI_VISIBLE = true;
+var TOUCH_RUNTIME_AUTO = false;
+var HUD_HELP_VISIBLE = false;
+
+var JOY_BASE_X = 150.0;
+var JOY_BASE_Y = 560.0;
+var JOY_RADIUS = 72.0;
+var JOY_CAPTURE_RADIUS = 104.0;
+var JOY_DESKTOP_CAPTURED = false;
+var JOY_KNOB_RADIUS = 34.0;
+var JOY_DEADZONE = 0.14;
+var JOY_ACTIVE = false;
+var JOY_TOUCH_ID = -1;
+var JOY_KNOB_X = 150.0;
+var JOY_KNOB_Y = 560.0;
+var JOY_AXIS_X = 0.0;
+var JOY_AXIS_Y = 0.0;
+var JOY_ANIMATING = true;
+var JOY_ANIM_SPEED = 10.01;  
+
+var BTN_FIRE_X = 0.0;
+var BTN_FIRE_Y = 0.0;
+var BTN_FIRE_W = 0.0;
+var BTN_FIRE_H = 0.0;
+var BTN_RST_X = 0.0;
+var BTN_RST_Y = 0.0;
+var BTN_RST_W = 0.0;
+var BTN_RST_H = 0.0;
+var BTN_ESC_X = 0.0;
+var BTN_ESC_Y = 0.0;
+var BTN_ESC_W = 0.0;
+var BTN_ESC_H = 0.0;
+
+def point_in_rect(px, py, rx, ry, rw, rh)
+{
+    if (px < rx) return false;
+    if (py < ry) return false;
+    if (px > rx + rw) return false;
+    if (py > ry + rh) return false;
+    return true;
+}
+
+ 
+ 
+def joystick_animate(dt)
+{
+    if (!JOY_ANIMATING) return;
+    
+    var dx = JOY_BASE_X - JOY_KNOB_X;
+    var dy = JOY_BASE_Y - JOY_KNOB_Y;
+    var dist = sqrt(dx * dx + dy * dy);
+    
+    if (dist < 1.0)
+    {
+        // Chegou ao centro
+        JOY_KNOB_X = JOY_BASE_X;
+        JOY_KNOB_Y = JOY_BASE_Y;
+        JOY_AXIS_X = 0;
+        JOY_AXIS_Y = 0;
+        JOY_ANIMATING = false;
+    }
+    else
+    {
+        // Interpola suavemente
+        var t = JOY_ANIM_SPEED * dt;
+        if (t > 1.0) t = 1.0;
+        
+        JOY_KNOB_X += dx * t;
+        JOY_KNOB_Y += dy * t;
+        JOY_AXIS_X = (JOY_KNOB_X - JOY_BASE_X) / JOY_RADIUS;
+        JOY_AXIS_Y = (JOY_KNOB_Y - JOY_BASE_Y) / JOY_RADIUS;
+    }
+}
+
+
+ 
+
+def joystick_reset_state()
+{
+    JOY_ACTIVE = false;
+    JOY_TOUCH_ID = -1;
+    JOY_AXIS_X = 0;
+    JOY_AXIS_Y = 0;
+    JOY_KNOB_X = JOY_BASE_X;
+    JOY_KNOB_Y = JOY_BASE_Y;
+    JOY_DESKTOP_CAPTURED = false;
+    JOY_ANIMATING = true;  
+}
+
+def joystick_apply_touch(sx, sy)
+{
+    var dx = sx - JOY_BASE_X;
+    var dy = sy - JOY_BASE_Y;
+    var dist = sqrt(dx * dx + dy * dy);
+    if (dist > JOY_RADIUS)
+    {
+        var k = JOY_RADIUS / dist;
+        dx *= k;
+        dy *= k;
+    }
+
+    JOY_KNOB_X = JOY_BASE_X + dx;
+    JOY_KNOB_Y = JOY_BASE_Y + dy;
+    JOY_AXIS_X = dx / JOY_RADIUS;
+    JOY_AXIS_Y = dy / JOY_RADIUS;
+
+    if (abs(JOY_AXIS_X) < JOY_DEADZONE) JOY_AXIS_X = 0;
+    if (abs(JOY_AXIS_Y) < JOY_DEADZONE) JOY_AXIS_Y = 0;
+}
+
+def joystick_update()
+{
+    if (!TOUCH_UI_ENABLED || touch_count() <= 0)
+    {
+        joystick_reset_state();
+        return;
+    }
+
+    var count = touch_count();
+    if (JOY_ACTIVE)
+    {
+        var i = 0;
+        while (i < count)
+        {
+            if (get_touch_id(i) == JOY_TOUCH_ID)
+            {
+                joystick_apply_touch(get_touch_screen_x(i), get_touch_screen_y(i));
+                return;
+            }
+            i += 1;
+        }
+        joystick_reset_state();
+    }
+
+    var i = 0;
+    while (i < count)
+    {
+        var sx = get_touch_screen_x(i);
+        var sy = get_touch_screen_y(i);
+        var dx = sx - JOY_BASE_X;
+        var dy = sy - JOY_BASE_Y;
+        var dist = sqrt(dx * dx + dy * dy);
+
+        if (sx < VIEW_W * 0.52 && dist <= JOY_CAPTURE_RADIUS)
+        {
+            JOY_ACTIVE = true;
+            JOY_TOUCH_ID = get_touch_id(i);
+            joystick_apply_touch(sx, sy);
+            return;
+        }
+        i += 1;
+    }
+
+    joystick_reset_state();
+}
+
+def joystick_update_desktop()
+{
+    // Se está a animar, não interrompe
+    if (JOY_ANIMATING && !mouse_down(0))
+    {
+        return;
+    }
+    
+    var mx = get_mouse_x();
+    var my = get_mouse_y();
+    var dx = mx - JOY_BASE_X;
+    var dy = my - JOY_BASE_Y;
+    var dist = sqrt(dx * dx + dy * dy);
+    
+    if (mouse_pressed(0) && dist <= JOY_CAPTURE_RADIUS)
+    {
+        JOY_DESKTOP_CAPTURED = true;
+        JOY_ANIMATING = false;
+    }
+    
+    if (mouse_down(0) && JOY_DESKTOP_CAPTURED)
+    {
+        joystick_apply_touch(mx, my);
+    }
+    else if (mouse_released(0))
+    {
+        JOY_DESKTOP_CAPTURED = false;
+        joystick_reset_state();
+    }
+    else if (!mouse_down(0))
+    {
+        joystick_reset_state();
+    }
+}
+
+
+
+def draw_joystick()
+{
+    if (!TOUCH_UI_ENABLED || !TOUCH_UI_VISIBLE) return;
+
+    set_alpha(55);
+    set_color(26, 36, 62);
+    draw_circle(JOY_BASE_X, JOY_BASE_Y, JOY_CAPTURE_RADIUS, true);
+    set_alpha(170);
+    set_color(146, 188, 255);
+    draw_circle(JOY_BASE_X, JOY_BASE_Y, JOY_RADIUS, false);
+
+    set_alpha(95);
+    set_color(180, 215, 255);
+    draw_circle(JOY_BASE_X, JOY_BASE_Y, 12, true);
+
+    if (JOY_ACTIVE) set_color(255, 186, 90);
+    else set_color(180, 214, 255);
+    set_alpha(170);
+    draw_circle(JOY_KNOB_X, JOY_KNOB_Y, JOY_KNOB_RADIUS, true);
+    set_alpha(235);
+    set_color(245, 248, 255);
+    draw_circle(JOY_KNOB_X, JOY_KNOB_Y, JOY_KNOB_RADIUS, false);
+
+    set_alpha(255);
+}
+
+
+def is_touch_on_control(sx, sy)
+{
+    var dx = sx - JOY_BASE_X;
+    var dy = sy - JOY_BASE_Y;
+    if (dx * dx + dy * dy <= JOY_CAPTURE_RADIUS * JOY_CAPTURE_RADIUS) return true;
+
+    if (point_in_rect(sx, sy, BTN_FIRE_X, BTN_FIRE_Y, BTN_FIRE_W, BTN_FIRE_H)) return true;
+    if (point_in_rect(sx, sy, BTN_RST_X, BTN_RST_Y, BTN_RST_W, BTN_RST_H)) return true;
+    if (point_in_rect(sx, sy, BTN_ESC_X, BTN_ESC_Y, BTN_ESC_W, BTN_ESC_H)) return true;
+
+    return false;
+}
+
+def setup_touch_controls()
+{
+    vkey_clear();
+
+    if (!TOUCH_UI_ENABLED)
+    {
+        vkey_set_visible(false);
+        TOUCH_UI_VISIBLE = false;
+        joystick_reset_state();
+        return;
+    }
+
+    var margin = 26;
+    JOY_BASE_X = margin + JOY_CAPTURE_RADIUS;
+    JOY_BASE_Y = VIEW_H - margin - JOY_CAPTURE_RADIUS;
+    joystick_reset_state();
+
+
+     
+   
+    // Coluna direita: acelerar, recuar, disparar.
+    var control_size = 112;
+    var control_gap = 12;
+    BTN_FIRE_W = control_size;
+    BTN_FIRE_H = control_size;
+    BTN_FIRE_X = VIEW_W - margin - control_size;
+    BTN_FIRE_Y = VIEW_H - margin - control_size;
+
+    vkey_add(KEY_FIRE, BTN_FIRE_X, BTN_FIRE_Y, BTN_FIRE_W, BTN_FIRE_H);
+
+    // Utilitarios no topo direito
+    BTN_RST_X = VIEW_W - 180;
+    BTN_RST_Y = 20;
+    BTN_RST_W = 70;
+    BTN_RST_H = 46;
+    BTN_ESC_X = VIEW_W - 96;
+    BTN_ESC_Y = 20;
+    BTN_ESC_W = 70;
+    BTN_ESC_H = 46;
+
+    vkey_add(KEY_R, BTN_RST_X, BTN_RST_Y, BTN_RST_W, BTN_RST_H);      // restart
+    vkey_add(KEY_ESCAPE, BTN_ESC_X, BTN_ESC_Y, BTN_ESC_W, BTN_ESC_H); // exit
+
+    vkey_set_visible(TOUCH_UI_VISIBLE);
+}
+
+
+def ensure_touch_ui_runtime()
+{
+    if (TOUCH_UI_ENABLED) return;
+    if (touch_count() <= 0) return;
+
+    TOUCH_UI_ENABLED = true;
+    TOUCH_UI_VISIBLE = true;
+    TOUCH_RUNTIME_AUTO = true;
+    setup_touch_controls();
+}
+
+
+def get_aim_touch_screen()
+{
+    var count = touch_count();
+    var i = count - 1;
+    while (i >= 0)
+    {
+        var sx = get_touch_screen_x(i);
+        var sy = get_touch_screen_y(i);
+        if (!is_touch_on_control(sx, sy))
+        {
+            return (sx, sy, 1);
+        }
+        i -= 1;
+    }
+    return (0, 0, 0);
+}
+
+set_window_size(VIEW_W, VIEW_H);
+set_design_resolution(VIEW_W, VIEW_H);
+set_screen_scale_mode(0);
+set_virtual_screen_enabled(true);
+
+ setup_touch_controls();
+ ensure_touch_ui_runtime();
+
+
+
+loop
+{
+    var dt = delta();
+    joystick_animate(dt);  
+    //joystick_update();
+    joystick_update_desktop();
+    draw_joystick();
+    
+ 
+
+    if (key_pressed(KEY_ESCAPE))
+    {
+        let_me_alone();
+        break;
+    }
+
+    frame;
+}

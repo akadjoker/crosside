@@ -2411,6 +2411,10 @@ XMLError XMLDocument::SaveFile( FILE* fp, bool compact )
     return _errorID;
 }
 
+XMLError XMLDocument::Inport( const char* p, size_t len )
+{
+    return Parse( p, len );
+}
 
 XMLError XMLDocument::Parse( const char* p, size_t len )
 {

@@ -1769,6 +1769,7 @@ public:
     */
     XMLError LoadFile( FILE* );
 
+    XMLError Inport( const char* p, size_t len );
     /**
     	Save the XML file to disk.
     	Returns XML_SUCCESS (0) on success, or

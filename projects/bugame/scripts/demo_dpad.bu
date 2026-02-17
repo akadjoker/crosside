@@ -1,0 +1,139 @@
+import math;
+import os;
+
+include "controllers.bu";
+
+var VIEW_W = 1280;
+var VIEW_H = 720;
+var WORLD_W = 3200;
+var WORLD_H = 2400;
+
+var KEY_W = 87;
+var KEY_A = 65;
+var KEY_S = 83;
+var KEY_D = 68;
+var KEY_UP = 265;
+var KEY_LEFT = 263;
+var KEY_DOWN = 264;
+var KEY_RIGHT = 262;
+var KEY_SPACE = 32;
+var KEY_SHIFT = 340;
+var KEY_R = 82;
+var KEY_ESCAPE = 256;
+
+var KEY_F1 = 290;
+var KEY_F2 = 291;
+var KEY_F3 = 292;
+var KEY_F4 = 293;
+var KEY_F5 = 294;
+var KEY_F6 = 295;
+var KEY_F7 = 296;
+var KEY_F8 = 297;
+var KEY_F9 = 298;
+var KEY_F10 = 299;
+
+var KEY_ONE = 49;
+var KEY_TWO = 50;
+var KEY_THREE = 51;
+var KEY_FOUR = 52;
+var KEY_FIVE = 53;
+var KEY_SIX = 54;
+var KEY_SEVEN = 55;
+var KEY_EIGHT = 56;
+var KEY_NINE = 57;
+var KEY_ZERO = 48;
+
+var KEY_FIRE = KEY_SPACE;
+
+
+
+ 
+
+ 
+
+set_window_size(VIEW_W, VIEW_H);
+set_design_resolution(VIEW_W, VIEW_H);
+set_virtual_screen_enabled(true);
+set_screen_scale_mode(0);
+ 
+
+ var dpad = DPad(40, VIEW_H - 220, [KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN] );
+
+// var pad = ActionPad(
+//     VIEW_W - 120,
+//     VIEW_H - 120,
+//     [KEY_FIRE],
+//     LAYOUT_HORIZONTAL,
+//     1
+// );
+
+// var pad = ActionPad(
+//     VIEW_W - 220,
+//     VIEW_H - 120,
+//     [KEY_FIRE, KEY_SPACE],
+//     LAYOUT_HORIZONTAL,
+//     2
+// );
+
+// var pad = ActionPad(
+//     VIEW_W - 120,
+//     VIEW_H - 300,
+//     [KEY_FIRE, KEY_SPACE, KEY_SHIFT],
+//     LAYOUT_VERTICAL,
+//     1
+// );
+
+var pad = ActionPad(
+    VIEW_W - 250,
+    VIEW_H - 250,
+    [KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR],
+    LAYOUT_GRID,
+    2
+);
+
+var joy = VirtualJoystick(150, 360, 72);
+
+var player_x = VIEW_W / 2;
+var player_y = VIEW_H / 2;
+var player_speed = 200;
+
+var move = MovePad(300, VIEW_H - 260, 220, 220);
+
+loop
+{
+    var dt = delta();
+    
+    
+    joy.update(dt);
+    joy.draw();
+
+    var (ax, ay) = joy.get_axis();
+    //var (ax, ay) = move.get_axis();
+
+    move.update_desktop();
+    move.draw();
+
+    // Example movement usage
+    player_x += ax * 300 * dt;
+    player_y += ay * 300 * dt;
+
+    if (key_down(KEY_W) || key_down(KEY_UP)) player_y -= player_speed * dt;
+    if (key_down(KEY_S) || key_down(KEY_DOWN)) player_y += player_speed * dt;
+    if (key_down(KEY_A) || key_down(KEY_LEFT)) player_x -= player_speed * dt;
+    if (key_down(KEY_D) || key_down(KEY_RIGHT)) player_x += player_speed * dt;
+
+    set_color(255, 100, 100);
+    set_alpha(255);
+    draw_circle(player_x, player_y, 20, true);
+    
+     
+ 
+
+    if (key_pressed(KEY_ESCAPE))
+    {
+        let_me_alone();
+        break;
+    }
+
+    frame;
+}

@@ -29,20 +29,38 @@ namespace BindingsInput
     {
         switch (keyCode)
         {
-        case KEY_UP: return "UP";
-        case KEY_DOWN: return "DN";
-        case KEY_LEFT: return "LT";
-        case KEY_RIGHT: return "RT";
-        case KEY_SPACE: return "DRIFT";
-        case KEY_LEFT_SHIFT: return "BOOST";
-        case KEY_RIGHT_SHIFT: return "BOOST";
-        case KEY_ESCAPE: return "EXIT";
-        case KEY_ENTER: return "OK";
-        case KEY_R: return "RST";
-        case KEY_F: return "FIRE";
+         case KEY_UP:       return "UP";
+        case KEY_DOWN:     return "DN";
+        case KEY_LEFT:     return "LT";
+        case KEY_RIGHT:    return "RT";
+        case KEY_ESCAPE:   return "ESC";
+        case KEY_ENTER:    return "OK";
+        case KEY_SPACE:    return "SPC";
+        case KEY_TAB:      return "TAB";
+        case KEY_BACKSPACE:return "DEL";
+        case KEY_F1:       return "F1";
+        case KEY_F2:       return "F2";
+        case KEY_F3:       return "F3";
+        case KEY_F4:       return "F4";
+        case KEY_F5:       return "F5";
+        case KEY_F6:       return "F6";
+        case KEY_F7:       return "F7";
+        case KEY_F8:       return "F8";
+        case KEY_F9:       return "F9";
+        case KEY_F10:      return "F10";
+        case KEY_F11:      return "F11";
+        case KEY_F12:      return "F12";
+        
+
+        case KEY_LEFT_SHIFT:
+        case KEY_RIGHT_SHIFT:
+            return "SHIFT";
+        case KEY_LEFT_CONTROL:
+        case KEY_RIGHT_CONTROL:
+            return "CTRL";
         default:
             break;
-        }
+    }
 
         static char oneChar[2] = {0, 0};
         if (keyCode >= 'A' && keyCode <= 'Z')
@@ -226,16 +244,7 @@ namespace BindingsInput
         return GetScreenToWorld2D(screenPos, gCamera.getCamera());
     }
 
-
-    //   RLAPI bool IsKeyPressed(int key);                             // Check if a key has been pressed once
-    // RLAPI bool IsKeyPressedRepeat(int key);                       // Check if a key has been pressed again (Only PLATFORM_DESKTOP)
-    // RLAPI bool IsKeyDown(int key);                                // Check if a key is being pressed
-    // RLAPI bool IsKeyReleased(int key);                            // Check if a key has been released once
-    // RLAPI bool IsKeyUp(int key);                                  // Check if a key is NOT being pressed
-    // RLAPI int GetKeyPressed(void);                                // Get key pressed (keycode), call it multiple times for keys queued, returns 0 when the queue is empty
-    // RLAPI int GetCharPressed(void);                               // Get char pressed (unicode), call it multiple times for chars queued, returns 0 when the queue is empty
-    // RLAPI void SetExitKey(int key);
-
+ 
     static int native_key_down(Interpreter *vm, int argCount, Value *args)
     {
         if (argCount != 1)
@@ -349,21 +358,7 @@ namespace BindingsInput
         return 1;
     }
 
-    // Input-related functions: mouse
-    // RLAPI bool IsMouseButtonPressed(int button);                  // Check if a mouse button has been pressed once
-    // RLAPI bool IsMouseButtonDown(int button);                     // Check if a mouse button is being pressed
-    // RLAPI bool IsMouseButtonReleased(int button);                 // Check if a mouse button has been released once
-    // RLAPI bool IsMouseButtonUp(int button);                       // Check if a mouse button is NOT being pressed
-    // RLAPI int GetMouseX(void);                                    // Get mouse position X
-    // RLAPI int GetMouseY(void);                                    // Get mouse position Y
-    // RLAPI Vector2 GetMousePosition(void);                         // Get mouse position XY
-    // RLAPI Vector2 GetMouseDelta(void);                            // Get mouse delta between frames
-    // RLAPI void SetMousePosition(int x, int y);                    // Set mouse position XY
-    // RLAPI void SetMouseOffset(int offsetX, int offsetY);          // Set mouse offset
-    // RLAPI void SetMouseScale(float scaleX, float scaleY);         // Set mouse scaling
-    // RLAPI float GetMouseWheelMove(void);                          // Get mouse wheel movement for X or Y, whichever is larger
-    // RLAPI Vector2 GetMouseWheelMoveV(void);                       // Get mouse wheel movement for both X and Y
-    // RLAPI void SetMouseCursor(int cursor);                        // Set mouse cursor
+ 
 
     static int mousePressed(Interpreter *vm, int argCount, Value *args)
     {

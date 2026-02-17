@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.bugame",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "Bugame",
+    "CONTENT_ROOT": ""
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": ""
+  }
+}
