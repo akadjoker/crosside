@@ -615,6 +615,7 @@ process fx_ring(px, py, r, g, b, radius_from, radius_to, duration)
 
     loop
     {
+         set_draw_screen(false); 
         var dt = delta();
         t += dt;
         if (t >= dur) break;
@@ -646,6 +647,7 @@ process drift_mark(x1, y1, x2, y2)
 
     loop
     {
+         set_draw_screen(false); 
         var dt = delta();
         life -= dt;
         if (life <= 0) break;

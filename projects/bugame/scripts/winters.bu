@@ -1,0 +1,1607 @@
+// === COZY WINTER DELIVERY ===
+// Base de Motor: Menus + Condução de Gelo
+
+import math;
+
+// --- Configuração ---
+var VIEW_W = 1024;
+var VIEW_H = 600;
+var WORLD_W = 3200;
+var WORLD_H = 3200;
+
+// --- Teclas ---
+var KEY_W = 87; var KEY_A = 65; var KEY_S = 83; var KEY_D = 68;
+var KEY_UP = 265; var KEY_LEFT = 263; var KEY_DOWN = 264; var KEY_RIGHT = 262;
+var KEY_ESCAPE = 256; var KEY_R = 82; var KEY_ENTER = 257;
+
+// --- Estados do Jogo (FSM Simples) ---
+var STATE_MENU = 0;
+var STATE_GAME = 1;
+var STATE_CREDITS = 2;
+
+// ---> MUDA AQUI PARA 'STATE_GAME' PARA SALTAR O MENU DURANTE O DESENVOLVIMENTO <---
+var GAME_STATE = STATE_GAME; 
+
+// --- Variáveis de Menu ---
+var menu_index = 0; // 0=Play, 1=Credits, 2=Exit
+
+// --- Globais de Jogo ---
+var CAM_X = 0.0;
+var CAM_Y = 0.0;
+var PLAYER_ID = -1;
+var DT = 0.016;
+
+// --- Tipos de Edifícios ---
+var TYPE_HOUSE = 0;
+var TYPE_RESTAURANT = 1;
+var TYPE_SHOP = 2;
+
+// --- Dados do Mapa (Para o Minimapa e Missões) ---
+var MAP_X = [];
+var MAP_Y = [];
+var MAP_TYPE = [];
+var MAP_COUNT = 0;
+
+// --- Sistema de Missões ---
+var MISSION_STATE = 0; // 0=Sem Missão, 1=Ir Buscar (Pickup), 2=Entregar (Delivery)
+var MISSION_TARGET_X = 0.0;
+var MISSION_TARGET_Y = 0.0;
+var MISSION_TIMER = 0.0;
+var MISSION_MAX_TIME = 1.0;
+var SCORE = 0;
+var DELIVERIES = 0;
+var ENEMY_COUNT = 0;
+
+// --- Navegação e Inimigos ---
+var NAV_X = [];
+var NAV_Y = [];
+var NAV_COUNT = 0;
+var NAV_DIST = [];
+var NEXT_HOP = [];
+
+// --- Funções Auxiliares ---
+def find_free_spot(_x, _y, _max_r)
+{
+    if (place_free(_x, _y)) return [_x, _y, 1];
+    var r = 4;
+    while (r <= _max_r)
+    {
+        var a = 0;
+        while (a < 360)
+        {
+            var tx = _x + get_distx(a, r);
+            var ty = _y + get_disty(a, r);
+            if (place_free(tx, ty)) return [tx, ty, 1];
+            a += 45;
+        }
+        r += 4;
+    }
+    return [_x, _y, 0];
+}
+
+// Verifica se ha caminho livre entre dois pontos (Raycast simples)
+def line_free(x1, y1, x2, y2)
+{
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    var dist = sqrt(dx * dx + dy * dy);
+    var steps = int(dist / 16);
+    if (steps < 2) steps = 2;
+    var i = 1;
+    while (i < steps)
+    {
+        var t = i / steps;
+        if (!place_free(x1 + dx * t, y1 + dy * t)) return false;
+        i += 1;
+    }
+    return true;
+}
+
+// Encontra o waypoint mais próximo
+def nav_find_nearest(px, py)
+{
+    var best = -1;
+    var best_d = 9999999.0;
+    var i = 0;
+    while (i < NAV_COUNT) {
+        var d = get_dist(px, py, NAV_X[i], NAV_Y[i]);
+        if (d < best_d) { best_d = d; best = i; }
+        i += 1;
+    }
+    return best;
+}
+
+// Retorna o proximo waypoint no caminho mais curto (Lookup O(1))
+def nav_next(from_wp, to_wp)
+{
+    if (from_wp < 0 || to_wp < 0) return -1;
+    return NEXT_HOP[from_wp * NAV_COUNT + to_wp];
+}
+
+// Constroi o grafo e calcula caminhos (Floyd-Warshall)
+// Adaptado de fast_and_chaos para funcionar com mapa procedural
+process nav_builder()
+{
+    // Define shape for collision tests (Line of Sight)
+    set_circle_shape(4); 
+    set_collision_mask(1); // Check against Buildings (Layer 1)
+
+    var INF = 999999;
+    var total = NAV_COUNT * NAV_COUNT;
+
+    // 1. Inicializar arrays
+    NAV_DIST = [];
+    NEXT_HOP = [];
+    var i = 0;
+    while (i < total)
+    {
+        NAV_DIST.push(INF);
+        NEXT_HOP.push(-1);
+        i += 1;
+    }
+
+    // 2. Detetar Vizinhos (Conectar o Grafo)
+    // Como o mapa é gerado, ligamos pontos próximos que tenham linha de visão
+    i = 0;
+    while (i < NAV_COUNT)
+    {
+        NAV_DIST[i * NAV_COUNT + i] = 0;
+        NEXT_HOP[i * NAV_COUNT + i] = i;
+
+        var j = i + 1;
+        while (j < NAV_COUNT)
+        {
+            var d = get_dist(NAV_X[i], NAV_Y[i], NAV_X[j], NAV_Y[j]);
+            
+            // Se estiverem perto (ex: < 900px) e sem paredes no meio
+            if (d < 900 && line_free(NAV_X[i], NAV_Y[i], NAV_X[j], NAV_Y[j]))
+            {
+                // Conexão Bidirecional
+                NAV_DIST[i * NAV_COUNT + j] = d;
+                NEXT_HOP[i * NAV_COUNT + j] = j;
+                
+                NAV_DIST[j * NAV_COUNT + i] = d;
+                NEXT_HOP[j * NAV_COUNT + i] = i;
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+
+    // 3. Algoritmo Floyd-Warshall (Caminho mais curto global)
+    var k = 0;
+    while (k < NAV_COUNT) {
+        i = 0;
+        while (i < NAV_COUNT) {
+            var j = 0;
+            while (j < NAV_COUNT) {
+                var through_k = NAV_DIST[i * NAV_COUNT + k] + NAV_DIST[k * NAV_COUNT + j];
+                if (through_k < NAV_DIST[i * NAV_COUNT + j]) {
+                    NAV_DIST[i * NAV_COUNT + j] = through_k;
+                    NEXT_HOP[i * NAV_COUNT + j] = NEXT_HOP[i * NAV_COUNT + k];
+                }
+                j += 1;
+            }
+            i += 1;
+        }
+        k += 1;
+    }
+}
+
+// ============================================
+//  
+// ============================================
+def build_city()
+{
+    var house_size = 180;
+    var gap = 10;
+    var border_offset = 100; // Margem das bordas
+
+    // Limpar dados antigos do mapa
+    MAP_X = [];
+    MAP_Y = [];
+    MAP_TYPE = [];
+    MAP_COUNT = 0;
+    
+    // Limpar Waypoints
+    NAV_X = [];
+    NAV_Y = [];
+    NAV_COUNT = 0;
+
+    // 1. BORDAS DO MUNDO (Paredes Limite)
+    // Topo e Fundo (Horizontal)
+    var bx = 0;
+    while (bx < WORLD_W)
+    {
+        building(bx + house_size/2, house_size/2, house_size, house_size, TYPE_HOUSE); // Topo
+        MAP_X.push(bx + house_size/2); MAP_Y.push(house_size/2); MAP_TYPE.push(TYPE_HOUSE); MAP_COUNT += 1;
+
+        building(bx + house_size/2, WORLD_H - house_size/2, house_size, house_size, TYPE_HOUSE); // Fundo
+        MAP_X.push(bx + house_size/2); MAP_Y.push(WORLD_H - house_size/2); MAP_TYPE.push(TYPE_HOUSE); MAP_COUNT += 1;
+        
+        bx += house_size + gap;
+    }
+    // Esquerda e Direita (Vertical)
+    var by = house_size;
+    while (by < WORLD_H - house_size)
+    {
+        building(house_size/2, by + house_size/2, house_size, house_size, TYPE_HOUSE); // Esquerda
+        MAP_X.push(house_size/2); MAP_Y.push(by + house_size/2); MAP_TYPE.push(TYPE_HOUSE); MAP_COUNT += 1;
+
+        building(WORLD_W - house_size/2, by + house_size/2, house_size, house_size, TYPE_HOUSE); // Direita
+        MAP_X.push(WORLD_W - house_size/2); MAP_Y.push(by + house_size/2); MAP_TYPE.push(TYPE_HOUSE); MAP_COUNT += 1;
+
+        by += house_size + gap;
+    }
+
+    // 2. FILAS CENTRAIS (3 Ruas de Casas Horizontais)
+    // Define as posições Y das 3 filas para dividir o mapa
+    var rows_y = [WORLD_H * 0.25, WORLD_H * 0.5, WORLD_H * 0.75];
+    var r = 0;
+    
+    while (r < 3)
+    {
+        var cy = rows_y[r];
+        var cx = house_size * 2; // Começa depois da borda esquerda
+
+        while (cx < WORLD_W - house_size * 2)
+        {
+            // Lógica de Cruzamentos: A cada 1200px, deixa um buraco grande para estrada vertical
+            // E não constroi no spawn (meio exato) se for a linha do meio
+            
+            // Adicionar Waypoint na estrada (centro da rua horizontal)
+            // Nota: Adicionamos pontos ao longo da estrada para a AI saber por onde andar
+            
+            var is_spawn = (r == 1 && abs(cx - WORLD_W/2) < 300);
+            var is_crossroad = (int(cx) % 1200 < 250); // Cria avenidas verticais largas
+
+            if (!is_spawn && !is_crossroad)
+            {
+                // Decide o tipo aleatoriamente
+                var _type = TYPE_HOUSE;
+                var chance = math.rand(0, 100);
+                if (chance > 85) _type = TYPE_RESTAURANT;
+                elif (chance > 70) _type = TYPE_SHOP;
+
+                building(cx + house_size/2, cy + house_size/2, house_size, house_size, _type);
+                MAP_X.push(cx + house_size/2); MAP_Y.push(cy + house_size/2); MAP_TYPE.push(_type); MAP_COUNT += 1;
+            }
+            else
+            {
+                // É estrada ou cruzamento? Adiciona Waypoint de navegação
+                // Adicionamos pontos nas falhas das casas para criar a rede de estradas
+                // (Removida a restrição % 400 para garantir mais pontos de navegação)
+                
+                NAV_X.push(cx + house_size/2);
+                NAV_Y.push(cy - 100); // Estrada acima da casa
+                NAV_COUNT += 1;
+                
+                // Adicionar Pinheiros nas bermas das estradas vazias
+                pine_tree(cx + house_size/2, cy + house_size/2);
+            }
+            cx += house_size + gap;
+        }
+        
+        r += 1;
+    }
+}
+
+def stop_game()
+{
+    let_me_alone(); // Mata o player e a cidade quando sai para o menu
+    PLAYER_ID = -1;
+}
+
+def start_game()
+{
+    stop_game();
+    ENEMY_COUNT = 0;
+    
+    // 1. Inicia o renderizador do mundo (Fundo)
+    level_renderer();
+
+    // 2. Constroi a Cidade
+    build_city();
+
+    // 2.1 Pre-calcula navegação (DEPOIS da cidade estar feita)
+    nav_builder();
+
+    // Inicia o carro no meio do mundo
+    var p = player_car(WORLD_W / 2, WORLD_H / 2);
+    if (p) 
+    {
+        PLAYER_ID = p.id;
+        CAM_X = p.x - VIEW_W / 2;
+        CAM_Y = p.y - VIEW_H / 2;
+    }
+
+    // 3. Inicia o HUD (Interface)
+    hud_renderer();
+    
+    // 4. Inicia o Gestor de Missões
+    mission_manager();
+    
+    // 5. Inicia o Spawner de Inimigos
+    enemy_spawner();
+    
+    // 6. Inicia o Sistema de Clima (Neve)
+    weather_system();
+    
+    set_draw_screen(false);
+    GAME_STATE = STATE_GAME;
+}
+
+def draw_menu_background()
+{
+    // Fundo noturno "Cozy"
+    set_color(15, 20, 35); 
+    //draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+    
+    // Simular estrelas de forma muito simples (sem criar processos)
+    var t = time();
+    set_alpha(100 + int(sin(t * 2) * 50));
+    set_color(255, 255, 255);
+    draw_circle(200, 100, 2, true);
+    draw_circle(800, 150, 3, true);
+    draw_circle(400, 300, 1, true);
+    draw_circle(900, 400, 2, true);
+    set_alpha(255);
+}
+
+def update_menu()
+{
+    // Input do Menu
+    if (key_pressed(KEY_UP) || key_pressed(KEY_W))
+    {
+        menu_index -= 1;
+        if (menu_index < 0) menu_index = 2;
+    }
+    if (key_pressed(KEY_DOWN) || key_pressed(KEY_S))
+    {
+        menu_index += 1;
+        if (menu_index > 2) menu_index = 0;
+    }
+
+    if (key_pressed(KEY_ENTER))
+    {
+        if (menu_index == 0)
+        {
+            start_game();
+        } elif (menu_index == 1)
+        {
+            GAME_STATE = STATE_CREDITS;
+        } else
+        {
+            close_window(); // Exit App
+        }
+    }
+
+    // Desenhar HUD do Menu
+    set_draw_screen(true);
+    draw_menu_background();
+
+    // Título
+    set_color(255, 220, 100);
+    draw_text("COZY WINTER DELIVERY", VIEW_W / 2 - 250, 130, 42);
+    set_color(200, 210, 255);
+    draw_text("Cozy Winter Jam Edition", VIEW_W / 2 - 130, 180, 24);
+    set_color(150, 180, 200);
+    draw_text("Drift no gelo, comida quente!", VIEW_W / 2 - 140, 210, 18);
+
+    // Opções
+    var base_y = 300;
+    var gap = 60;
+    var options = ["START SHIFT", "CREDITS", "QUIT"];
+    
+    for (var i = 0; i < 3; i += 1)
+    {
+        var text_x = VIEW_W / 2 - 80;
+        var text_y = base_y + i * gap;
+        
+        if (i == menu_index)
+        {
+            set_color(255, 255, 255);
+            draw_text("> " + options[i] + " <", text_x - 30, text_y, 32);
+        } else
+        {
+            set_color(100, 120, 150);
+            draw_text(options[i], text_x, text_y, 28);
+        }
+    }
+}
+
+def update_credits()
+{
+    if (key_pressed(KEY_ESCAPE) || key_pressed(KEY_ENTER))
+    {
+        GAME_STATE = STATE_MENU;
+    }
+
+    set_draw_screen(true);
+    draw_menu_background();
+
+    set_color(255, 220, 100);
+    draw_text("CREDITS", VIEW_W / 2 - 90, 150, 42);
+    
+    set_color(200, 210, 255);
+    draw_text("Code & Engine: djoker", VIEW_W / 2 - 180, 250, 28);
+    draw_text("Made with Bulang Engine", VIEW_W / 2 - 190, 310, 28);
+    draw_text("Cozy Winter Jam 2026", VIEW_W / 2 - 170, 370, 28);
+
+    set_color(150, 150, 150);
+    draw_text("Press ESCAPE to return", VIEW_W / 2 - 160, 500, 24);
+}
+
+
+
+process level_renderer()
+{
+    z = -100; // Garante que o fundo fica ATRÁS de tudo
+    loop
+    {
+        // 1. Atualizar Câmara
+        var p = proc(PLAYER_ID);
+        if (p)
+        {
+            var target_x = p.x - VIEW_W / 2;
+            var target_y = p.y - VIEW_H / 2;
+            target_x = math.clamp(target_x, 0, WORLD_W - VIEW_W);
+            target_y = math.clamp(target_y, 0, WORLD_H - VIEW_H);
+            CAM_X += (target_x - CAM_X) * 0.08;
+            CAM_Y += (target_y - CAM_Y) * 0.08;
+        }
+        set_scroll(CAM_X, CAM_Y);
+
+        // 2. Desenhar o Mundo (Fundo de Neve)
+        set_color(40, 45, 55); // Cor de Asfalto Escuro (Estrada)
+        draw_rectangle(CAM_X, CAM_Y, VIEW_W, VIEW_H, true);
+
+        // Grelha suave
+        set_alpha(20);
+        set_color(100, 120, 200);
+        var gx = int(CAM_X / 200) * 200;
+        while (gx < CAM_X + VIEW_W + 200) { draw_line(gx, CAM_Y, gx, CAM_Y + VIEW_H); gx += 200; }
+        var gy = int(CAM_Y / 200) * 200;
+        while (gy < CAM_Y + VIEW_H + 200) { draw_line(CAM_X, gy, CAM_X + VIEW_W, gy); gy += 200; }
+        set_alpha(255);
+        
+        frame;
+    }
+}
+
+process hud_renderer()
+{
+    z = 100; // Garante que o HUD fica À FRENTE de tudo
+    loop
+    {
+        // 3. Desenhar UI do Jogo
+        set_draw_screen(true); 
+        set_color(255, 255, 255);
+        draw_text("ESCAPE to return to Menu", 20, 20, 16);
+
+        // --- PONTUAÇÃO ---
+        set_color(255, 220, 100);
+        draw_text(format("SCORE: {}", SCORE), VIEW_W / 2 - 60, 30, 32);
+
+        // --- TIMER DA MISSÃO (Apenas na fase de entrega) ---
+        if (MISSION_STATE == 2)
+        {
+            var t_pct = math.max(0.0, MISSION_TIMER / MISSION_MAX_TIME);
+            
+            // Cor muda de Verde -> Amarelo -> Vermelho
+            var r = 255; var g = 255; var b = 0;
+            if (t_pct > 0.5) { r = int(255 * (1.0 - t_pct) * 2); g = 255; }
+            else             { r = 255; g = int(255 * t_pct * 2); }
+
+            // Barra Grande no Topo
+            set_color(40, 40, 40);
+            draw_rectangle(VIEW_W/2 - 200, 70, 400, 20, true);
+            set_color(r, g, 0);
+            draw_rectangle(VIEW_W/2 - 196, 74, 392 * t_pct, 12, true);
+            
+            draw_text("DELIVERY TIME!", VIEW_W/2 - 70, 95, 20);
+        }
+
+        // Velocímetro e Barra de Velocidade
+        var p = proc(PLAYER_ID);
+        if (p)
+        {
+            var speed_kmh = int(sqrt(p.velx * p.velx + p.vely * p.vely) * 0.3);
+            
+            // Texto
+            set_color(255, 255, 255);
+            draw_text(format("{} km/h", speed_kmh), VIEW_W - 180, VIEW_H - 60, 28);
+            
+            // Barra de fundo
+            var bar_x = VIEW_W - 190;
+            var bar_y = VIEW_H - 30;
+            set_color(40, 50, 60);
+            draw_rectangle(bar_x, bar_y, 150, 10, true);
+            
+            // Barra de progresso
+            var pct = math.min(speed_kmh / 120.0, 1.0);
+            if (pct > 0.8) set_color(255, 80, 80); else set_color(80, 200, 255);
+            draw_rectangle(bar_x, bar_y, 150 * pct, 10, true);
+
+            // --- MINIMAP (Canto Superior Direito) ---
+            var map_size = 140;
+            var map_x = VIEW_W - map_size - 20;
+            var map_y = 20;
+            
+            // Fundo e Borda
+            set_alpha(180); set_color(10, 15, 25);
+            draw_rectangle(map_x, map_y, map_size, map_size, true);
+            set_alpha(255); set_color(100, 120, 150);
+            draw_rectangle(map_x, map_y, map_size, map_size, false);
+
+            // Edifícios no Minimapa
+            var i = 0;
+            while (i < MAP_COUNT)
+            {
+                var mx = map_x + (MAP_X[i] / WORLD_W) * map_size;
+                var my = map_y + (MAP_Y[i] / WORLD_H) * map_size;
+                var mtype = MAP_TYPE[i];
+
+                if (mtype == TYPE_RESTAURANT)   set_color(255, 200, 50); // Amarelo (Pizza)
+                elif (mtype == TYPE_SHOP)       set_color(100, 255, 150); // Verde (Loja)
+                else                            set_color(60, 70, 80);   // Cinza Escuro (Casas)
+
+                // Casas são pontos pequenos, Lojas/Restaurantes são maiores
+                var msize = 3;
+                if (mtype == TYPE_HOUSE) msize = 2;
+                draw_circle(mx, my, msize, true);
+                i += 1;
+            }
+
+            // Player (Ponto Vermelho)
+            var px_map = map_x + (p.x / WORLD_W) * map_size;
+            var py_map = map_y + (p.y / WORLD_H) * map_size;
+            set_color(255, 60, 60);
+            draw_circle(px_map, py_map, 3, true);
+
+            // --- ALVO NO MINIMAPA (GPS & ÍCONE) ---
+            if (MISSION_STATE > 0)
+            {
+                var tx_map = map_x + (MISSION_TARGET_X / WORLD_W) * map_size;
+                var ty_map = map_y + (MISSION_TARGET_Y / WORLD_H) * map_size;
+
+                // Linha GPS do Player ao Alvo
+                set_alpha(120);
+                if (MISSION_STATE == 2) set_color(255, 80, 80); // Vermelho (Entrega)
+                else set_color(255, 255, 80); // Amarelo (Pickup)
+                draw_line(px_map, py_map, tx_map, ty_map);
+                set_alpha(255);
+
+                // Ícone a Piscar (Sobreposto a tudo)
+                if (int(time() * 15) % 2 == 0) 
+                {
+                    set_color(255, 255, 255);
+                    draw_circle(tx_map, ty_map, 4, true); // Ponto branco
+                    if (MISSION_STATE == 2) set_color(255, 50, 50); else set_color(255, 220, 0);
+                    draw_circle(tx_map, ty_map, 7, false); // Anel colorido
+                }
+            }
+
+            // --- SETA DE NAVEGAÇÃO 3D (HUD) ---
+            if (MISSION_STATE > 0)
+            {
+                var ang_to_target = get_angle(p.x, p.y, MISSION_TARGET_X, MISSION_TARGET_Y);
+                
+                // Desenhar seta à volta do carro (centro do ecrã)
+                var arrow_dist = 120;
+                var ax = VIEW_W/2 + get_distx(ang_to_target, arrow_dist);
+                var ay = VIEW_H/2 + get_disty(ang_to_target, arrow_dist);
+
+                set_color(255, 200, 50);
+                if (MISSION_STATE == 2) set_color(255, 80, 80); // Vermelho se for entrega
+
+                // Desenha Seta (Triângulo)
+                var t_size = 14;
+                var t_x1 = ax + get_distx(ang_to_target, t_size);
+                var t_y1 = ay + get_disty(ang_to_target, t_size);
+                var t_x2 = ax + get_distx(ang_to_target + 140, t_size);
+                var t_y2 = ay + get_disty(ang_to_target + 140, t_size);
+                var t_x3 = ax + get_distx(ang_to_target - 140, t_size);
+                var t_y3 = ay + get_disty(ang_to_target - 140, t_size);
+                
+                draw_line(t_x1, t_y1, t_x2, t_y2);
+                draw_line(t_x1, t_y1, t_x3, t_y3);
+                draw_line(t_x2, t_y2, t_x3, t_y3);
+            }
+
+            // Área da Câmara (Retângulo)
+            set_color(200, 200, 200);
+            draw_rectangle(map_x + (CAM_X / WORLD_W) * map_size, map_y + (CAM_Y / WORLD_H) * map_size, (VIEW_W / WORLD_W) * map_size, (VIEW_H / WORLD_H) * map_size, false);
+        }
+        set_draw_screen(false); 
+
+        // Lógica para Voltar
+        if (key_pressed(KEY_ESCAPE))
+        {
+            stop_game();
+            GAME_STATE = STATE_MENU;
+        }
+        frame;
+    }
+}
+
+process mission_manager()
+{
+    MISSION_STATE = 0;
+    SCORE = 0;
+    DELIVERIES = 0;
+    var wait_timer = 2.0;
+
+    loop
+    {
+        var p = proc(PLAYER_ID);
+        if (!p) { frame; continue; }
+
+        // --- ESTADO 0: ESPERAR NOVA MISSÃO ---
+        if (MISSION_STATE == 0)
+        {
+            wait_timer -= DT;
+            if (wait_timer <= 0)
+            {
+                // Escolher um Restaurante ou Loja aleatório
+                var found = false;
+                while (!found)
+                {
+                    var idx = math.rand(0, MAP_COUNT);
+                    if (MAP_TYPE[idx] == TYPE_RESTAURANT || MAP_TYPE[idx] == TYPE_SHOP)
+                    {
+                        MISSION_TARGET_X = MAP_X[idx];
+                        MISSION_TARGET_Y = MAP_Y[idx];
+                        MISSION_STATE = 1; // Ir buscar
+                        floating_text(p.x, p.y - 50, "NEW ORDER!", 255, 255, 0);
+                        found = true;
+                    }
+                }
+            }
+        }
+        // --- ESTADO 1: IR BUSCAR (PICKUP) ---
+        elif (MISSION_STATE == 1)
+        {
+            // Desenhar marcador no chão do alvo
+            set_color(255, 255, 0);
+            draw_circle(MISSION_TARGET_X, MISSION_TARGET_Y, 60 + sin(time()*10)*10, false);
+
+            // Verificar chegada
+            if (get_dist(p.x, p.y, MISSION_TARGET_X, MISSION_TARGET_Y) < 260)
+            {
+                // Escolher Casa Aleatória para Entrega
+                var found_h = false;
+                while (!found_h)
+                {
+                    var h_idx = math.rand(0, MAP_COUNT);
+                    if (MAP_TYPE[h_idx] == TYPE_HOUSE)
+                    {
+                        // Calcular distância para dar tempo justo
+                        var dist = get_dist(MISSION_TARGET_X, MISSION_TARGET_Y, MAP_X[h_idx], MAP_Y[h_idx]);
+                        if (dist > 1000) // Garantir que não é demasiado perto
+                        {
+                            MISSION_TARGET_X = MAP_X[h_idx];
+                            MISSION_TARGET_Y = MAP_Y[h_idx];
+                            
+                            // Dificuldade progressiva: Começa fácil, fica difícil
+                            var diff = math.min(DELIVERIES * 0.1, 1.0); // Max dificuldade após 10 entregas
+                            var speed_req = 400.0 + (250.0 * diff);     // 400 -> 650 px/s (Exige mais velocidade)
+                            var time_bonus = 15.0 - (8.0 * diff);       // 15s -> 7s extra (Menos tempo de folga)
+                            
+                            MISSION_MAX_TIME = (dist / speed_req) + time_bonus;
+                            MISSION_TIMER = MISSION_MAX_TIME;
+                            MISSION_STATE = 2; // Entregar
+                            floating_text(p.x, p.y - 50, "GO GO GO!", 255, 100, 100);
+                            found_h = true;
+                        }
+                    }
+                }
+            }
+        }
+        // --- ESTADO 2: ENTREGAR (DELIVERY) ---
+        elif (MISSION_STATE == 2)
+        {
+            MISSION_TIMER -= DT;
+
+            // Desenhar marcador no chão do alvo
+            set_color(255, 50, 50);
+            draw_circle(MISSION_TARGET_X, MISSION_TARGET_Y, 60 + sin(time()*15)*15, false);
+
+            // Falhou?
+            if (MISSION_TIMER <= 0)
+            {
+                floating_text(p.x, p.y - 50, "TOO LATE...", 150, 150, 150);
+                MISSION_STATE = 0;
+                wait_timer = 2.0;
+            }
+            // Chegou?
+            elif (get_dist(p.x, p.y, MISSION_TARGET_X, MISSION_TARGET_Y) < 260)
+            {
+                var bonus = int(MISSION_TIMER * 10);
+                SCORE += 100 + bonus;
+                DELIVERIES += 1;
+                floating_text(p.x, p.y - 50, format("DELIVERED! +{}", 100+bonus), 100, 255, 100);
+                firework(p.x, p.y - 100); // CELEBRAÇÃO!
+                MISSION_STATE = 0;
+                wait_timer = 1.0; // Próxima missão mais rápida
+            }
+        }
+
+        frame;
+    }
+}
+
+process enemy_spawner()
+{
+    var timer = 1.0; // Começa mais cedo para testar
+    loop
+    {
+        timer -= DT;
+        if (timer <= 0)
+        {
+            timer = 5.0; // Verifica respawn a cada 5s
+            if (ENEMY_COUNT < 1) // Apenas 1 inimigo por nível
+            {
+                // Spawn num waypoint aleatório
+                var idx = math.rand(0, NAV_COUNT);
+                enemy_van_smart(NAV_X[idx], NAV_Y[idx]);
+            }
+        }
+        frame;
+    }
+}
+
+process enemy_van_smart(start_x, start_y)
+{
+    x = start_x; y = start_y;
+    z = 1; // Acima do player
+    set_rect_shape(0, 0, 38, 24);
+
+    ENEMY_COUNT += 1;
+    
+    angle = 0; // Usa variável nativa 'angle'
+    var vel = 0;
+    var max_speed = 380 + math.rand(0, 50);
+    
+    // --- AI STATE MACHINE ---
+    var AI_PATROL = 0;      // Circulando waypoints
+    var AI_HUNT = 1;        // Perseguindo player diretamente
+    var AI_INTERCEPT = 2;   // Cortando caminho (predição)
+    var AI_AMBUSH = 3;      // Escondido esperando
+    var AI_RETREAT = 4;     // Fugindo após roubar
+    
+    var ai_state = AI_PATROL;
+    var state_timer = 0.0;
+    
+    // --- NAVIGATION ---
+    var wp_cur = nav_find_nearest(x, y);
+    var wp_target = -1;
+    var repath_timer = 0.0;
+    
+    // --- MEMORY & PREDICTION ---
+    var last_seen_x = 0.0;
+    var last_seen_y = 0.0;
+    var last_seen_time = 0.0;
+    var player_vel_x = 0.0;
+    var player_vel_y = 0.0;
+    
+    // --- TACTICAL ---
+    var aggression = math.rand(0.6, 1.0); // Personalidade: conservador vs agressivo
+    var ambush_wp = -1;
+    var retreat_wp = -1;
+    var stuck_timer = 0.0;
+
+    loop
+    {
+        var p = proc(PLAYER_ID);
+        
+        if (!p) { frame; continue; }
+        
+        var dist_to_player = get_dist(x, y, p.x, p.y);
+        var can_see_player = line_free(x, y, p.x, p.y);
+
+        // --- MORTE POR ESMAGAMENTO ---
+        if (!place_free(x, y) && dist_to_player < 70)
+        {
+            firework(x, y);
+            floating_text(x, y, "SMASHED!", 255, 150, 0);
+            SCORE += 500;
+            ENEMY_COUNT -= 1;
+            break;
+        }
+        
+        // --- UPDATE PLAYER TRACKING ---
+        if (can_see_player && dist_to_player < 600)
+        {
+            // Calcular velocidade do player (para predição)
+            if (last_seen_time > 0)
+            {
+                var dt_track = time() - last_seen_time;
+                if (dt_track > 0.01)
+                {
+                    player_vel_x = (p.x - last_seen_x) / dt_track;
+                    player_vel_y = (p.y - last_seen_y) / dt_track;
+                }
+            }
+            last_seen_x = p.x;
+            last_seen_y = p.y;
+            last_seen_time = time();
+        }
+        
+        // --- AI DECISION MAKING ---
+        state_timer -= DT;
+        
+        if (state_timer <= 0)
+        {
+            state_timer = 1.0; // Reavalia a cada 1s
+            
+            // LÓGICA DE TRANSIÇÃO DE ESTADOS
+            if (ai_state == AI_RETREAT)
+            {
+                // Se chegou ao ponto de fuga, volta a patrulhar
+                if (wp_cur == retreat_wp || get_dist(x, y, NAV_X[retreat_wp], NAV_Y[retreat_wp]) < 100)
+                {
+                    ai_state = AI_PATROL;
+                }
+            }
+            elif (dist_to_player < 200 && can_see_player)
+            {
+                // PERTO E A VER = HUNT DIRETO
+                ai_state = AI_HUNT;
+            }
+            elif (can_see_player && dist_to_player < 600)
+            {
+                // VÊ MAS LONGE = INTERCEPT (predição)
+                ai_state = AI_INTERCEPT;
+            }
+            elif (last_seen_time > 0 && (time() - last_seen_time) < 3.0)
+            {
+                // PERDEU DE VISTA HÁ POUCO = VAI PARA ÚLTIMA POSIÇÃO
+                ai_state = AI_HUNT;
+            }
+            elif (MISSION_STATE == 2 && MISSION_TIMER < 15.0 && aggression > 0.7)
+            {
+                // PLAYER EM ENTREGA COM POUCO TEMPO = EMBOSCADA NO ALVO
+                ai_state = AI_AMBUSH;
+                ambush_wp = nav_find_nearest(MISSION_TARGET_X, MISSION_TARGET_Y);
+            }
+            else
+            {
+                // PATRULHA NORMAL
+                ai_state = AI_PATROL;
+            }
+        }
+        
+        // --- AI BEHAVIOR EXECUTION ---
+        var target_x = x;
+        var target_y = y;
+        var use_pathfinding = true;
+        
+        if (ai_state == AI_HUNT)
+        {
+            // Perseguição direta à última posição conhecida
+            if (can_see_player && dist_to_player < 400)
+            {
+                target_x = p.x;
+                target_y = p.y;
+                use_pathfinding = false; // Linha reta
+            }
+            else
+            {
+                target_x = last_seen_x;
+                target_y = last_seen_y;
+            }
+        }
+        elif (ai_state == AI_INTERCEPT)
+        {
+            // PREDIÇÃO: Onde o player vai estar daqui a X segundos
+            var predict_time = 1.5; // Antecipa 1.5s
+            var predict_x = p.x + player_vel_x * predict_time;
+            var predict_y = p.y + player_vel_y * predict_time;
+            
+            // Clamp ao mundo
+            predict_x = math.clamp(predict_x, 100, WORLD_W - 100);
+            predict_y = math.clamp(predict_y, 100, WORLD_H - 100);
+            
+            target_x = predict_x;
+            target_y = predict_y;
+            
+            // Debug visual (opcional - comentar se não quiser ver)
+            set_alpha(100);
+            set_color(255, 100, 255);
+            draw_circle(predict_x, predict_y, 20, false);
+            draw_line(x, y, predict_x, predict_y);
+            set_alpha(255);
+        }
+        elif (ai_state == AI_AMBUSH)
+        {
+            // Vai para o alvo da missão e espera
+            if (ambush_wp != -1)
+            {
+                target_x = NAV_X[ambush_wp];
+                target_y = NAV_Y[ambush_wp];
+                
+                // Se já está lá, reduz velocidade (esconde-se)
+                if (get_dist(x, y, target_x, target_y) < 150)
+                {
+                    max_speed = 100; // Fica quieto
+                }
+            }
+        }
+        elif (ai_state == AI_RETREAT)
+        {
+            // Fuga para ponto longe
+            if (retreat_wp != -1)
+            {
+                target_x = NAV_X[retreat_wp];
+                target_y = NAV_Y[retreat_wp];
+            }
+        }
+        else // AI_PATROL
+        {
+            // Patrulha aleatória pelos waypoints
+            repath_timer -= DT;
+            if (repath_timer <= 0)
+            {
+                repath_timer = 2.0;
+                wp_target = math.rand(0, NAV_COUNT);
+            }
+            
+            if (wp_target != -1)
+            {
+                target_x = NAV_X[wp_target];
+                target_y = NAV_Y[wp_target];
+            }
+        }
+        
+        // --- PATHFINDING ---
+        if (use_pathfinding)
+        {
+            repath_timer -= DT;
+            if (repath_timer <= 0)
+            {
+                repath_timer = 0.3;
+                wp_cur = nav_find_nearest(x, y);
+                var wp_dest = nav_find_nearest(target_x, target_y);
+                var wp_next = nav_next(wp_cur, wp_dest);
+                
+                if (wp_next != -1)
+                {
+                    target_x = NAV_X[wp_next];
+                    target_y = NAV_Y[wp_next];
+                }
+            }
+        }
+        
+        // --- PHYSICS & MOVEMENT ---
+        var ang_to = get_angle(x, y, target_x, target_y);
+        var diff = ang_to - angle;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+        
+        // Steering mais agressivo quando está em HUNT/INTERCEPT
+        var turn_speed = 180;
+        if (ai_state == AI_HUNT || ai_state == AI_INTERCEPT)
+        {
+            turn_speed = 240;
+            max_speed = 450; // Mais rápido quando persegue
+        }
+        
+        angle += math.clamp(diff, -turn_speed * DT * 2, turn_speed * DT * 2);
+        vel += 300 * DT;
+        if (vel > max_speed) vel = max_speed;
+        
+        // --- COLLISION WITH PLAYER (ROUBAR) ---
+        if (dist_to_player < 40 && ai_state != AI_RETREAT)
+        {
+            if (MISSION_TIMER > 5.0)
+            {
+                MISSION_TIMER -= 3.0;
+                floating_text(x, y, "STOLEN!", 255, 0, 0);
+                
+                // Entra em modo de fuga
+                ai_state = AI_RETREAT;
+                state_timer = 99.0; // Não muda de estado por um tempo
+                vel = -200; // Recua no impacto
+                
+                // Escolhe ponto de fuga mais longe
+                var best_d = -1.0;
+                var i = 0;
+                while (i < NAV_COUNT)
+                {
+                    var d = get_dist(x, y, NAV_X[i], NAV_Y[i]);
+                    if (d > best_d) { best_d = d; retreat_wp = i; }
+                    i += 1;
+                }
+                repath_timer = 0;
+            }
+        }
+        
+        // --- ANTI-STUCK ---
+        if (!place_free(x + get_distx(angle, 20), y + get_disty(angle, 20)))
+        {
+            stuck_timer += DT;
+            if (stuck_timer > 0.5)
+            {
+                angle += 90;
+                stuck_timer = 0;
+            }
+        }
+        else
+        {
+            stuck_timer = 0;
+        }
+        
+        x += get_distx(angle, vel) * DT;
+        y += get_disty(angle, vel) * DT;
+        
+        // --- RENDER ---
+        var da = -angle;
+        
+        // Cor muda conforme o estado
+        var car_r = 20; var car_g = 20; var car_b = 25;
+        if (ai_state == AI_HUNT)      { car_r = 120; car_g = 20; car_b = 20; }  // Vermelho
+        elif (ai_state == AI_INTERCEPT) { car_r = 200; car_g = 100; car_b = 20; } // Laranja
+        elif (ai_state == AI_AMBUSH)   { car_r = 100; car_g = 20; car_b = 100; } // Roxo
+        elif (ai_state == AI_RETREAT)  { car_r = 20; car_g = 100; car_b = 20; }  // Verde
+        
+        set_color(car_r, car_g, car_b);
+        draw_rotated_rectangle(x, y, 38, 24, da, true);
+        
+        // Faróis
+        set_color(255, 255, 200);
+        set_alpha(100);
+        draw_circle(x + get_distx(angle, 30), y + get_disty(angle, 30), 20, true);
+        set_alpha(255);
+        
+        // Debug: Mostrar estado da AI
+        set_color(255, 255, 255);
+        var state_name = "PATROL";
+        if (ai_state == AI_HUNT) state_name = "HUNT";
+        elif (ai_state == AI_INTERCEPT) state_name = "INTERCEPT";
+        elif (ai_state == AI_AMBUSH) state_name = "AMBUSH";
+        elif (ai_state == AI_RETREAT) state_name = "RETREAT";
+        draw_text(state_name, x - 30, y - 40, 12);
+        
+        frame;
+    }
+}
+
+// ============================================
+// PROCESSOS (Os Atores)
+// ============================================
+
+process player_car(start_x, start_y)
+{
+    x = start_x;
+    y = start_y;
+    z = 0; // Carro no plano principal
+    angle = -90;
+    var angle_old = angle;
+    xold = x;
+    yold = y;
+    velx = 0.0;
+    vely = 0.0;
+
+    set_rect_shape(0, 0, 36, 22);
+
+
+    loop
+    {
+        // Guardar estado anterior para desenhar o rasto
+        xold = x;
+        yold = y;
+        angle_old = angle;
+
+        // Inputs
+        var throttle = 0.0;
+        if (key_down(KEY_W) || key_down(KEY_UP)) throttle += 1;
+        var braking = (key_down(KEY_S) || key_down(KEY_DOWN));
+        if (braking) throttle -= 1;
+
+        var steer = 0.0;
+        if (key_down(KEY_A) || key_down(KEY_LEFT)) steer -= 1;
+        if (key_down(KEY_D) || key_down(KEY_RIGHT)) steer += 1;
+
+        // Math
+        var fx = get_distx(angle, 1);
+        var fy = get_disty(angle, 1);
+        var rx = get_distx(angle + 90, 1); 
+        var ry = get_disty(angle + 90, 1);
+
+        var forward_v = velx * fx + vely * fy;
+        var side_v = velx * rx + vely * ry;
+
+        var steer_dir = 1;
+        if (forward_v < -50) steer_dir = -1;
+
+        var turn_rate = 180; 
+        var speed_factor = math.clamp(abs(forward_v) / 300, 0.0, 1.0);
+        angle -= steer * steer_dir * turn_rate * speed_factor * DT;
+
+        var accel = 380; 
+        if (throttle > 0) { velx += fx * accel * DT; vely += fy * accel * DT; }
+        if (throttle < 0) { velx -= fx * (accel * 0.8) * DT; vely -= fy * (accel * 0.8) * DT; }
+
+        // Aderência ao gelo
+        var grip = 1.2; 
+        velx -= rx * side_v * math.min(1.0, DT * grip);
+        vely -= ry * side_v * math.min(1.0, DT * grip);
+
+        velx *= (1.0 - DT * 0.4);
+        vely *= (1.0 - DT * 0.4);
+
+        // --- COLISÃO ROBUSTA (SLIDING) ---
+        
+        // 1. Tentar mover em X
+        var next_x = x + velx * DT;
+        next_x = math.clamp(next_x, 40, WORLD_W - 40);
+        
+        if (place_free(next_x, y)) x = next_x;
+        else 
+        {
+            velx *= -0.3; // Batida X
+            // Shake visual
+        }
+
+        // 2. Tentar mover em Y
+        var next_y = y + vely * DT;
+        next_y = math.clamp(next_y, 40, WORLD_H - 40);
+        
+        if (place_free(x, next_y)) y = next_y;
+        else 
+        {
+            vely *= -0.3; // Batida Y
+          // Shake visual
+        }
+
+        // 3. Failsafe: Se ficar preso (rotação/spawn), empurra para fora
+        if (!place_free(x, y))
+        {
+            var out = find_free_spot(x, y, 40);
+            if (out[2] == 1) { x = out[0]; y = out[1]; }
+            else { x = xold; y = yold; velx = 0; vely = 0; }
+        }
+
+        // DEBUG: Visualizar onde o código "pensa" que as rodas estão
+        // var dbg_r = 14;
+        // var dbg_w = 8;
+        // var dbg_lx = x - get_distx(angle, dbg_r) + get_distx(angle - 90, dbg_w);
+        // var dbg_ly = y - get_disty(angle, dbg_r) + get_disty(angle - 90, dbg_w);
+        // var dbg_rx = x - get_distx(angle, dbg_r) + get_distx(angle + 90, dbg_w);
+        // var dbg_ry = y - get_disty(angle, dbg_r) + get_disty(angle + 90, dbg_w);
+        // // set_color(255, 0, 255); // Magenta
+        // // draw_circle(dbg_lx, dbg_ly, 4, true);
+        // // draw_circle(dbg_rx, dbg_ry, 4, true);
+
+        // Efeito de Drift (Marcas no chão + Partículas)
+        if (abs(side_v) > 100)
+        {
+            // Calcular posição das rodas traseiras (offset do centro)
+            var r_off = 14; // Distância para trás
+            var w_off = 8;  // Distância para os lados (track)
+            
+            // Calcular posições antigas e novas das rodas traseiras
+            var old_rx = xold - get_distx(angle_old, r_off);
+            var old_ry = yold - get_disty(angle_old, r_off);
+            var new_rx = x - get_distx(angle, r_off);
+            var new_ry = y - get_disty(angle, r_off);
+
+            // Desenhar rasto (Esquerda e Direita)
+            drift_mark(old_rx + get_distx(angle_old - 90, w_off), old_ry + get_disty(angle_old - 90, w_off),
+                       new_rx + get_distx(angle - 90, w_off),     new_ry + get_disty(angle - 90, w_off));
+                       
+            drift_mark(old_rx + get_distx(angle_old + 90, w_off), old_ry + get_disty(angle_old + 90, w_off),
+                       new_rx + get_distx(angle + 90, w_off),     new_ry + get_disty(angle + 90, w_off));
+
+            // Partículas ocasionais (mantemos para dar volume)
+            if (int(time() * 30) % 3 == 0)
+            {
+                snow_puff(new_rx + get_distx(angle - 90, w_off), new_ry + get_disty(angle - 90, w_off), angle);
+                snow_puff(new_rx + get_distx(angle + 90, w_off), new_ry + get_disty(angle + 90, w_off), angle);
+            }
+        }
+
+        // Render Carro
+        var draw_ang = -angle;
+
+        // Luzes Travão
+        var tail_w = 10;
+        var bx = x - get_distx(angle, 16);
+        var by = y - get_disty(angle, 16);
+        if (braking) { set_alpha(200); set_color(255, 20, 20); } 
+        else { set_alpha(120); set_color(150, 0, 0); }
+        draw_circle(bx + get_distx(angle - 90, tail_w), by + get_disty(angle - 90, tail_w), 6, true);
+        draw_circle(bx + get_distx(angle + 90, tail_w), by + get_disty(angle + 90, tail_w), 6, true);
+        set_alpha(255);
+
+        // Sombra
+        set_alpha(60); set_color(0, 5, 15);
+        draw_rotated_rectangle(x+2, y+4, 38, 24, draw_ang, true);
+        set_alpha(255);
+        
+        // Chassis
+        set_color(180, 60, 60); 
+        draw_rotated_rectangle(x, y, 36, 22, draw_ang, true);
+        set_color(200, 80, 80);
+        draw_rotated_rectangle(x - get_distx(angle, 4), y - get_disty(angle, 4), 24, 18, draw_ang, true);
+        set_color(40, 50, 70); // Vidro
+        draw_rotated_rectangle(x + get_distx(angle, 6), y + get_disty(angle, 6), 8, 16, draw_ang, true);
+
+        // Faróis (Headlights)
+        var fx_light = x + get_distx(angle, 20);
+        var fy_light = y + get_disty(angle, 20);
+
+        set_color(255, 245, 160);
+        set_alpha(30);
+        draw_circle(fx_light + get_distx(angle, 80), fy_light + get_disty(angle, 80), 90, true);
+        set_alpha(50);
+        draw_circle(fx_light + get_distx(angle, 40), fy_light + get_disty(angle, 40), 50, true);
+        
+        set_alpha(200);
+        draw_circle(fx_light + get_distx(angle - 90, 10), fy_light + get_disty(angle - 90, 10), 4, true);
+        draw_circle(fx_light + get_distx(angle + 90, 10), fy_light + get_disty(angle + 90, 10), 4, true);
+        set_alpha(255);
+
+        frame;
+    }
+}
+
+process snow_puff(px, py, car_angle)
+{
+    // Nasce na posição exata da roda com ligeira variação
+    x = px + math.rand(-4, 4);
+    y = py + math.rand(-4, 4);
+    z = 5; // Partículas ligeiramente acima do chão
+    
+    var is_mud = math.rand(0, 100) < 40; // 40% de chance de ser lama
+    life = 0.6; // Usa variável nativa 'life'
+    size = math.rand(4, 8); // Usa variável nativa 'size'
+    
+    loop
+    {
+        life -= DT;
+        if (life <= 0) break;
+        
+        set_alpha(int(200 * (life / 0.6)));
+        
+        if (is_mud) set_color(100, 85, 70); // Cor de Lama
+        else        set_color(220, 230, 240); // Cor de Neve
+        
+        draw_circle(x, y, size * (life / 0.6), true);
+        set_alpha(255);
+        frame;
+    }
+}
+
+process drift_mark(x1, y1, x2, y2)
+{
+    x = x1;
+    y = y1;
+    z = -10;
+
+    life = 2.0; // Usa variável nativa 'life'
+    var max_life = life;
+
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    var LEN = sqrt(dx*dx + dy*dy);
+    var nx = 0;
+    var ny = 0;
+    if (LEN > 0.001) { nx = -dy / LEN; ny = dx / LEN; }
+
+    loop
+    {
+        life -= DT;
+        if (life <= 0) break;
+  
+        var t = life / max_life;
+        set_alpha(int(180 * t));
+        set_color(200, 210, 225);
+
+        // Usa offsets relativos a x,y
+        draw_line(x, y, x + dx, y + dy);
+        draw_line(x + nx, y + ny, x + dx + nx, y + dy + ny);
+        draw_line(x - nx, y - ny, x + dx - nx, y + dy - ny);
+ 
+
+        set_alpha(255);
+        frame;
+    }
+}
+
+process building(bx, by, max_w, max_h, _type)
+{
+    x = bx; y = by;
+    z = 20; 
+
+    // Variação pequena para manter o aspeto "lado a lado" mas orgânico
+    var w = max_w - math.rand(0, 10);
+    var h = max_h - math.rand(0, 10);
+    var depth = 15; // Profundidade 3D
+
+    var lights_on = (math.rand(0, 100) > 30); // Define luzes fixas no início (70% chance)
+    set_rect_shape(0, -depth/2, w, h); // Ajuste colisão
+  
+    // Criar o chão de neve debaixo da casa (Lote)
+    // Z=-50 para ficar debaixo das marcas de pneu (-10) e do carro (0)
+    ground_lot(x, y, w + 20, h + 20);
+
+    loop
+    {
+   
+
+        // --- EFEITO PULSANTE (FEEDBACK) ---
+        // Só pulsa se for o alvo da missão
+        if (MISSION_STATE > 0 && abs(x - MISSION_TARGET_X) < 2.0 && abs(y - MISSION_TARGET_Y) < 2.0)
+        {
+            var t = time() * 8.0; 
+            var pulse = (sin(t) + 1.0) * 0.5; 
+            
+            set_alpha(40 + int(pulse * 80)); 
+            
+            if (MISSION_STATE == 2) set_color(255, 50, 50); // Entrega (Vermelho)
+            else                    set_color(255, 220, 50); // Pickup (Amarelo)
+
+            draw_circle(x, y, (w/2) + 20 + pulse * 12, true);
+            set_alpha(255);
+        }
+
+        // --- DESENHO 2.5D MELHORADO ---
+        
+        // 1. Parede Lateral (Profundidade)
+        set_color(40, 45, 55); // Sombra escura
+        draw_rectangle(x - w/2, y - h/2 + depth, w, h, true);
+
+        // 2. Parede Frontal (Face)
+        var r = 100; var g = 90; var b = 110;
+        if (_type == TYPE_RESTAURANT) { r=160; g=60; b=60; }
+        elif (_type == TYPE_SHOP)     { r=60; g=100; b=160; }
+        
+        set_color(r, g, b);
+        draw_rectangle(x - w/2, y - h/2, w, h, true);
+        
+        // Borda da parede
+        set_color(r+30, g+30, b+30);
+        draw_rectangle(x - w/2, y - h/2, w, h, false);
+
+        // 3. Telhado com Neve (Mais fofo)
+        set_color(220, 230, 240);
+        draw_rectangle(x - w/2 + 4, y - h/2 + 4, w - 8, h - 8, true);
+        // Detalhe extra de neve
+        draw_circle(x - w/2 + 10, y - h/2 + 10, 8, true);
+        draw_circle(x + w/2 - 10, y - h/2 + 10, 8, true);
+        draw_circle(x - w/2 + 10, y + h/2 - 10, 8, true);
+        draw_circle(x + w/2 - 10, y + h/2 - 10, 8, true);
+
+        // 4. Janelas e Portas
+        var win_col_r = 40; var win_col_g = 50; var win_col_b = 60;
+        // Luzes acendem à noite (simulado) ou aleatoriamente
+        if (lights_on) { win_col_r = 255; win_col_g = 220; win_col_b = 100; }
+        
+        set_color(win_col_r, win_col_g, win_col_b);
+        draw_rectangle(x - w/4, y, 12, 12, true); // Janela Esq
+        draw_rectangle(x + w/4 - 12, y, 12, 12, true); // Janela Dir
+
+        // Porta
+        set_color(30, 20, 10);
+        draw_rectangle(x - 8, y + h/2 - 20, 16, 20, true);
+
+        // 5. Placas Especiais
+        if (_type == TYPE_RESTAURANT)
+        {
+            set_color(255, 200, 50); // Luz quente
+            draw_text("PIZZA", x - 20, y - 20, 16);
+        }
+        elif (_type == TYPE_SHOP)
+        {
+            set_color(100, 255, 150); // Luz neon
+            draw_text("SHOP", x - 18, y - 20, 16);
+        }
+
+        frame;
+    }
+}
+
+process ground_lot(gx, gy, gw, gh)
+{
+    x = gx; y = gy;
+    z = -50; // Chão (acima do asfalto, abaixo de tudo o resto)
+    
+    loop
+    {
+        // Desenha o lote de neve
+        set_color(220, 230, 245); // Branco neve ligeiramente azulado
+        draw_rectangle(x - gw/2, y - gh/2, gw, gh, true);
+        
+        // Borda suave para separar da estrada
+        set_color(180, 190, 210);
+        draw_rectangle(x - gw/2, y - gh/2, gw, gh, false);
+        
+        frame;
+    }
+}
+
+process pine_tree(tx, ty)
+{
+    x = tx; y = ty;
+    z = 25; // Acima das casas
+    var scale = math.rand(0.8, 1.2);
+    
+    set_circle_shape(10); // Colisão pequena no tronco
+
+
+    loop
+    {
+        // Sombra
+        set_alpha(100); set_color(0, 0, 0);
+        draw_circle(x + 5, y + 5, 15 * scale, true);
+        set_alpha(255);
+
+        // Tronco
+        set_color(60, 40, 20);
+        draw_rectangle(x - 4*scale, y, 8*scale, 10*scale, true);
+
+        // Folhas (3 camadas de triângulos)
+        var i = 0;
+        while (i < 3)
+        {
+            var y_off = y - (10 * scale) - (i * 15 * scale);
+            var w_tri = (25 - i * 5) * scale;
+            var h_tri = 25 * scale;
+            
+            set_color(20, 80 + i*20, 40); // Verde escuro a clarear
+           draw_circle(x, y_off, w_tri, true);
+            
+            // Neve na ponta
+            set_color(240, 240, 255);
+            draw_circle(x, y_off - 5*scale, w_tri * 0.6, true);
+            i += 1;
+        }
+        frame;
+    }
+}
+
+process floating_text(tx, ty, msg, r, g, b)
+{
+    x = tx; y = ty;
+    z = 200; // UI World Space
+    life = 1.5; // Usa variável nativa 'life'
+    
+    loop
+    {
+        life -= DT;
+        if (life <= 0) break;
+        
+        y -= 30 * DT; // Subir
+        
+        set_color(r, g, b);
+        draw_text(msg, x - 40, y, 24);
+        frame;
+    }
+}
+
+// --- EFEITOS DE CELEBRAÇÃO ---
+process firework(px, py)
+{
+    x = px; y = py;
+    z = 200;
+    // Cores festivas aleatórias
+    var r = math.rand(150, 255);
+    var g = math.rand(150, 255);
+    var b = math.rand(150, 255);
+    
+    // Explosão de confetis
+    var i = 0;
+    while (i < 16)
+    {
+        confetti(x, y, r, g, b);
+        i += 1;
+    }
+    frame; // Morre logo, só spawna partículas
+}
+
+process confetti(px, py, r, g, b)
+{
+    x = px; y = py;
+    z = 200;
+    var ang = math.rand(0, 360);
+    var spd = math.rand(100, 300);
+    var vx = get_distx(ang, spd);
+    var vy = get_disty(ang, spd);
+    life = math.rand(0.5, 1.2); // Usa variável nativa 'life'
+    
+    loop
+    {
+        life -= DT;
+        if (life <= 0) break;
+        
+        x += vx * DT;
+        y += vy * DT;
+        vy += 400 * DT; // Gravidade
+        vx *= 0.95; // Resistência do ar
+        
+        set_alpha(int(255 * life));
+        set_color(r, g, b);
+        draw_circle(x, y, 4, true);
+        set_alpha(255);
+        frame;
+    }
+}
+
+// --- SISTEMA DE CLIMA (NEVE GLOBAL) ---
+process weather_system()
+{
+    loop
+    {
+        // Spawna flocos de neve à volta da câmara
+        if (int(time() * 100) % 5 == 0) // Frequência da neve
+        {
+            var sx = CAM_X + math.rand(0, VIEW_W);
+            var sy = CAM_Y - 10; // Começa no topo
+            falling_snowflake(sx, sy);
+        }
+        frame;
+    }
+}
+
+process falling_snowflake(sx, sy)
+{
+    x = sx; y = sy;
+    z = 300; // Acima de tudo (UI layer ou perto)
+    var spd = math.rand(50, 100);
+    var sway = math.rand(0, 100);
+    
+    loop
+    {
+        y += spd * DT;
+        x += sin(time() * 2 + sway) * 20 * DT; // Movimento lateral
+        
+        if (y > CAM_Y + VIEW_H) break; // Morre quando sai do ecrã
+        
+        set_alpha(180); set_color(255, 255, 255);
+        draw_circle(x, y, 2, true);
+        set_alpha(255);
+        frame;
+    }
+}
+
+// ============================================
+// MAIN SETUP & LOOP MESTRE
+// ============================================
+
+set_window_size(VIEW_W, VIEW_H);
+set_window_title("Cozy Winter Delivery - Dev");
+set_design_resolution(VIEW_W, VIEW_H);
+set_virtual_screen_enabled(true);
+init_collision(0, 0, WORLD_W, WORLD_H);
+
+
+if (GAME_STATE == STATE_GAME) 
+{
+    start_game();
+}
+
+loop
+{
+    DT = delta();
+
+    // A Máquina de Estados decide que update() corre neste frame
+    if (GAME_STATE == STATE_MENU)
+    {
+        update_menu();
+    }
+    elif (GAME_STATE == STATE_CREDITS)
+    {
+        update_credits();
+    }
+    
+    // Failsafe exit geral caso queiras fechar a janela no menu
+    if (key_pressed(KEY_ESCAPE) && GAME_STATE == STATE_MENU)
+    {
+        close_window();
+        break;
+    }
+
+    frame;
+}
