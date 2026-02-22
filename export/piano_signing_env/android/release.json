@@ -1,0 +1,15 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.pianokeys",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "pianokeys",
+    "CONTENT_ROOT": "releases/piano",
+    "KEYSTORE": "projects/runner/Android/runner/runner.key",
+    "KEY_ALIAS": "djokersoft",
+    "KEYSTORE_PASS_ENV": "BU_KS_PASS"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/piano"
+  }
+}

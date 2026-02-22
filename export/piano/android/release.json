@@ -1,0 +1,19 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.pianokeys",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "pianokeys",
+    "CONTENT_ROOT": "releases/piano",
+    "MANIFEST_TEMPLATE": "releases/piano/AndroidManifest.xml",
+    "SIGNING": {
+      "KEYSTORE": "releases/piano/keys/piano-upload.jks",
+      "KEY_ALIAS": "upload",
+      "KEYSTORE_PASS_ENV": "BU_KS_PASS",
+      "KEY_PASS_ENV": "BU_KEY_PASS"
+    }
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/piano"
+  }
+}

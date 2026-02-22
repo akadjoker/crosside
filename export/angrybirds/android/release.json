@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.buangrybirds",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "Angry Birds",
+    "CONTENT_ROOT": "releases/angrybirds"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/angrybirds"
+  }
+}

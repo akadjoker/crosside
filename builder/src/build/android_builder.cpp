@@ -31,7 +31,7 @@ namespace crosside::build
           android:versionCode="1"
           android:versionName="1.0">
 
-           <uses-sdk  android:compileSdkVersion="30"     android:minSdkVersion="16"  android:targetSdkVersion="23" />
+           <uses-sdk  android:compileSdkVersion="34"     android:minSdkVersion="24"  android:targetSdkVersion="34" />
 
   <application
       android:allowBackup="false"
@@ -45,7 +45,8 @@ namespace crosside::build
               android:label="@applbl@"
               android:configChanges="orientation|keyboardHidden|screenSize"
              android:screenOrientation="landscape" android:launchMode="singleTask"
-             android:clearTaskOnLaunch="true">
+             android:clearTaskOnLaunch="true"
+             android:exported="true">
 
       <meta-data android:name="android.app.lib_name"
                  android:value="@appLIBNAME@" />
@@ -65,9 +66,9 @@ namespace crosside::build
           android:versionName="1.0">
 
     <uses-sdk
-        android:compileSdkVersion="30"
-        android:minSdkVersion="16"
-        android:targetSdkVersion="23" />
+        android:compileSdkVersion="34"
+        android:minSdkVersion="24"
+        android:targetSdkVersion="34" />
 
     <application
         android:allowBackup="false"
@@ -82,7 +83,8 @@ namespace crosside::build
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:screenOrientation="landscape"
             android:launchMode="singleTask"
-            android:clearTaskOnLaunch="true">
+            android:clearTaskOnLaunch="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -123,6 +125,7 @@ namespace crosside::build
             fs::path aapt;
             fs::path dx;
             fs::path d8;
+            fs::path zipalign;
             fs::path apksigner;
             fs::path adb;
             fs::path keytool;
@@ -576,6 +579,7 @@ namespace crosside::build
             out.aapt = resolveToolInDir(out.buildToolsRoot, "aapt");
             out.dx = resolveToolInDir(out.buildToolsRoot, "dx");
             out.d8 = resolveToolInDir(out.buildToolsRoot, "d8");
+            out.zipalign = resolveToolInDir(out.buildToolsRoot, "zipalign");
             out.apksigner = resolveToolInDir(out.buildToolsRoot, "apksigner");
 
             out.adb = resolveToolInDir(out.androidSdk / "platform-tools", "adb");
@@ -628,6 +632,7 @@ namespace crosside::build
         {
             std::vector<fs::path> required = {
                 tc.aapt,
+                tc.zipalign,
                 tc.apksigner,
                 tc.platformJar,
                 tc.adb,
@@ -2609,7 +2614,8 @@ namespace crosside::build
             fs::path &dexRoot,
             fs::path &manifestPath)
         {
-            appRoot = project.root / "Android" / project.name;
+            const std::string outputName = crosside::model::projectOutputName(project);
+            appRoot = project.root / "Android" / outputName;
             resRoot = appRoot / "res";
             javaRoot = appRoot / "java";
             tmpRoot = appRoot / "tmp";
@@ -2634,7 +2640,7 @@ namespace crosside::build
             }
 
             const std::string label = project.androidLabel.empty()
-                                          ? (project.name.empty() ? std::string("app") : project.name)
+                                          ? (outputName.empty() ? std::string("app") : outputName)
                                           : project.androidLabel;
             const auto manifestTemplate = loadManifestTemplate(ctx, repoRoot, project, activity);
             if (!manifestTemplate.has_value())
@@ -2704,6 +2710,8 @@ namespace crosside::build
                 "package",
                 "-f",
                 "-m",
+                "-0",
+                "arsc",
                 "-F",
                 pathString(apkPath),
                 "-M",
@@ -2718,6 +2726,29 @@ namespace crosside::build
             if (command.code != 0)
             {
                 ctx.error("aapt base apk packaging failed");
+                return false;
+            }
+            return true;
+        }
+
+        bool zipalignApk(
+            const crosside::Context &ctx,
+            const AndroidToolchain &tc,
+            const fs::path &inputApk,
+            const fs::path &outputApk)
+        {
+            std::vector<std::string> args = {
+                "-f",
+                "-p",
+                "4",
+                pathString(inputApk),
+                pathString(outputApk),
+            };
+
+            auto cmd = crosside::io::runCommand(pathString(tc.zipalign), args, {}, ctx, false);
+            if (cmd.code != 0)
+            {
+                ctx.error("zipalign failed: ", outputApk.string());
                 return false;
             }
             return true;
@@ -2865,6 +2896,7 @@ namespace crosside::build
             const AndroidToolchain &tc,
             bool runAfter)
         {
+            const std::string outputName = crosside::model::projectOutputName(project);
             std::string packageName = sanitizeAndroidPackage(project.androidPackage);
             std::string activity = normalizeActivity(packageName, project.androidActivity);
 
@@ -2894,7 +2926,7 @@ namespace crosside::build
                 return false;
             }
 
-            const fs::path unalignedApk = tmpRoot / (project.name + ".unaligned.apk");
+            const fs::path unalignedApk = tmpRoot / (outputName + ".unaligned.apk");
             if (!createBaseApk(ctx, tc, manifestPath, resRoot, unalignedApk))
             {
                 return false;
@@ -2912,14 +2944,20 @@ namespace crosside::build
                 return false;
             }
 
-            const fs::path debugKey = appRoot / (project.name + ".key");
+            const fs::path alignedApk = tmpRoot / (outputName + ".aligned.apk");
+            if (!zipalignApk(ctx, tc, unalignedApk, alignedApk))
+            {
+                return false;
+            }
+
+            const fs::path debugKey = appRoot / (outputName + ".key");
             if (!ensureDebugKeystore(ctx, tc, debugKey))
             {
                 return false;
             }
 
-            const fs::path signedApk = appRoot / (project.name + ".signed.apk");
-            if (!signApk(ctx, tc, unalignedApk, signedApk, debugKey))
+            const fs::path signedApk = appRoot / (outputName + ".signed.apk");
+            if (!signApk(ctx, tc, alignedApk, signedApk, debugKey))
             {
                 return false;
             }

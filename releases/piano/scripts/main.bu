@@ -1,0 +1,847 @@
+// Piano Helper - visual teleprompter
+// No input checking: player reads and plays on a real piano.
+
+import math;
+
+var VIEW_W = 1280;
+var VIEW_H = 720;
+
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+var KEY_UP = 265;
+var KEY_DOWN = 264;
+var KEY_ENTER = 257;
+var KEY_SPACE = 32;
+var KEY_ESCAPE = 256;
+var KEY_P = 80;
+
+var CLEF_TREBLE = 0;
+var CLEF_BASS = 1;
+var CLEF_BOTH = 2;
+
+var HELP_SOLFEGE = 0;
+var HELP_LETTER = 1;
+var HELP_NUMBER = 2;
+var HELP_NONE = 3;
+
+var SPEED_VERY_SLOW = 0;
+var SPEED_SLOW = 1;
+var SPEED_NORMAL = 2;
+var SPEED_FAST = 3;
+
+var SCREEN_MENU = 0;
+var SCREEN_GAME = 1;
+var SCREEN_PAUSE = 2;
+
+var STAFF_SPACE = 18;
+var NOTE_RADIUS = 11;
+var READ_X = 220;
+
+var APP_RUNNING = true;
+var CURRENT_SCREEN = SCREEN_MENU;
+
+var MENU_INDEX = 0;
+var PAUSE_INDEX = 0;
+
+var CLEF_MODE = CLEF_TREBLE;
+var LEVEL = 1;
+var HELP_MODE = HELP_SOLFEGE;
+var SPEED_MODE = SPEED_NORMAL;
+
+var BPM = 90;
+var SCROLL_SPEED = 210.0;
+var SPAWN_INTERVAL = 0.666;
+var SPAWN_TIMER = 0.0;
+var METRONOME_TIMER = 0.0;
+var SND_TICK = -1;
+
+var NOTES_ALL = [];
+var NOTES_POOL = [];
+var NOTES_ACTIVE = [];
+
+var CLEF_NAMES = ["Treble only", "Bass only", "Treble + Bass"];
+var HELP_NAMES = ["Solfege", "Letter", "Number", "None"];
+var SPEED_NAMES = ["Very Slow", "Slow", "Normal", "Fast"];
+var SPEED_BPM_LABELS = ["40 BPM", "60 BPM", "90 BPM", "120 BPM"];
+var LEVEL_LABELS = ["", "Do Re Mi", "Do Re Mi Fa", "Do Re Mi Fa Sol La Si"];
+var MENU_NAMES = ["Clef", "Level", "Help", "Speed", "Start", "Exit"];
+var PAUSE_NAMES = ["Continue", "Restart", "Menu"];
+
+var MOUSE_X = 0.0;
+var MOUSE_Y = 0.0;
+var MOUSE_CLICK = false;
+var POINTER_WAS_DOWN = false;
+
+var MENU_X = 70;
+var MENU_Y0 = 132;
+var MENU_W = VIEW_W - 140;
+var MENU_H = 58;
+var MENU_GAP = 12;
+
+var PAUSE_BTN_X = VIEW_W - 144;
+var PAUSE_BTN_Y = 20;
+var PAUSE_BTN_W = 112;
+var PAUSE_BTN_H = 42;
+
+def ui_point_in_rect(px, py, rx, ry, rw, rh)
+{
+    if (px < rx) return false;
+    if (py < ry) return false;
+    if (px > rx + rw) return false;
+    if (py > ry + rh) return false;
+    return true;
+}
+
+def update_mouse_state()
+{
+    var touch_down = (touch_count() > 0);
+    if (touch_down)
+    {
+        MOUSE_X = get_touch_screen_x(0);
+        MOUSE_Y = get_touch_screen_y(0);
+    }
+    else
+    {
+        MOUSE_X = get_mouse_x();
+        MOUSE_Y = get_mouse_y();
+    }
+
+    var pointer_down = (touch_down || mouse_down(0));
+    MOUSE_CLICK = (pointer_down && !POINTER_WAS_DOWN);
+    POINTER_WAS_DOWN = pointer_down;
+}
+
+def menu_hit_index(px, py)
+{
+    var i = 0;
+    while (i < len(MENU_NAMES))
+    {
+        var y = MENU_Y0 + i * (MENU_H + MENU_GAP);
+        if (ui_point_in_rect(px, py, MENU_X, y, MENU_W, MENU_H))
+        {
+            return i;
+        }
+        i += 1;
+    }
+    return -1;
+}
+
+def pause_hit_index(px, py)
+{
+    var box_w = 470;
+    var box_h = 260;
+    var box_x = VIEW_W / 2 - box_w / 2;
+    var box_y = VIEW_H / 2 - box_h / 2;
+
+    var i = 0;
+    while (i < len(PAUSE_NAMES))
+    {
+        var y = box_y + 88 + i * 52;
+        if (ui_point_in_rect(px, py, box_x + 40, y, box_w - 80, 42))
+        {
+            return i;
+        }
+        i += 1;
+    }
+    return -1;
+}
+
+class NoteDef
+{
+    var solfege;
+    var letter;
+    var number;
+    var treble_step;
+    var bass_step;
+
+    def init(_solfege, _letter, _number, _treble_step, _bass_step)
+    {
+        self.solfege = _solfege;
+        self.letter = _letter;
+        self.number = _number;
+        self.treble_step = _treble_step;
+        self.bass_step = _bass_step;
+    }
+}
+
+class ActiveNote
+{
+    var staff;
+    var x;
+    var step;
+    var solfege;
+    var letter;
+    var number;
+
+    def init(_staff, _x, _step, _solfege, _letter, _number)
+    {
+        self.staff = _staff;
+        self.x = _x;
+        self.step = _step;
+        self.solfege = _solfege;
+        self.letter = _letter;
+        self.number = _number;
+    }
+}
+
+def init_note_table()
+{
+    NOTES_ALL.clear();
+
+    // treble steps (bottom line E = 0): C=-2, D=-1, E=0, F=1, G=2, A=3, B=4
+    // bass steps   (bottom line A = 0): G=-1, A=0, B=1, C=2, D=3, E=4, F=5
+    NOTES_ALL.push(NoteDef("Do", "C", "1", -2, 2));
+    NOTES_ALL.push(NoteDef("Re", "D", "2", -1, 3));
+    NOTES_ALL.push(NoteDef("Mi", "E", "3", 0, 4));
+    NOTES_ALL.push(NoteDef("Fa", "F", "4", 1, 5));
+    NOTES_ALL.push(NoteDef("Sol", "G", "5", 2, -1));
+    NOTES_ALL.push(NoteDef("La", "A", "6", 3, 0));
+    NOTES_ALL.push(NoteDef("Si", "B", "7", 4, 1));
+}
+
+def level_allows(_letter)
+{
+    if (LEVEL == 1)
+    {
+        return (_letter == "C" || _letter == "D" || _letter == "E");
+    }
+
+    if (LEVEL == 2)
+    {
+        return (_letter == "C" || _letter == "D" || _letter == "E" || _letter == "F");
+    }
+
+    return true;
+}
+
+def rebuild_pool()
+{
+    NOTES_POOL.clear();
+
+    var i = 0;
+    while (i < len(NOTES_ALL))
+    {
+        var nd = NOTES_ALL[i];
+        if (level_allows(nd.letter))
+        {
+            NOTES_POOL.push(nd);
+        }
+        i += 1;
+    }
+
+    if (len(NOTES_POOL) <= 0)
+    {
+        NOTES_POOL.push(NOTES_ALL[0]);
+    }
+}
+
+def speed_to_bpm()
+{
+    if (SPEED_MODE == SPEED_VERY_SLOW) return 40;
+    if (SPEED_MODE == SPEED_SLOW) return 60;
+    if (SPEED_MODE == SPEED_NORMAL) return 90;
+    return 120;
+}
+
+def recompute_timing()
+{
+    BPM = speed_to_bpm();
+    SPAWN_INTERVAL = 60.0 / BPM;
+
+    // 140 px per beat gives readable spacing.
+    SCROLL_SPEED = BPM * 140.0 / 60.0;
+}
+
+def step_to_y(_staff_top, _step)
+{
+    var bottom_line_y = _staff_top + STAFF_SPACE * 4;
+    return bottom_line_y - _step * (STAFF_SPACE / 2);
+}
+
+def draw_staff(_top, _name)
+{
+    var x0 = 130;
+    var x1 = VIEW_W - 70;
+
+    set_color(34, 42, 62);
+    var i = 0;
+    while (i < 5)
+    {
+        var y = _top + i * STAFF_SPACE;
+        draw_line(x0, y, x1, y);
+        i += 1;
+    }
+
+    set_color(210, 220, 240);
+    draw_text(_name, 30, _top + 12, 22);
+}
+
+def draw_ledger_lines(_x, _staff_top, _step)
+{
+    set_color(36, 44, 62);
+
+    if (_step <= -2)
+    {
+        var s = -2;
+        while (s >= _step)
+        {
+            var y = step_to_y(_staff_top, s);
+            draw_line(_x - 16, y, _x + 16, y);
+            s -= 2;
+        }
+    }
+
+    if (_step >= 10)
+    {
+        var s2 = 10;
+        while (s2 <= _step)
+        {
+            var y2 = step_to_y(_staff_top, s2);
+            draw_line(_x - 16, y2, _x + 16, y2);
+            s2 += 2;
+        }
+    }
+}
+
+def help_text_for(_note)
+{
+    if (HELP_MODE == HELP_SOLFEGE) return _note.solfege;
+    if (HELP_MODE == HELP_LETTER) return _note.letter;
+    if (HELP_MODE == HELP_NUMBER) return _note.number;
+    return "";
+}
+
+def spawn_note_for_staff(_staff)
+{
+    if (len(NOTES_POOL) <= 0)
+    {
+        return;
+    }
+
+    var idx = math.irand(0, len(NOTES_POOL) - 1);
+    var nd = NOTES_POOL[idx];
+
+    var step = nd.treble_step;
+    if (_staff == CLEF_BASS)
+    {
+        step = nd.bass_step;
+    }
+
+    NOTES_ACTIVE.push(ActiveNote(_staff, VIEW_W + 50, step, nd.solfege, nd.letter, nd.number));
+}
+
+def spawn_wave()
+{
+    if (CLEF_MODE == CLEF_TREBLE)
+    {
+        spawn_note_for_staff(CLEF_TREBLE);
+    }
+    elif (CLEF_MODE == CLEF_BASS)
+    {
+        spawn_note_for_staff(CLEF_BASS);
+    }
+    else
+    {
+        spawn_note_for_staff(CLEF_TREBLE);
+        spawn_note_for_staff(CLEF_BASS);
+    }
+}
+
+def reset_run()
+{
+    NOTES_ACTIVE = [];
+    SPAWN_TIMER = 0.0;
+    METRONOME_TIMER = 0.0;
+}
+
+def start_game()
+{
+    recompute_timing();
+    rebuild_pool();
+    reset_run();
+    CURRENT_SCREEN = SCREEN_GAME;
+}
+
+def open_pause()
+{
+    PAUSE_INDEX = 0;
+    CURRENT_SCREEN = SCREEN_PAUSE;
+}
+
+def cycle_clef(_dir)
+{
+    if (_dir > 0)
+    {
+        CLEF_MODE += 1;
+        if (CLEF_MODE > 2) CLEF_MODE = 0;
+    }
+    else
+    {
+        CLEF_MODE -= 1;
+        if (CLEF_MODE < 0) CLEF_MODE = 2;
+    }
+}
+
+def cycle_level(_dir)
+{
+    LEVEL += _dir;
+    if (LEVEL < 1) LEVEL = 1;
+    if (LEVEL > 3) LEVEL = 3;
+}
+
+def cycle_help(_dir)
+{
+    if (_dir > 0)
+    {
+        HELP_MODE += 1;
+        if (HELP_MODE > 3) HELP_MODE = 0;
+    }
+    else
+    {
+        HELP_MODE -= 1;
+        if (HELP_MODE < 0) HELP_MODE = 3;
+    }
+}
+
+def cycle_speed(_dir)
+{
+    if (_dir > 0)
+    {
+        SPEED_MODE += 1;
+        if (SPEED_MODE > 3) SPEED_MODE = 0;
+    }
+    else
+    {
+        SPEED_MODE -= 1;
+        if (SPEED_MODE < 0) SPEED_MODE = 3;
+    }
+
+    recompute_timing();
+}
+
+def menu_change_selected(_dir)
+{
+    if (MENU_INDEX == 0) cycle_clef(_dir);
+    elif (MENU_INDEX == 1) cycle_level(_dir);
+    elif (MENU_INDEX == 2) cycle_help(_dir);
+    elif (MENU_INDEX == 3) cycle_speed(_dir);
+}
+
+def menu_activate()
+{
+    if (MENU_INDEX == 4)
+    {
+        start_game();
+    }
+    elif (MENU_INDEX == 5)
+    {
+        APP_RUNNING = false;
+    }
+}
+
+def apply_pause_action(_idx)
+{
+    if (_idx == 0)
+    {
+        CURRENT_SCREEN = SCREEN_GAME;
+    }
+    elif (_idx == 1)
+    {
+        start_game();
+    }
+    else
+    {
+        CURRENT_SCREEN = SCREEN_MENU;
+        reset_run();
+    }
+}
+
+def update_menu()
+{
+    if (key_pressed(KEY_UP))
+    {
+        MENU_INDEX -= 1;
+        if (MENU_INDEX < 0) MENU_INDEX = len(MENU_NAMES) - 1;
+    }
+
+    if (key_pressed(KEY_DOWN))
+    {
+        MENU_INDEX += 1;
+        if (MENU_INDEX >= len(MENU_NAMES)) MENU_INDEX = 0;
+    }
+
+    if (key_pressed(KEY_LEFT))
+    {
+        menu_change_selected(-1);
+    }
+
+    if (key_pressed(KEY_RIGHT))
+    {
+        menu_change_selected(1);
+    }
+
+    if (key_pressed(KEY_ENTER) || key_pressed(KEY_SPACE))
+    {
+        menu_activate();
+    }
+
+    var hover = menu_hit_index(MOUSE_X, MOUSE_Y);
+    if (hover != -1)
+    {
+        MENU_INDEX = hover;
+    }
+
+    if (MOUSE_CLICK && hover != -1)
+    {
+        MENU_INDEX = hover;
+
+        if (hover <= 3)
+        {
+            if (MOUSE_X < MENU_X + MENU_W * 0.5) menu_change_selected(-1);
+            else menu_change_selected(1);
+        }
+        else
+        {
+            menu_activate();
+        }
+    }
+}
+
+def update_game(_dt)
+{
+    if (MOUSE_CLICK && ui_point_in_rect(MOUSE_X, MOUSE_Y, PAUSE_BTN_X, PAUSE_BTN_Y, PAUSE_BTN_W, PAUSE_BTN_H))
+    {
+        open_pause();
+        return;
+    }
+
+    if (key_pressed(KEY_ESCAPE) || key_pressed(KEY_P) || key_pressed(KEY_SPACE))
+    {
+        open_pause();
+        return;
+    }
+
+    SPAWN_TIMER += _dt;
+    while (SPAWN_TIMER >= SPAWN_INTERVAL)
+    {
+        SPAWN_TIMER -= SPAWN_INTERVAL;
+        spawn_wave();
+    }
+    
+    // Metronome Logic
+    METRONOME_TIMER += _dt;
+    var beat_interval = 60.0 / BPM;
+    if (METRONOME_TIMER >= beat_interval)
+    {
+        METRONOME_TIMER -= beat_interval;
+        if (SND_TICK != -1) play_sound(SND_TICK);
+    }
+
+    var i = 0;
+    while (i < len(NOTES_ACTIVE))
+    {
+        NOTES_ACTIVE[i].x -= SCROLL_SPEED * _dt;
+        i += 1;
+    }
+
+    var keep = [];
+    i = 0;
+    while (i < len(NOTES_ACTIVE))
+    {
+        var n = NOTES_ACTIVE[i];
+        if (n.x > -80)
+        {
+            keep.push(n);
+        }
+        i += 1;
+    }
+    NOTES_ACTIVE = keep;
+}
+
+def update_pause()
+{
+    if (key_pressed(KEY_ESCAPE) || key_pressed(KEY_P) || key_pressed(KEY_SPACE))
+    {
+        CURRENT_SCREEN = SCREEN_GAME;
+        return;
+    }
+
+    if (key_pressed(KEY_UP))
+    {
+        PAUSE_INDEX -= 1;
+        if (PAUSE_INDEX < 0) PAUSE_INDEX = len(PAUSE_NAMES) - 1;
+    }
+
+    if (key_pressed(KEY_DOWN))
+    {
+        PAUSE_INDEX += 1;
+        if (PAUSE_INDEX >= len(PAUSE_NAMES)) PAUSE_INDEX = 0;
+    }
+
+    if (key_pressed(KEY_ENTER))
+    {
+        apply_pause_action(PAUSE_INDEX);
+    }
+
+    var hover = pause_hit_index(MOUSE_X, MOUSE_Y);
+    if (hover != -1)
+    {
+        PAUSE_INDEX = hover;
+    }
+
+    if (MOUSE_CLICK && hover != -1)
+    {
+        PAUSE_INDEX = hover;
+        apply_pause_action(PAUSE_INDEX);
+    }
+}
+
+def draw_background()
+{
+    set_color(11, 16, 26);
+    draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+
+    set_color(20, 28, 44);
+    draw_rectangle(0, 0, VIEW_W, 82, true);
+}
+
+def draw_menu()
+{
+    draw_background();
+
+    set_color(235, 240, 252);
+    draw_text("Piano Helper", 46, 24, 42);
+    set_color(170, 185, 214);
+    draw_text("Visual teleprompter", 48, 66, 19);
+
+    var i = 0;
+    while (i < len(MENU_NAMES))
+    {
+        var y = MENU_Y0 + i * (MENU_H + MENU_GAP);
+        var selected = (i == MENU_INDEX);
+
+        if (selected) set_color(50, 74, 118);
+        else set_color(30, 42, 66);
+        draw_rectangle(MENU_X, y, MENU_W, MENU_H, true);
+
+        if (selected) set_color(196, 224, 255);
+        else set_color(88, 110, 146);
+        draw_rectangle(MENU_X, y, MENU_W, MENU_H, false);
+
+        set_color(240, 244, 252);
+        draw_text(MENU_NAMES[i], MENU_X + 22, y + 17, 24);
+
+        var value = "";
+        if (i == 0) value = CLEF_NAMES[CLEF_MODE];
+        elif (i == 1) value = LEVEL_LABELS[LEVEL];
+        elif (i == 2) value = HELP_NAMES[HELP_MODE];
+        elif (i == 3) value = SPEED_NAMES[SPEED_MODE] + " (" + SPEED_BPM_LABELS[SPEED_MODE] + ")";
+        elif (i == 4) value = "Start session";
+        elif (i == 5) value = "Exit";
+
+        set_color(214, 222, 238);
+        draw_text(value, MENU_X + 350, y + 17, 22);
+
+        i += 1;
+    }
+
+    //set_color(165, 180, 206);
+    //draw_text("Keyboard: UP/DOWN + LEFT/RIGHT + ENTER", 72, VIEW_H - 68, 18);
+    //draw_text("Mouse/Touch: click row (left/right side to change value)", 72, VIEW_H - 44, 18);
+}
+
+def draw_staff_scene()
+{
+    var treble_top = 190;
+    var bass_top = 190;
+
+    if (CLEF_MODE == CLEF_BOTH)
+    {
+        treble_top = 140;
+        bass_top = 380;
+    }
+
+    if (CLEF_MODE == CLEF_TREBLE || CLEF_MODE == CLEF_BOTH)
+    {
+        draw_staff(treble_top, "TREBLE");
+    }
+
+    if (CLEF_MODE == CLEF_BASS || CLEF_MODE == CLEF_BOTH)
+    {
+        draw_staff(bass_top, "BASS");
+    }
+
+    set_color(255, 186, 90);
+    draw_line(READ_X, 98, READ_X, VIEW_H - 88);
+
+    var i = 0;
+    while (i < len(NOTES_ACTIVE))
+    {
+        var n = NOTES_ACTIVE[i];
+        var top = treble_top;
+        if (n.staff == CLEF_BASS)
+        {
+            top = bass_top;
+        }
+
+        var y = step_to_y(top, n.step);
+
+        draw_ledger_lines(n.x, top, n.step);
+
+        var near = (abs(n.x - READ_X) < 13);
+        if (near) set_color(255, 200, 120);
+        else set_color(235, 242, 255);
+        draw_circle(n.x, y, NOTE_RADIUS, true);
+
+        if (near) set_color(88, 60, 20);
+        else set_color(34, 42, 56);
+        draw_circle(n.x, y, NOTE_RADIUS, false);
+        
+        // Draw Note Stem (Haste da nota)
+        // Regra visual simples: notas acima da linha media (step > 2) haste para baixo, senao para cima
+        var stem_len = 35;
+        set_color(235, 242, 255); // Mesma cor do interior da nota
+        if (n.step > 2) {
+            draw_line(n.x - NOTE_RADIUS + 2, y, n.x - NOTE_RADIUS + 2, y + stem_len);
+        } else {
+            draw_line(n.x + NOTE_RADIUS - 2, y, n.x + NOTE_RADIUS - 2, y - stem_len);
+        }
+
+        if (HELP_MODE != HELP_NONE)
+        {
+            var note_text = help_text_for(n);
+            var px = n.x - len(note_text) * 4;
+            set_color(16, 20, 30);
+            draw_text(note_text, px, y - 8, 16);
+        }
+
+        i += 1;
+    }
+}
+
+def draw_game_header()
+{
+    set_color(232, 238, 252);
+    draw_text("Piano Helper - Practice Mode", 26, 20, 30);
+
+    set_color(174, 190, 218);
+    draw_text("Clef: " + CLEF_NAMES[CLEF_MODE], 30, 57, 18);
+    draw_text("Level: " + LEVEL_LABELS[LEVEL], 350, 57, 18);
+    draw_text("Help: " + HELP_NAMES[HELP_MODE], 730, 57, 18);
+    draw_text("Speed: " + SPEED_BPM_LABELS[SPEED_MODE], 980, 57, 18);
+
+    var over_pause = ui_point_in_rect(MOUSE_X, MOUSE_Y, PAUSE_BTN_X, PAUSE_BTN_Y, PAUSE_BTN_W, PAUSE_BTN_H);
+    if (over_pause) set_color(78, 112, 170);
+    else set_color(52, 74, 112);
+    draw_rectangle(PAUSE_BTN_X, PAUSE_BTN_Y, PAUSE_BTN_W, PAUSE_BTN_H, true);
+    if (over_pause) set_color(206, 228, 255);
+    else set_color(156, 178, 208);
+    draw_rectangle(PAUSE_BTN_X, PAUSE_BTN_Y, PAUSE_BTN_W, PAUSE_BTN_H, false);
+    set_color(235, 242, 252);
+    draw_text("PAUSE", PAUSE_BTN_X + 24, PAUSE_BTN_Y + 10, 20);
+
+    //set_color(148, 166, 196);
+    //draw_text("SPACE/P/ESC or click PAUSE", 30, VIEW_H - 42, 18);
+}
+
+def draw_game()
+{
+    draw_background();
+    draw_game_header();
+    draw_staff_scene();
+}
+
+def draw_pause()
+{
+    set_color(0, 0, 0);
+    set_alpha(165);
+    draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+    set_alpha(255);
+
+    var box_w = 470;
+    var box_h = 260;
+    var box_x = VIEW_W / 2 - box_w / 2;
+    var box_y = VIEW_H / 2 - box_h / 2;
+
+    set_color(28, 36, 56);
+    draw_rectangle(box_x, box_y, box_w, box_h, true);
+    set_color(184, 204, 236);
+    draw_rectangle(box_x, box_y, box_w, box_h, false);
+
+    set_color(236, 242, 252);
+    draw_text("PAUSED", box_x + 170, box_y + 24, 36);
+
+    var hover = pause_hit_index(MOUSE_X, MOUSE_Y);
+
+    var i = 0;
+    while (i < len(PAUSE_NAMES))
+    {
+        var y = box_y + 88 + i * 52;
+        var hot = (i == PAUSE_INDEX || i == hover);
+
+        if (hot) set_color(64, 95, 146);
+        else set_color(42, 57, 86);
+        draw_rectangle(box_x + 40, y, box_w - 80, 42, true);
+
+        if (hot) set_color(212, 230, 255);
+        else set_color(150, 172, 206);
+        draw_rectangle(box_x + 40, y, box_w - 80, 42, false);
+
+        set_color(238, 243, 252);
+        draw_text(PAUSE_NAMES[i], box_x + 190, y + 10, 22);
+
+        i += 1;
+    }
+
+    set_color(176, 192, 219);
+    draw_text("ESC/P/SPACE resumes | click option", box_x + 72, box_y + box_h - 30, 18);
+}
+
+// ----------------------------------------------------------
+// Bootstrap
+// ----------------------------------------------------------
+set_window_size(VIEW_W, VIEW_H);
+set_window_title("Bu Piano Helper");
+set_design_resolution(VIEW_W, VIEW_H);
+set_virtual_screen_enabled(true);
+set_screen_scale_mode(3);
+
+init_note_table();
+recompute_timing();
+rebuild_pool();
+if (SND_TICK == -1) SND_TICK = load_sound("assets/tic2.wav");
+
+loop
+{
+    var dt = delta();
+    if (dt > 0.05) dt = 0.05;
+    update_mouse_state();
+    set_draw_screen(true);
+
+    if (CURRENT_SCREEN == SCREEN_MENU)
+    {
+        update_menu();
+        draw_menu();
+    }
+    elif (CURRENT_SCREEN == SCREEN_GAME)
+    {
+        update_game(dt);
+        draw_game();
+    }
+    else
+    {
+        update_pause();
+        draw_game();
+        draw_pause();
+    }
+
+    set_draw_screen(false);
+
+    if (!APP_RUNNING)
+    {
+        let_me_alone();
+        break;
+    }
+
+    frame;
+}

@@ -23,7 +23,7 @@ extern CameraManager gCamera;
 
 struct FileLoaderContext
 {
-    const char *searchPaths[8];
+    const char *searchPaths[16];
     int pathCount;
     char fullPath[512];
     FileBuffer fileBuffer;
@@ -511,6 +511,18 @@ int main(int argc, char *argv[])
     vm.registerNative("close_window", native_close_window, 0);
     vm.registerNative("set_log_level", native_set_log_level, 1);
 
+    bool windowInitialized = IsWindowReady();
+#if defined(PLATFORM_ANDROID)
+    // On Android, asset loading through LoadFileData requires NativeActivity/asset manager ready.
+    // Initialize window before probing scripts in APK assets.
+    if (!windowInitialized)
+    {
+        InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE.c_str());
+        SetExitKey(KEY_NULL);
+        windowInitialized = true;
+    }
+#endif
+
     FileLoaderContext ctx{};
 
     enum class LaunchMode
@@ -584,6 +596,64 @@ int main(int argc, char *argv[])
 
     if (mode == LaunchMode::RunBytecode)
     {
+        if (!scriptFile)
+        {
+#ifdef BU_RUNNER_ONLY
+            static const char *defaultBytecodeCandidates[] = {
+#ifdef __EMSCRIPTEN__
+                "/assets/main.buc",
+                "/assets/main.bubc",
+                "/main.buc",
+                "/main.bubc",
+#endif
+                "assets/main.buc",
+                "assets/main.bubc",
+                "./assets/main.buc",
+                "./assets/main.bubc",
+                "main.buc",
+                "main.bubc",
+            };
+#else
+            static const char *defaultBytecodeCandidates[] = {
+#ifdef __EMSCRIPTEN__
+                "/scripts/main.buc",
+                "/scripts/main.bubc",
+                "/main.buc",
+                "/main.bubc",
+#endif
+                "scripts/main.buc",
+                "scripts/main.bubc",
+                "./scripts/main.buc",
+                "./scripts/main.bubc",
+                "main.buc",
+                "main.bubc",
+                "../scripts/main.buc",
+                "../scripts/main.bubc",
+            };
+#endif
+
+            for (const char *candidate : defaultBytecodeCandidates)
+            {
+                FileBuffer probe;
+                if (probe.load(candidate))
+                {
+                    scriptFile = candidate;
+                    break;
+                }
+
+                int bytesRead = 0;
+                unsigned char *raw = LoadFileData(candidate, &bytesRead);
+                if (raw && bytesRead > 0)
+                {
+                    UnloadFileData(raw);
+                    scriptFile = candidate;
+                    break;
+                }
+                if (raw)
+                    UnloadFileData(raw);
+            }
+        }
+
         if (!scriptFile)
         {
 #ifdef BU_RUNNER_ONLY
@@ -684,7 +754,7 @@ int main(int argc, char *argv[])
     ctx.pathCount = 0;
     auto addSearchPath = [&](const char *p)
     {
-        if (!p || !*p || ctx.pathCount >= 8)
+        if (!p || !*p || ctx.pathCount >= 16)
             return;
         for (int i = 0; i < ctx.pathCount; ++i)
         {
@@ -696,10 +766,17 @@ int main(int argc, char *argv[])
 
     addSearchPath(scriptDir);
     addSearchPath(scriptParentDir);
+#ifdef BU_RUNNER_ONLY
+    addSearchPath("/assets");
+    addSearchPath("assets");
+    addSearchPath("./assets");
+    addSearchPath("../assets");
+#else
     addSearchPath("/scripts");
     addSearchPath("scripts");
     addSearchPath("./scripts");
     addSearchPath("../scripts");
+#endif
     addSearchPath(".");
 
     vm.setFileLoader(multiPathFileLoader, &ctx);
@@ -720,9 +797,16 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE.c_str());
-    SetExitKey(KEY_NULL); // Disable default ESC exit from Raylib.
-    InitSound();
+    if (!windowInitialized)
+    {
+        InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE.c_str());
+        SetExitKey(KEY_NULL); // Disable default ESC exit from Raylib.
+        windowInitialized = true;
+    }
+    if (!IsAudioDeviceReady())
+    {
+        InitSound();
+    }
 
     InitScene();
     gCamera.init(WINDOW_WIDTH, WINDOW_HEIGHT);

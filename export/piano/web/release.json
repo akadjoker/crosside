@@ -1,0 +1,13 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.pianokeys",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "pianokeys",
+    "CONTENT_ROOT": "releases/piano",
+    "MANIFEST_TEMPLATE": "releases/piano/AndroidManifest.xml"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/piano"
+  }
+}

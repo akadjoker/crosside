@@ -39,6 +39,7 @@ struct ModuleSpec {
 
 struct ProjectSpec {
     std::string name;
+    std::string exportName;
     std::string buildCache;
     std::filesystem::path root;
     std::filesystem::path filePath;
@@ -79,6 +80,15 @@ inline std::string projectBuildCacheKey(const ProjectSpec &project)
     if (!project.buildCache.empty())
     {
         return project.buildCache;
+    }
+    return project.name;
+}
+
+inline std::string projectOutputName(const ProjectSpec &project)
+{
+    if (!project.exportName.empty())
+    {
+        return project.exportName;
     }
     return project.name;
 }

@@ -733,7 +733,12 @@ namespace crosside::commands
                                                          ? crosside::model::loadGlobalModules(repoRoot, ctx)
                                                          : project->modules;
 
+            const std::string outputName = crosside::model::projectOutputName(project.value());
             ctx.log("Build app ", project->name, " from ", project->filePath.string());
+            if (outputName != project->name)
+            {
+                ctx.log("Output name: ", outputName, " (core/lib name stays ", project->name, ")");
+            }
             {
                 const std::string buildCacheKey = crosside::model::projectBuildCacheKey(project.value());
                 if (!buildCacheKey.empty() && buildCacheKey != project->name)

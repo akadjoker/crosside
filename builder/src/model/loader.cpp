@@ -465,6 +465,9 @@ namespace crosside::model
             json data = io::loadJsonFile(projectFile);
             const fs::path projectRoot = resolveProjectRootFromData(projectFile, data);
             std::string releaseRef = releaseOverride;
+            const bool hasExplicitReleaseOverride = !releaseOverride.empty();
+            bool autoExportNameFromReleaseProfile = false;
+            std::string releaseProfileName;
             if (releaseRef.empty() && useProjectDefaultRelease && data.contains("Release") && data["Release"].is_string())
             {
                 releaseRef = data["Release"].get<std::string>();
@@ -485,12 +488,25 @@ namespace crosside::model
                     return std::nullopt;
                 }
 
+                // If user explicitly asked --release <profile> and profile doesn't define Name,
+                // use release filename stem (e.g. piano.json -> piano) for outputs/artifacts.
+                if (hasExplicitReleaseOverride && !releaseData.contains("Name"))
+                {
+                    releaseProfileName = releaseFile->stem().string();
+                    autoExportNameFromReleaseProfile = !releaseProfileName.empty();
+                }
+
                 mergeJsonObjects(data, releaseData);
             }
 
             ProjectSpec project;
             project.filePath = fs::absolute(projectFile);
             project.name = data.value("Name", projectFile.stem().string());
+            project.exportName = project.name;
+            if (autoExportNameFromReleaseProfile)
+            {
+                project.exportName = releaseProfileName;
+            }
             project.buildCache = data.value("BuildCache", "");
             if (project.buildCache.empty())
             {

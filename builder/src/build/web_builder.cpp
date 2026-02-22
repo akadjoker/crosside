@@ -777,9 +777,10 @@ bool runWebOutput(
     bool detachRun,
     int port
 ) {
-    auto exportFile = resolveWebExport(project.root, project.name);
+    const std::string outputName = crosside::model::projectOutputName(project);
+    auto exportFile = resolveWebExport(project.root, outputName);
     if (!exportFile.has_value()) {
-        ctx.error("Web output not found for ", project.name);
+        ctx.error("Web output not found for ", outputName);
         return false;
     }
 
@@ -944,11 +945,12 @@ bool buildProjectWeb(
         return false;
     }
 
-    const fs::path outHtml = project.root / "Web" / (project.name + ".html");
-    if (!linkWebApp(ctx, repoRoot, tc, project.name, compiled.objects, ldFlags, compiled.hasCpp, outHtml, true)) {
+    const std::string outputName = crosside::model::projectOutputName(project);
+    const fs::path outHtml = project.root / "Web" / (outputName + ".html");
+    if (!linkWebApp(ctx, repoRoot, tc, outputName, compiled.objects, ldFlags, compiled.hasCpp, outHtml, true)) {
         return false;
     }
-    if (!ensureWebOutputExists(ctx, outHtml, project.name)) {
+    if (!ensureWebOutputExists(ctx, outHtml, outputName)) {
         return false;
     }
 

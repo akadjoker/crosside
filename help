@@ -1,0 +1,80 @@
+
+
+builder build bugame web --build-modules        
+builder build bugame dektop --build-modules        
+
+builder build bugame android --build-modules --abis arm7,arm64
+
+# desktop (host atual)
+builder build runner desktop --mode debug --build-modules
+
+# web (usa Web do release + CONTENT_ROOT)
+builder build runner web --build-modules --run --detach --port 8080
+
+# android (usa Android do release: package/activity/label/content)
+builder build runner android --build-modules --abis arm7,arm64
+
+
+cd /media/projectos/projects/cpp/crosside
+builder build bugame web --release winters --build-modules --run --detach
+builder build bugame android --release winters --build-modules --abis arm7,arm64
+builder build bugame desktop --release winters --mode debug --build-modules
+
+
+cd /media/projectos/projects/cpp/crosside
+builder build bugame desktop --release piano --mode debug --build-modules --run
+# ou web:
+builder build bugame web --release piano --build-modules --run --port 8080
+
+--abis arm7,arm64
+
+builder build bugame android --release piano --build-modules --abis arm7,arm64 --run
+builder build bugame android --release piano --build-modules --abis arm7,arm64 --run
+
+
+runner
+python3 tools/pack_runner_release.py --release piano --targets web,android --zip
+
+builder build runner web
+builder build runner android --abis arm7
+projects/bugame/main --compile-bc projects/bugame/releases/piano/scripts/main.bu projects/bugame/releases/piano/scripts/main.buc
+
+./builder/bin/builder build runner android --abis arm64
+./builder/bin/builder build runner android --abis arm64
+
+
+cd /media/projectos/projects/cpp/crosside
+
+# 1) compilar script para bytecode
+mkdir -p releases/angrybirds/assets
+./projects/bugame/main --compile-bc releases/angrybirds/scripts/main.bu releases/angrybirds/assets/main.buc
+
+# 2) pack web
+./packager/packager angrybirds web \
+  --repo /media/projectos/projects/cpp/crosside \
+  --bugame /media/projectos/projects/cpp/crosside \
+  --runner /media/projectos/projects/cpp/crosside/projects/runner
+
+# 3) pack android
+./packager/packager angrybirds android \
+  --repo /media/projectos/projects/cpp/crosside \
+  --bugame /media/projectos/projects/cpp/crosside \
+  --runner /media/projectos/projects/cpp/crosside/projects/runner
+
+
+
+cd /media/projectos/projects/cpp/crosside
+./packager/packager angrybirds android \
+  --repo /media/projectos/projects/cpp/crosside \
+  --bugame /media/projectos/projects/cpp/crosside \
+  --runner /media/projectos/projects/cpp/crosside/projects/runner \
+  --install --run
+
+# Web
+packager/packager <release> web --repo /media/projectos/projects/cpp/crosside --bugame /media/projectos/projects/cpp/crosside --runner /media/projectos/projects/cpp/crosside/projects/runner
+
+# APK
+packager/packager <release> android --repo /media/projectos/projects/cpp/crosside --bugame /media/projectos/projects/cpp/crosside --runner /media/projectos/projects/cpp/crosside/projects/runner
+
+# AAB (Play Store)
+packager/packager <release> aab --repo /media/projectos/projects/cpp/crosside --bugame /media/projectos/projects/cpp/crosside --runner /media/projectos/projects/cpp/crosside/projects/runner

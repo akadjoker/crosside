@@ -100,6 +100,16 @@ make release
   The release JSON overrides project fields (for example `Name`, `Android`, `Web`, `CONTENT_ROOT`, package/label).
 - CLI override is supported: `builder build bugame android --release chaos`
   or `builder build bugame web --release releases/candycrash.json`.
+- Pack-only export (official): C++ `packager/packager`
+  Uses already-built runner outputs and copies release content:
+  - Web: `packager/packager <release> web ...`
+  - Android APK: `packager/packager <release> android ...`
+  - Android AAB (Play): `packager/packager <release> aab ...`
+  - All in one: `packager/packager <release> all ...`
+  Notes:
+  - Runtime bytecode is packed as `assets/main.buc`.
+  - Supports release JSON signing fields (`Android.KEYSTORE`, `KEY_ALIAS`, `KEYSTORE_PASS(_ENV)`, `KEY_PASS(_ENV)`).
+  - Supports `bundletool.jar` for AAB export (`BUNDLETOOL_JAR` or `tools/android/bundletool.jar`).
 - Legacy Python tools are still available while migration to C++ continues.
 
 ## Module authoring

@@ -4,8 +4,8 @@
       "AndroidSdk": "/home/djoker/android/android-sdk",
       "AndroidNdk": "/home/djoker/android/android-ndk-r27d",
       "JavaSdk": "/usr/lib/jvm/java-11-openjdk-amd64",
-      "BuildTools": "30.0.3",
-      "Platform": "android-31",
+      "BuildTools": "35.0.1",
+      "Platform": "android-35",
       "Emsdk": "/media/projectos/projects/emsdk"
     },
     "Modules": [

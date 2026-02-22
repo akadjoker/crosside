@@ -296,6 +296,7 @@ namespace crosside::commands
         {
             int removed = 0;
             const std::string buildCacheKey = crosside::model::projectBuildCacheKey(project);
+            const std::string outputName = crosside::model::projectOutputName(project);
 
             if (target == "desktop")
             {
@@ -316,10 +317,10 @@ namespace crosside::commands
                 {
                     removed += crosside::io::removePath(project.root / "obj" / "Web" / buildCacheKey, dryRun, ctx) ? 1 : 0;
                 }
-                removed += crosside::io::removePath(project.root / "Web" / (project.name + ".html"), dryRun, ctx) ? 1 : 0;
-                removed += crosside::io::removePath(project.root / "Web" / (project.name + ".js"), dryRun, ctx) ? 1 : 0;
-                removed += crosside::io::removePath(project.root / "Web" / (project.name + ".wasm"), dryRun, ctx) ? 1 : 0;
-                removed += crosside::io::removePath(project.root / "Web" / (project.name + ".data"), dryRun, ctx) ? 1 : 0;
+                removed += crosside::io::removePath(project.root / "Web" / (outputName + ".html"), dryRun, ctx) ? 1 : 0;
+                removed += crosside::io::removePath(project.root / "Web" / (outputName + ".js"), dryRun, ctx) ? 1 : 0;
+                removed += crosside::io::removePath(project.root / "Web" / (outputName + ".wasm"), dryRun, ctx) ? 1 : 0;
+                removed += crosside::io::removePath(project.root / "Web" / (outputName + ".data"), dryRun, ctx) ? 1 : 0;
                 return removed;
             }
 
@@ -336,7 +337,7 @@ namespace crosside::commands
                     removed += crosside::io::removePath(project.root / "Android" / abiName / ("lib" + project.name + ".a"), dryRun, ctx) ? 1 : 0;
                     removed += crosside::io::removePath(project.root / "Android" / abiName / ("lib" + project.name + ".so"), dryRun, ctx) ? 1 : 0;
                 }
-                removed += crosside::io::removePath(project.root / "Android" / project.name, dryRun, ctx) ? 1 : 0;
+                removed += crosside::io::removePath(project.root / "Android" / outputName, dryRun, ctx) ? 1 : 0;
                 return removed;
             }
 

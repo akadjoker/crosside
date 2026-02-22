@@ -5,9 +5,9 @@
           android:versionName="1.0">
 
     <uses-sdk
-        android:compileSdkVersion="30"
-        android:minSdkVersion="16"
-        android:targetSdkVersion="23" />
+        android:compileSdkVersion="35"
+        android:minSdkVersion="24"
+        android:targetSdkVersion="35" />
 
     <application
         android:allowBackup="false"
@@ -22,7 +22,8 @@
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:screenOrientation="landscape"
             android:launchMode="singleTask"
-            android:clearTaskOnLaunch="true">
+            android:clearTaskOnLaunch="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
