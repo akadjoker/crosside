@@ -1,0 +1,186 @@
+// === BU AI RUNNER TEMPLATE ===
+// Load trained weights and run inference in real-time.
+// Works with JSON files saved by ai_train_template.bu.
+
+import math;
+import fs;
+import json;
+
+var AI_IN = 6;
+var AI_H = 8;
+var AI_OUT = 3;
+
+var AI_OFF_W1 = 0;
+var AI_OFF_B1 = 0;
+var AI_OFF_W2 = 0;
+var AI_OFF_B2 = 0;
+var AI_GENE_COUNT = 0;
+
+var AI_GENOME = [];
+var AI_LOADED = false;
+var AI_WEIGHTS_FILE = "ai_best_genome.json";
+
+var AI_LAST_IN = [];
+var AI_LAST_H = [];
+var AI_LAST_O = [];
+
+def ai_runner_rebuild_layout()
+{
+    AI_OFF_W1 = 0;
+    AI_OFF_B1 = AI_OFF_W1 + AI_IN * AI_H;
+    AI_OFF_W2 = AI_OFF_B1 + AI_H;
+    AI_OFF_B2 = AI_OFF_W2 + AI_H * AI_OUT;
+    AI_GENE_COUNT = AI_OFF_B2 + AI_OUT;
+}
+
+def ai_runner_clampf(v, a, b)
+{
+    if (v < a) return a;
+    if (v > b) return b;
+    return v;
+}
+
+def ai_runner_sigmoid(x)
+{
+    return 1.0 / (1.0 + exp(-x));
+}
+
+def ai_runner_argmax3(v0, v1, v2)
+{
+    if (v0 >= v1 && v0 >= v2) return 0;
+    if (v1 >= v0 && v1 >= v2) return 1;
+    return 2;
+}
+
+def ai_runner_action_name(a)
+{
+    if (a < 0) return "UP";
+    if (a > 0) return "DOWN";
+    return "STAY";
+}
+
+def ai_runner_validate_genome(g)
+{
+    if (!g) return false;
+    if (len(g) != AI_GENE_COUNT) return false;
+    return true;
+}
+
+def ai_runner_set_topology(input_count, hidden_count, output_count)
+{
+    AI_IN = int(input_count);
+    AI_H = int(hidden_count);
+    AI_OUT = int(output_count);
+    ai_runner_rebuild_layout();
+}
+
+def ai_runner_set_genome(g)
+{
+    if (!g) return false;
+    if (!ai_runner_validate_genome(g)) return false;
+    AI_GENOME = g;
+    AI_LOADED = true;
+    return true;
+}
+
+def ai_runner_load(path)
+{
+    if (!path) return false;
+    var text = fs.read(path);
+    if (text == nil || text == "") return false;
+
+    var data = nil;
+    try { data = json.parse(text); } catch (e) { return false; }
+    if (data == nil) return false;
+
+    if (data["input_count"] != nil) AI_IN = int(data["input_count"]);
+    if (data["hidden_count"] != nil) AI_H = int(data["hidden_count"]);
+    if (data["output_count"] != nil) AI_OUT = int(data["output_count"]);
+    ai_runner_rebuild_layout();
+
+    var count = data["gene_count"];
+    if (count == nil || int(count) != AI_GENE_COUNT) return false;
+
+    var weights = data["weights"];
+    if (weights == nil || len(weights) != AI_GENE_COUNT) return false;
+
+    var g = [];
+    var i = 0;
+    while (i < AI_GENE_COUNT)
+    {
+        g.push(weights[i]);
+        i += 1;
+    }
+
+    AI_GENOME = g;
+    AI_LOADED = true;
+    return true;
+}
+
+def ai_runner_forward(inp, store_vis)
+{
+    if (!AI_LOADED) return [0.0, 1.0, 0.0];
+    if (!inp || len(inp) < AI_IN) return [0.0, 1.0, 0.0];
+
+    if (store_vis)
+    {
+        AI_LAST_IN.clear();
+        AI_LAST_H.clear();
+        AI_LAST_O.clear();
+        var ii = 0;
+        while (ii < AI_IN) { AI_LAST_IN.push(inp[ii]); ii += 1; }
+    }
+
+    var hidden = [];
+    var h = 0;
+    while (h < AI_H)
+    {
+        var sum = AI_GENOME[AI_OFF_B1 + h];
+        var i = 0;
+        while (i < AI_IN)
+        {
+            sum += inp[i] * AI_GENOME[AI_OFF_W1 + h * AI_IN + i];
+            i += 1;
+        }
+        var act = ai_runner_sigmoid(sum);
+        hidden.push(act);
+        if (store_vis) AI_LAST_H.push(act);
+        h += 1;
+    }
+
+    var out = [];
+    var o = 0;
+    while (o < AI_OUT)
+    {
+        var sum2 = AI_GENOME[AI_OFF_B2 + o];
+        var j = 0;
+        while (j < AI_H)
+        {
+            sum2 += hidden[j] * AI_GENOME[AI_OFF_W2 + o * AI_H + j];
+            j += 1;
+        }
+        var act2 = ai_runner_sigmoid(sum2);
+        out.push(act2);
+        if (store_vis) AI_LAST_O.push(act2);
+        o += 1;
+    }
+    return out;
+}
+
+def ai_runner_decide(inp, store_vis)
+{
+    var out = ai_runner_forward(inp, store_vis);
+    var idx = ai_runner_argmax3(out[0], out[1], out[2]);
+    if (idx == 0) return -1;
+    if (idx == 1) return 0;
+    return 1;
+}
+
+def ai_runner_output_percent(idx)
+{
+    if (idx < 0 || idx >= len(AI_LAST_O)) return 0;
+    return int(ai_runner_clampf(AI_LAST_O[idx], 0.0, 1.0) * 100.0);
+}
+
+ai_runner_rebuild_layout();
+

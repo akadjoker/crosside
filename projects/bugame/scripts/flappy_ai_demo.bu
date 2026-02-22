@@ -1,0 +1,1181 @@
+// === BU Flappy AI Demo ===
+// Genetic algorithm + tiny neural net learning to play Flappy-style pipes.
+
+import math;
+import fs;
+import json;
+
+// --- Window ---
+var VIEW_W = 1440;
+var VIEW_H = 840;
+
+// --- Layout ---
+var FIELD_X = 24;
+var FIELD_Y = 70;
+var FIELD_W = 900;
+var FIELD_H = 740;
+
+var PANEL_X = 952;
+var PANEL_W = VIEW_W - PANEL_X - 20;
+
+// --- Keys ---
+var KEY_ESCAPE = 256;
+var KEY_SPACE = 32;
+var KEY_T = 84;
+var KEY_R = 82;
+var KEY_I = 73;
+var KEY_O = 79;
+var KEY_P = 80;
+var KEY_G = 71;
+var KEY_L = 76;
+
+// --- Game physics ---
+var BIRD_X = FIELD_X + 230;
+var BIRD_R = 16;
+var CEIL_Y = FIELD_Y + 18;
+var FLOOR_Y = FIELD_Y + FIELD_H - 20;
+
+var GRAVITY = 980.0;
+var FLAP_VY = -330.0;
+var MAX_FALL = 520.0;
+var FLAP_COOLDOWN = 0.085;
+
+var PIPE_W = 88;
+var PIPE_GAP_H = 190;
+var PIPE_SPEED = 220.0;
+var PIPE_SPAWN_TIME = 1.35;
+
+// --- NN topology ---
+var NN_IN = 6;
+var NN_H = 8;
+var NN_OUT = 2; // 0=STAY, 1=FLAP
+
+var OFF_W1 = 0;
+var OFF_B1 = 48; // NN_IN*NN_H
+var OFF_W2 = 56; // OFF_B1+NN_H
+var OFF_B2 = 72; // OFF_W2+NN_H*NN_OUT
+var GENE_COUNT = 74; // OFF_B2+NN_OUT
+
+// --- GA setup ---
+var POP_SIZE = 48;
+var ELITE_KEEP = 8;
+var PARENT_POOL = 16;
+var MUT_RATE = 0.09;
+var MUT_MAG = 0.48;
+
+var EPISODES_PER_GENOME = 3;
+var STEPS_PER_EPISODE = 3400;
+var SIM_DT = 1.0 / 60.0;
+
+var TRAIN_GENOMES_PER_FRAME = 4;
+var TRAINING_ACTIVE = true;
+var TURBO_MODE = false;
+var RUNNER_MODE = false;
+
+var AI_BOOT_ASSIST = false;
+var AI_BOOT_ASSIST_FIT = 2.0;
+
+// --- Offline non-blocking ---
+var OFFLINE_ACTIVE = false;
+var OFFLINE_BUDGET = 0;
+var OFFLINE_DONE = 0;
+var OFFLINE_TARGET = 0.0;
+var OFFLINE_BATCH_PER_FRAME = 120;
+var OFFLINE_MAX_EVALS = 14000;
+var OFFLINE_TARGET_FIT = 6.0;
+
+// --- Persist ---
+var WEIGHTS_FILE = "flappy_best_genome.json";
+
+// --- GA state ---
+var POPULATION = [];
+var FITNESS = [];
+var TOP_IDX = [];
+
+var GENERATION = 1;
+var TRAIN_INDEX = 0;
+var GEN_BEST_FIT = -999999.0;
+var GEN_BEST_INDEX = -1;
+
+var BEST_FIT_ALL = -999999.0;
+var BEST_GENOME = [];
+var BEST_FROM_GEN = 0;
+
+// --- Live world ---
+var LIVE_BIRD_Y = 0.0;
+var LIVE_BIRD_VY = 0.0;
+var LIVE_FLAP_CD = 0.0;
+
+var LIVE_PIPE_X = [];
+var LIVE_PIPE_GAP = [];
+var LIVE_PIPE_PASS = [];
+
+var LIVE_SPAWN_TIMER = 0.0;
+var LIVE_SCORE = 0;
+var LIVE_BEST_SCORE = 0;
+var LIVE_LAST_ACTION = 0; // 0 stay, 1 flap
+
+var LIVE_NEXT_X = 0.0;
+var LIVE_NEXT_GAP = 0.0;
+
+var LIVE_DEAD = false;
+var LIVE_DEAD_TIMER = 0.0;
+
+// --- Debug / HUD ---
+var LAST_IN = [];
+var LAST_H = [];
+var LAST_O = [];
+
+var STATUS_TEXT = "";
+var STATUS_TIMER = 0.0;
+
+// ============================================
+// Helpers
+// ============================================
+
+def clampf(v, a, b)
+{
+    if (v < a) return a;
+    if (v > b) return b;
+    return v;
+}
+
+def safe_ratio(n, d)
+{
+    if (!d) return 0.0;
+    return n / d;
+}
+
+def randf(a, b)
+{
+    return math.rand(a, b);
+}
+
+def sigmoid(x)
+{
+    return 1.0 / (1.0 + exp(-x));
+}
+
+def argmax2(v0, v1)
+{
+    if (v0 >= v1) return 0;
+    return 1;
+}
+
+def set_status(msg)
+{
+    STATUS_TEXT = msg;
+    STATUS_TIMER = 2.8;
+}
+
+def action_name(a)
+{
+    if (a == 1) return "FLAP";
+    return "STAY";
+}
+
+def random_gap_y()
+{
+    var min_y = CEIL_Y + PIPE_GAP_H * 0.5 + 24;
+    var max_y = FLOOR_Y - PIPE_GAP_H * 0.5 - 24;
+    return randf(min_y, max_y);
+}
+
+// ============================================
+// Neural network
+// ============================================
+
+def make_genome()
+{
+    var g = [];
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        g.push(randf(-1.0, 1.0));
+        i += 1;
+    }
+    return g;
+}
+
+def clone_genome(g)
+{
+    var c = [];
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        c.push(g[i]);
+        i += 1;
+    }
+    return c;
+}
+
+def validate_genome(g)
+{
+    if (!g) return false;
+    if (len(g) != GENE_COUNT) return false;
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        if (!g[i]) g[i] = 0.0;
+        i += 1;
+    }
+    return true;
+}
+
+def save_best_weights()
+{
+    if (!validate_genome(BEST_GENOME))
+    {
+        set_status("Save failed: no best genome");
+        return false;
+    }
+
+    var payload = {
+        gene_count: int(GENE_COUNT),
+        best_fit: BEST_FIT_ALL,
+        best_from_gen: int(BEST_FROM_GEN),
+        weights: BEST_GENOME
+    };
+    var text = json.stringify(payload, 2);
+    if (text == nil || text == "")
+    {
+        set_status("Save failed: encode");
+        return false;
+    }
+    if (!fs.write(WEIGHTS_FILE, text))
+    {
+        set_status("Save failed: write");
+        return false;
+    }
+    set_status("Saved flappy weights");
+    return true;
+}
+
+def load_best_weights()
+{
+    var text = fs.read(WEIGHTS_FILE);
+    if (text == nil || text == "")
+    {
+        set_status("Load failed: file missing");
+        return false;
+    }
+
+    var data = nil;
+    try
+    {
+        data = json.parse(text);
+    }
+    catch (e)
+    {
+        set_status("Load failed: parse");
+        return false;
+    }
+
+    if (data == nil)
+    {
+        set_status("Load failed: empty data");
+        return false;
+    }
+
+    var count = data["gene_count"];
+    if (count == nil || int(count) != GENE_COUNT)
+    {
+        set_status("Load failed: wrong genome size");
+        return false;
+    }
+
+    var w = data["weights"];
+    if (w == nil || len(w) != GENE_COUNT)
+    {
+        set_status("Load failed: invalid weights");
+        return false;
+    }
+
+    var loaded = [];
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        loaded.push(w[i]);
+        i += 1;
+    }
+    if (!validate_genome(loaded))
+    {
+        set_status("Load failed: bad genome");
+        return false;
+    }
+
+    BEST_GENOME = loaded;
+    if (data["best_fit"] != nil) BEST_FIT_ALL = data["best_fit"];
+    if (data["best_from_gen"] != nil) BEST_FROM_GEN = int(data["best_from_gen"]);
+    set_status("Loaded flappy weights");
+    return true;
+}
+
+def auto_load_weights()
+{
+    var ok = load_best_weights();
+    if (!ok)
+    {
+        STATUS_TEXT = "";
+        STATUS_TIMER = 0.0;
+    }
+    return ok;
+}
+
+def make_child(g1, g2)
+{
+    var c = [];
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        var gene = g1[i];
+        if (math.rand(0, 100) < 50) gene = g2[i];
+        if (math.rand(0, 10000) < int(MUT_RATE * 10000.0))
+        {
+            gene += randf(-MUT_MAG, MUT_MAG);
+        }
+        gene = clampf(gene, -3.0, 3.0);
+        c.push(gene);
+        i += 1;
+    }
+    return c;
+}
+
+def nn_forward(g, inp, store_vis)
+{
+    if (store_vis)
+    {
+        LAST_IN.clear();
+        LAST_H.clear();
+        LAST_O.clear();
+        var ii = 0;
+        while (ii < NN_IN) { LAST_IN.push(inp[ii]); ii += 1; }
+    }
+
+    var hidden = [];
+    var h = 0;
+    while (h < NN_H)
+    {
+        var sum = g[OFF_B1 + h];
+        var i = 0;
+        while (i < NN_IN)
+        {
+            sum += inp[i] * g[OFF_W1 + h * NN_IN + i];
+            i += 1;
+        }
+        var act = sigmoid(sum);
+        hidden.push(act);
+        if (store_vis) LAST_H.push(act);
+        h += 1;
+    }
+
+    var out = [];
+    var o = 0;
+    while (o < NN_OUT)
+    {
+        var sum2 = g[OFF_B2 + o];
+        var j = 0;
+        while (j < NN_H)
+        {
+            sum2 += hidden[j] * g[OFF_W2 + o * NN_H + j];
+            j += 1;
+        }
+        var act2 = sigmoid(sum2);
+        out.push(act2);
+        if (store_vis) LAST_O.push(act2);
+        o += 1;
+    }
+    return out;
+}
+
+def nn_action(out)
+{
+    return argmax2(out[0], out[1]); // 0 stay, 1 flap
+}
+
+// ============================================
+// Training simulation
+// ============================================
+
+def simulate_episode(g)
+{
+    var bird_y = FIELD_Y + FIELD_H * 0.5;
+    var bird_vy = 0.0;
+    var flap_cd = 0.0;
+
+    var pipe_x = [];
+    var pipe_gap = [];
+    var pipe_pass = [];
+    var spawn_timer = 0.35;
+
+    var score = 0;
+    var fitness = 0.0;
+
+    var step = 0;
+    while (step < STEPS_PER_EPISODE)
+    {
+        // Spawn pipe
+        spawn_timer -= SIM_DT;
+        if (spawn_timer <= 0)
+        {
+            spawn_timer = PIPE_SPAWN_TIME;
+            pipe_x.push(FIELD_X + FIELD_W + 90);
+            pipe_gap.push(random_gap_y());
+            pipe_pass.push(0);
+        }
+
+        // Move/compact pipes
+        var new_x = [];
+        var new_gap = [];
+        var new_pass = [];
+        var i = 0;
+        while (i < len(pipe_x))
+        {
+            var x = pipe_x[i] - PIPE_SPEED * SIM_DT;
+            if (x + PIPE_W >= FIELD_X - 40)
+            {
+                new_x.push(x);
+                new_gap.push(pipe_gap[i]);
+                new_pass.push(pipe_pass[i]);
+            }
+            i += 1;
+        }
+        pipe_x = new_x;
+        pipe_gap = new_gap;
+        pipe_pass = new_pass;
+
+        // Next pipe for inputs
+        var next_x = FIELD_X + FIELD_W + 120;
+        var next_gap = FIELD_Y + FIELD_H * 0.5;
+        i = 0;
+        while (i < len(pipe_x))
+        {
+            var front = pipe_x[i] + PIPE_W;
+            if (front >= BIRD_X - 6 && pipe_x[i] < next_x)
+            {
+                next_x = pipe_x[i];
+                next_gap = pipe_gap[i];
+            }
+            i += 1;
+        }
+
+        var inp = [
+            safe_ratio(bird_y - FIELD_Y, FIELD_H),
+            safe_ratio(bird_vy, MAX_FALL),
+            safe_ratio(next_x - BIRD_X, FIELD_W),
+            safe_ratio(next_gap - FIELD_Y, FIELD_H),
+            safe_ratio(bird_y - next_gap, PIPE_GAP_H * 0.5),
+            safe_ratio(PIPE_SPEED, 320.0)
+        ];
+        var out = nn_forward(g, inp, false);
+        var action = nn_action(out);
+        if (action == 1 && flap_cd <= 0)
+        {
+            bird_vy = FLAP_VY;
+            flap_cd = FLAP_COOLDOWN;
+        }
+
+        if (flap_cd > 0) flap_cd -= SIM_DT;
+        if (flap_cd < 0) flap_cd = 0;
+
+        bird_vy += GRAVITY * SIM_DT;
+        bird_vy = clampf(bird_vy, -900.0, MAX_FALL);
+        bird_y += bird_vy * SIM_DT;
+
+        // Score when passing pipes
+        i = 0;
+        while (i < len(pipe_x))
+        {
+            if (!pipe_pass[i] && pipe_x[i] + PIPE_W < BIRD_X)
+            {
+                pipe_pass[i] = 1;
+                score += 1;
+                fitness += 40.0;
+            }
+            i += 1;
+        }
+
+        var dead = false;
+        if (bird_y - BIRD_R < CEIL_Y) dead = true;
+        if (bird_y + BIRD_R > FLOOR_Y) dead = true;
+
+        i = 0;
+        while (!dead && i < len(pipe_x))
+        {
+            var px = pipe_x[i];
+            if (BIRD_X + BIRD_R > px && BIRD_X - BIRD_R < px + PIPE_W)
+            {
+                var gy = pipe_gap[i];
+                var gap_top = gy - PIPE_GAP_H * 0.5;
+                var gap_bottom = gy + PIPE_GAP_H * 0.5;
+                if (bird_y - BIRD_R < gap_top || bird_y + BIRD_R > gap_bottom)
+                {
+                    dead = true;
+                }
+            }
+            i += 1;
+        }
+
+        var align = 1.0 - abs(safe_ratio(bird_y - next_gap, PIPE_GAP_H * 0.5));
+        if (align < 0) align = 0;
+        fitness += 0.02 + align * 0.02;
+
+        if (dead)
+        {
+            fitness -= 18.0;
+            break;
+        }
+
+        step += 1;
+    }
+
+    fitness += score * 8.0;
+    return fitness;
+}
+
+def evaluate_genome(g)
+{
+    var total = 0.0;
+    var e = 0;
+    while (e < EPISODES_PER_GENOME)
+    {
+        total += simulate_episode(g);
+        e += 1;
+    }
+    return safe_ratio(total, EPISODES_PER_GENOME);
+}
+
+// ============================================
+// Evolution
+// ============================================
+
+def rebuild_top_indices()
+{
+    TOP_IDX.clear();
+
+    var used = [];
+    var i = 0;
+    while (i < POP_SIZE) { used.push(0); i += 1; }
+
+    var k = 0;
+    while (k < PARENT_POOL && k < POP_SIZE)
+    {
+        var best = -99999999.0;
+        var best_i = -1;
+        i = 0;
+        while (i < POP_SIZE)
+        {
+            if (!used[i] && FITNESS[i] > best)
+            {
+                best = FITNESS[i];
+                best_i = i;
+            }
+            i += 1;
+        }
+        if (best_i == -1) break;
+        used[best_i] = 1;
+        TOP_IDX.push(best_i);
+        k += 1;
+    }
+}
+
+def evolve_generation()
+{
+    rebuild_top_indices();
+    if (len(TOP_IDX) <= 0) return;
+
+    var new_pop = [];
+    var i = 0;
+    while (i < POP_SIZE)
+    {
+        if (i < ELITE_KEEP && i < len(TOP_IDX))
+        {
+            new_pop.push(clone_genome(POPULATION[TOP_IDX[i]]));
+        }
+        else
+        {
+            var p1 = TOP_IDX[math.rand(0, len(TOP_IDX) - 1)];
+            var p2 = TOP_IDX[math.rand(0, len(TOP_IDX) - 1)];
+            new_pop.push(make_child(POPULATION[p1], POPULATION[p2]));
+        }
+        i += 1;
+    }
+
+    POPULATION = new_pop;
+    FITNESS.clear();
+    i = 0;
+    while (i < POP_SIZE) { FITNESS.push(0.0); i += 1; }
+
+    GENERATION += 1;
+    TRAIN_INDEX = 0;
+    GEN_BEST_FIT = -999999.0;
+    GEN_BEST_INDEX = -1;
+}
+
+def reset_training()
+{
+    POPULATION.clear();
+    FITNESS.clear();
+    TOP_IDX.clear();
+
+    var i = 0;
+    while (i < POP_SIZE)
+    {
+        POPULATION.push(make_genome());
+        FITNESS.push(0.0);
+        i += 1;
+    }
+
+    BEST_GENOME = clone_genome(POPULATION[0]);
+    BEST_FIT_ALL = -999999.0;
+    BEST_FROM_GEN = 0;
+
+    GENERATION = 1;
+    TRAIN_INDEX = 0;
+    GEN_BEST_FIT = -999999.0;
+    GEN_BEST_INDEX = -1;
+}
+
+def update_training()
+{
+    var loops = TRAIN_GENOMES_PER_FRAME;
+    while (loops > 0)
+    {
+        if (TRAIN_INDEX >= POP_SIZE)
+        {
+            evolve_generation();
+            break;
+        }
+
+        var g = POPULATION[TRAIN_INDEX];
+        var fit = evaluate_genome(g);
+        FITNESS[TRAIN_INDEX] = fit;
+
+        if (fit > GEN_BEST_FIT)
+        {
+            GEN_BEST_FIT = fit;
+            GEN_BEST_INDEX = TRAIN_INDEX;
+        }
+        if (fit > BEST_FIT_ALL)
+        {
+            BEST_FIT_ALL = fit;
+            BEST_GENOME = clone_genome(g);
+            BEST_FROM_GEN = GENERATION;
+        }
+
+        TRAIN_INDEX += 1;
+        loops -= 1;
+    }
+}
+
+def instant_train(evals)
+{
+    var total = int(evals);
+    if (total <= 0) return;
+
+    var done = 0;
+    while (done < total)
+    {
+        if (TRAIN_INDEX >= POP_SIZE)
+        {
+            evolve_generation();
+            continue;
+        }
+
+        var g = POPULATION[TRAIN_INDEX];
+        var fit = evaluate_genome(g);
+        FITNESS[TRAIN_INDEX] = fit;
+
+        if (fit > GEN_BEST_FIT)
+        {
+            GEN_BEST_FIT = fit;
+            GEN_BEST_INDEX = TRAIN_INDEX;
+        }
+        if (fit > BEST_FIT_ALL)
+        {
+            BEST_FIT_ALL = fit;
+            BEST_GENOME = clone_genome(g);
+            BEST_FROM_GEN = GENERATION;
+        }
+
+        TRAIN_INDEX += 1;
+        done += 1;
+    }
+}
+
+def start_offline_training(max_evals, target_fit)
+{
+    var budget = int(max_evals);
+    if (budget <= 0) return;
+
+    OFFLINE_ACTIVE = true;
+    OFFLINE_BUDGET = budget;
+    OFFLINE_DONE = 0;
+    OFFLINE_TARGET = target_fit;
+    RUNNER_MODE = false;
+    TRAINING_ACTIVE = false;
+    set_status(format("Offline training started ({} evals)", OFFLINE_BUDGET));
+}
+
+def finish_offline_training()
+{
+    OFFLINE_ACTIVE = false;
+    save_best_weights();
+    RUNNER_MODE = true;
+    TRAINING_ACTIVE = false;
+    set_status(format("Offline done: {} evals fit={}", OFFLINE_DONE, int(BEST_FIT_ALL * 100) / 100.0));
+}
+
+def cancel_offline_training()
+{
+    OFFLINE_ACTIVE = false;
+    set_status("Offline training canceled");
+}
+
+def update_offline_training()
+{
+    if (!OFFLINE_ACTIVE) return;
+
+    if (BEST_FIT_ALL >= OFFLINE_TARGET)
+    {
+        finish_offline_training();
+        return;
+    }
+    if (OFFLINE_DONE >= OFFLINE_BUDGET)
+    {
+        finish_offline_training();
+        return;
+    }
+
+    var batch = OFFLINE_BATCH_PER_FRAME;
+    var left = OFFLINE_BUDGET - OFFLINE_DONE;
+    if (batch > left) batch = left;
+    if (batch <= 0)
+    {
+        finish_offline_training();
+        return;
+    }
+
+    instant_train(batch);
+    OFFLINE_DONE += batch;
+}
+
+// ============================================
+// Live world
+// ============================================
+
+def live_clear_pipes()
+{
+    LIVE_PIPE_X.clear();
+    LIVE_PIPE_GAP.clear();
+    LIVE_PIPE_PASS.clear();
+}
+
+def live_spawn_pipe()
+{
+    LIVE_PIPE_X.push(FIELD_X + FIELD_W + 90);
+    LIVE_PIPE_GAP.push(random_gap_y());
+    LIVE_PIPE_PASS.push(0);
+}
+
+def live_reset_world()
+{
+    LIVE_BIRD_Y = FIELD_Y + FIELD_H * 0.5;
+    LIVE_BIRD_VY = 0.0;
+    LIVE_FLAP_CD = 0.0;
+    LIVE_SCORE = 0;
+    LIVE_LAST_ACTION = 0;
+    LIVE_DEAD = false;
+    LIVE_DEAD_TIMER = 0.0;
+    LIVE_SPAWN_TIMER = 0.30;
+    LIVE_NEXT_X = FIELD_X + FIELD_W + 120;
+    LIVE_NEXT_GAP = FIELD_Y + FIELD_H * 0.5;
+    live_clear_pipes();
+}
+
+def live_update_pipes(dt)
+{
+    LIVE_SPAWN_TIMER -= dt;
+    if (LIVE_SPAWN_TIMER <= 0)
+    {
+        LIVE_SPAWN_TIMER = PIPE_SPAWN_TIME;
+        live_spawn_pipe();
+    }
+
+    var new_x = [];
+    var new_gap = [];
+    var new_pass = [];
+    var i = 0;
+    while (i < len(LIVE_PIPE_X))
+    {
+        var x = LIVE_PIPE_X[i] - PIPE_SPEED * dt;
+        if (x + PIPE_W >= FIELD_X - 40)
+        {
+            new_x.push(x);
+            new_gap.push(LIVE_PIPE_GAP[i]);
+            new_pass.push(LIVE_PIPE_PASS[i]);
+        }
+        i += 1;
+    }
+    LIVE_PIPE_X = new_x;
+    LIVE_PIPE_GAP = new_gap;
+    LIVE_PIPE_PASS = new_pass;
+}
+
+def live_find_next_pipe()
+{
+    LIVE_NEXT_X = FIELD_X + FIELD_W + 120;
+    LIVE_NEXT_GAP = FIELD_Y + FIELD_H * 0.5;
+    var i = 0;
+    while (i < len(LIVE_PIPE_X))
+    {
+        var front = LIVE_PIPE_X[i] + PIPE_W;
+        if (front >= BIRD_X - 6 && LIVE_PIPE_X[i] < LIVE_NEXT_X)
+        {
+            LIVE_NEXT_X = LIVE_PIPE_X[i];
+            LIVE_NEXT_GAP = LIVE_PIPE_GAP[i];
+        }
+        i += 1;
+    }
+}
+
+def live_check_collision_and_score()
+{
+    var dead = false;
+    if (LIVE_BIRD_Y - BIRD_R < CEIL_Y) dead = true;
+    if (LIVE_BIRD_Y + BIRD_R > FLOOR_Y) dead = true;
+
+    var i = 0;
+    while (i < len(LIVE_PIPE_X))
+    {
+        var px = LIVE_PIPE_X[i];
+        if (!LIVE_PIPE_PASS[i] && px + PIPE_W < BIRD_X)
+        {
+            LIVE_PIPE_PASS[i] = 1;
+            LIVE_SCORE += 1;
+            if (LIVE_SCORE > LIVE_BEST_SCORE) LIVE_BEST_SCORE = LIVE_SCORE;
+        }
+
+        if (!dead && BIRD_X + BIRD_R > px && BIRD_X - BIRD_R < px + PIPE_W)
+        {
+            var gy = LIVE_PIPE_GAP[i];
+            var gap_top = gy - PIPE_GAP_H * 0.5;
+            var gap_bottom = gy + PIPE_GAP_H * 0.5;
+            if (LIVE_BIRD_Y - BIRD_R < gap_top || LIVE_BIRD_Y + BIRD_R > gap_bottom)
+            {
+                dead = true;
+            }
+        }
+        i += 1;
+    }
+
+    return dead;
+}
+
+def update_live_world(dt)
+{
+    if (len(BEST_GENOME) < GENE_COUNT) return;
+
+    if (LIVE_DEAD)
+    {
+        LIVE_DEAD_TIMER -= dt;
+        if (LIVE_DEAD_TIMER <= 0) live_reset_world();
+        return;
+    }
+
+    live_update_pipes(dt);
+    live_find_next_pipe();
+
+    var inp = [
+        safe_ratio(LIVE_BIRD_Y - FIELD_Y, FIELD_H),
+        safe_ratio(LIVE_BIRD_VY, MAX_FALL),
+        safe_ratio(LIVE_NEXT_X - BIRD_X, FIELD_W),
+        safe_ratio(LIVE_NEXT_GAP - FIELD_Y, FIELD_H),
+        safe_ratio(LIVE_BIRD_Y - LIVE_NEXT_GAP, PIPE_GAP_H * 0.5),
+        safe_ratio(PIPE_SPEED, 320.0)
+    ];
+
+    var out = nn_forward(BEST_GENOME, inp, true);
+    LIVE_LAST_ACTION = nn_action(out);
+
+    if (AI_BOOT_ASSIST && BEST_FIT_ALL < AI_BOOT_ASSIST_FIT)
+    {
+        if (LIVE_BIRD_Y > LIVE_NEXT_GAP + 18) LIVE_LAST_ACTION = 1;
+        else LIVE_LAST_ACTION = 0;
+    }
+
+    if (LIVE_LAST_ACTION == 1 && LIVE_FLAP_CD <= 0)
+    {
+        LIVE_BIRD_VY = FLAP_VY;
+        LIVE_FLAP_CD = FLAP_COOLDOWN;
+    }
+
+    if (LIVE_FLAP_CD > 0) LIVE_FLAP_CD -= dt;
+    if (LIVE_FLAP_CD < 0) LIVE_FLAP_CD = 0;
+
+    LIVE_BIRD_VY += GRAVITY * dt;
+    LIVE_BIRD_VY = clampf(LIVE_BIRD_VY, -900.0, MAX_FALL);
+    LIVE_BIRD_Y += LIVE_BIRD_VY * dt;
+
+    if (live_check_collision_and_score())
+    {
+        LIVE_DEAD = true;
+        LIVE_DEAD_TIMER = 0.85;
+    }
+}
+
+// ============================================
+// Draw
+// ============================================
+
+def draw_field()
+{
+    set_color(8, 14, 24);
+    draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+
+    set_color(26, 44, 70);
+    draw_rectangle(FIELD_X, FIELD_Y, FIELD_W, FIELD_H, true);
+    set_color(96, 140, 185);
+    draw_rectangle(FIELD_X, FIELD_Y, FIELD_W, FIELD_H, false);
+
+    // Ceiling + floor
+    set_color(20, 28, 44);
+    draw_rectangle(FIELD_X, FIELD_Y, FIELD_W, CEIL_Y - FIELD_Y, true);
+    draw_rectangle(FIELD_X, FLOOR_Y, FIELD_W, FIELD_Y + FIELD_H - FLOOR_Y, true);
+
+    // Pipes
+    var i = 0;
+    while (i < len(LIVE_PIPE_X))
+    {
+        var px = LIVE_PIPE_X[i];
+        var gy = LIVE_PIPE_GAP[i];
+        var top_h = gy - PIPE_GAP_H * 0.5 - CEIL_Y;
+        var bottom_y = gy + PIPE_GAP_H * 0.5;
+        var bottom_h = FLOOR_Y - bottom_y;
+
+        set_color(65, 185, 95);
+        if (top_h > 0) draw_rectangle(px, CEIL_Y, PIPE_W, top_h, true);
+        if (bottom_h > 0) draw_rectangle(px, bottom_y, PIPE_W, bottom_h, true);
+
+        set_color(120, 230, 150);
+        if (top_h > 0) draw_rectangle(px, CEIL_Y, PIPE_W, top_h, false);
+        if (bottom_h > 0) draw_rectangle(px, bottom_y, PIPE_W, bottom_h, false);
+        i += 1;
+    }
+
+    // Bird
+    if (LIVE_DEAD) set_color(255, 140, 120);
+    else set_color(255, 220, 110);
+    draw_circle(BIRD_X, LIVE_BIRD_Y, BIRD_R, true);
+    set_color(22, 22, 30);
+    draw_circle(BIRD_X + 6, LIVE_BIRD_Y - 4, 3, true);
+
+    // Header
+    set_color(220, 240, 255);
+    draw_text("BU Flappy AI Demo", FIELD_X, 16, 36);
+    set_color(160, 195, 225);
+    draw_text("Genetic Training + Neural Decision View", FIELD_X, 50, 20);
+
+    // Score
+    set_color(255, 240, 175);
+    draw_text(format("Score: {}", LIVE_SCORE), FIELD_X + 280, 24, 30);
+    set_color(175, 210, 240);
+    draw_text(format("Best: {}", LIVE_BEST_SCORE), FIELD_X + 470, 28, 24);
+    if (LIVE_DEAD)
+    {
+        set_color(255, 170, 150);
+        draw_text("CRASH!", FIELD_X + 640, 28, 26);
+    }
+}
+
+def draw_panel()
+{
+    set_color(18, 26, 38);
+    draw_rectangle(PANEL_X, FIELD_Y, PANEL_W, FIELD_H, true);
+    set_color(92, 118, 150);
+    draw_rectangle(PANEL_X, FIELD_Y, PANEL_W, FIELD_H, false);
+
+    set_color(220, 238, 255);
+    draw_text("AI Stats", PANEL_X + 16, FIELD_Y + 14, 30);
+
+    var y0 = FIELD_Y + 58;
+    var ys = 24;
+    set_color(198, 220, 245);
+    draw_text(format("Generation: {}", GENERATION), PANEL_X + 16, y0 + ys * 0, 20);
+    draw_text(format("Eval: {}/{}", TRAIN_INDEX, POP_SIZE), PANEL_X + 16, y0 + ys * 1, 20);
+    draw_text(format("Gen Best: {}", int(GEN_BEST_FIT * 100) / 100.0), PANEL_X + 16, y0 + ys * 2, 20);
+    draw_text(format("Best Ever: {}", int(BEST_FIT_ALL * 100) / 100.0), PANEL_X + 16, y0 + ys * 3, 20);
+    draw_text(format("Best Gen: {}", BEST_FROM_GEN), PANEL_X + 16, y0 + ys * 4, 20);
+
+    if (RUNNER_MODE) set_color(120, 235, 170);
+    else set_color(220, 190, 140);
+    draw_text(format("Runner mode: {}", RUNNER_MODE), PANEL_X + 16, y0 + ys * 5, 20);
+
+    if (TRAINING_ACTIVE) set_color(135, 250, 155);
+    else set_color(255, 190, 140);
+    draw_text(format("Training: {}", TRAINING_ACTIVE), PANEL_X + 16, y0 + ys * 6, 20);
+
+    if (OFFLINE_ACTIVE) set_color(255, 220, 120);
+    else set_color(150, 170, 200);
+    draw_text(format("Offline: {} ({}/{})", OFFLINE_ACTIVE, OFFLINE_DONE, OFFLINE_BUDGET), PANEL_X + 16, y0 + ys * 7, 18);
+
+    if (TURBO_MODE) set_color(255, 220, 120);
+    else set_color(160, 180, 205);
+    draw_text(format("Turbo: {}  ({} genomes/frame)", TURBO_MODE, TRAIN_GENOMES_PER_FRAME), PANEL_X + 16, y0 + ys * 8, 20);
+
+    if (AI_BOOT_ASSIST && BEST_FIT_ALL < AI_BOOT_ASSIST_FIT)
+    {
+        set_color(255, 220, 140);
+        draw_text("Boot Assist: ON", PANEL_X + 16, y0 + ys * 9, 18);
+    }
+    else
+    {
+        set_color(140, 220, 170);
+        draw_text("Boot Assist: OFF", PANEL_X + 16, y0 + ys * 9, 18);
+    }
+
+    // Decision bars
+    var bars_y = FIELD_Y + 332;
+    set_color(205, 224, 245);
+    draw_text("AI Thinking", PANEL_X + 16, bars_y, 22);
+
+    var labels = ["STAY", "FLAP"];
+    var i = 0;
+    while (i < 2)
+    {
+        var v = 0.0;
+        if (i < len(LAST_O)) v = LAST_O[i];
+        var bw = int(clampf(v, 0.0, 1.0) * 220);
+        var by = bars_y + 36 + i * 36;
+
+        set_color(70, 85, 108);
+        draw_rectangle(PANEL_X + 120, by, 220, 20, true);
+        if (i == 0) set_color(145, 200, 255);
+        else set_color(255, 170, 120);
+        draw_rectangle(PANEL_X + 120, by, bw, 20, true);
+
+        set_color(188, 210, 236);
+        draw_text(labels[i], PANEL_X + 16, by + 2, 16);
+        draw_text(format("{}%", int(v * 100)), PANEL_X + 346, by + 2, 16);
+        i += 1;
+    }
+
+    set_color(255, 230, 150);
+    draw_text(format("Decision: {}", action_name(LIVE_LAST_ACTION)), PANEL_X + 16, bars_y + 114, 18);
+
+    // Controls
+    var cy = VIEW_H - 180;
+    set_color(150, 180, 210);
+    draw_text("Controls:", PANEL_X + 16, cy, 18);
+    draw_text("SPACE: pause/resume training", PANEL_X + 16, cy + 20, 16);
+    draw_text("T: turbo training", PANEL_X + 16, cy + 38, 16);
+    draw_text("I: instant train batch", PANEL_X + 16, cy + 56, 16);
+    draw_text("O: offline start/cancel", PANEL_X + 16, cy + 74, 16);
+    draw_text("P: runner mode on/off", PANEL_X + 16, cy + 92, 16);
+    draw_text("G/L: save/load weights", PANEL_X + 16, cy + 110, 16);
+    draw_text("R: reset population", PANEL_X + 16, cy + 128, 16);
+
+    if (STATUS_TIMER > 0)
+    {
+        set_color(255, 230, 160);
+        draw_text(STATUS_TEXT, PANEL_X + 16, VIEW_H - 14, 18);
+    }
+}
+
+// ============================================
+// Main
+// ============================================
+
+set_window_size(VIEW_W, VIEW_H);
+set_window_title("Bu Flappy AI Demo");
+set_design_resolution(VIEW_W, VIEW_H);
+set_virtual_screen_enabled(true);
+
+reset_training();
+live_reset_world();
+if (auto_load_weights())
+{
+    RUNNER_MODE = true;
+    TRAINING_ACTIVE = false;
+    OFFLINE_ACTIVE = false;
+    set_status("Loaded weights: runner mode");
+}
+
+loop
+{
+    var dt = delta();
+    if (dt <= 0.0) dt = SIM_DT;
+    if (dt > 0.05) dt = 0.05;
+
+    if (key_pressed(KEY_ESCAPE)) close_window();
+
+    if (key_pressed(KEY_SPACE))
+    {
+        if (RUNNER_MODE) set_status("Runner mode ON (P to disable)");
+        elif (OFFLINE_ACTIVE) set_status("Offline training running...");
+        else TRAINING_ACTIVE = !TRAINING_ACTIVE;
+    }
+
+    if (key_pressed(KEY_G)) save_best_weights();
+    if (key_pressed(KEY_L)) load_best_weights();
+
+    if (key_pressed(KEY_P))
+    {
+        RUNNER_MODE = !RUNNER_MODE;
+        if (RUNNER_MODE)
+        {
+            TRAINING_ACTIVE = false;
+            OFFLINE_ACTIVE = false;
+            set_status("Runner mode ON");
+        }
+        else
+        {
+            set_status("Runner mode OFF");
+        }
+    }
+
+    if (key_pressed(KEY_I))
+    {
+        instant_train(220);
+        set_status("Instant train +220 evals");
+    }
+
+    if (key_pressed(KEY_O))
+    {
+        if (OFFLINE_ACTIVE) cancel_offline_training();
+        else start_offline_training(OFFLINE_MAX_EVALS, OFFLINE_TARGET_FIT);
+    }
+
+    if (key_pressed(KEY_R))
+    {
+        reset_training();
+        live_reset_world();
+        RUNNER_MODE = false;
+        OFFLINE_ACTIVE = false;
+        set_status("Population reset");
+    }
+
+    if (key_pressed(KEY_T))
+    {
+        TURBO_MODE = !TURBO_MODE;
+        if (TURBO_MODE) TRAIN_GENOMES_PER_FRAME = 12;
+        else TRAIN_GENOMES_PER_FRAME = 4;
+    }
+
+    if (!RUNNER_MODE && TRAINING_ACTIVE) update_training();
+    update_offline_training();
+    update_live_world(dt);
+
+    if (STATUS_TIMER > 0)
+    {
+        STATUS_TIMER -= dt;
+        if (STATUS_TIMER < 0) STATUS_TIMER = 0;
+    }
+
+    set_draw_screen(true);
+    draw_field();
+    draw_panel();
+    set_draw_screen(false);
+    frame;
+}
+

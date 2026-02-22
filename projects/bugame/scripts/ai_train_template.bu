@@ -1,0 +1,457 @@
+// === BU AI TRAIN TEMPLATE ===
+// Reusable GA + tiny MLP trainer module.
+// Usage:
+// 1) include this file.
+// 2) Replace ai_eval_genome(_g) with your game-specific fitness simulation.
+// 3) Call ai_train_batch_auto(...) or offline flow (ai_start_offline + ai_update_offline).
+
+import math;
+import fs;
+import json;
+
+// --- Topology ---
+var AI_IN = 6;
+var AI_H = 8;
+var AI_OUT = 3;
+
+var AI_OFF_W1 = 0;
+var AI_OFF_B1 = 0;
+var AI_OFF_W2 = 0;
+var AI_OFF_B2 = 0;
+var AI_GENE_COUNT = 0;
+
+// --- GA params ---
+var AI_POP_SIZE = 40;
+var AI_ELITE_KEEP = 6;
+var AI_PARENT_POOL = 12;
+var AI_MUT_RATE = 0.085;
+var AI_MUT_MAG = 0.42;
+
+// --- Trainer state ---
+var AI_POP = [];
+var AI_FIT = [];
+var AI_TOP_IDX = [];
+var AI_TRAIN_INDEX = 0;
+var AI_GENERATION = 1;
+var AI_GEN_BEST_FIT = -999999.0;
+var AI_GEN_BEST_INDEX = -1;
+
+var AI_BEST_GENOME = [];
+var AI_BEST_FIT_ALL = -999999.0;
+var AI_BEST_FROM_GEN = 0;
+
+// --- Offline non-blocking ---
+var AI_OFFLINE_ACTIVE = false;
+var AI_OFFLINE_BUDGET = 0;
+var AI_OFFLINE_DONE = 0;
+var AI_OFFLINE_TARGET = 0.0;
+var AI_OFFLINE_BATCH_PER_FRAME = 120;
+
+var AI_WEIGHTS_FILE = "ai_best_genome.json";
+
+// --- Last activations (debug/draw) ---
+var AI_LAST_IN = [];
+var AI_LAST_H = [];
+var AI_LAST_O = [];
+
+def ai_rebuild_layout()
+{
+    AI_OFF_W1 = 0;
+    AI_OFF_B1 = AI_OFF_W1 + AI_IN * AI_H;
+    AI_OFF_W2 = AI_OFF_B1 + AI_H;
+    AI_OFF_B2 = AI_OFF_W2 + AI_H * AI_OUT;
+    AI_GENE_COUNT = AI_OFF_B2 + AI_OUT;
+}
+
+def ai_clampf(v, a, b)
+{
+    if (v < a) return a;
+    if (v > b) return b;
+    return v;
+}
+
+def ai_randf(a, b)
+{
+    return math.rand(a, b);
+}
+
+def ai_sigmoid(x)
+{
+    return 1.0 / (1.0 + exp(-x));
+}
+
+def ai_argmax3(v0, v1, v2)
+{
+    if (v0 >= v1 && v0 >= v2) return 0;
+    if (v1 >= v0 && v1 >= v2) return 1;
+    return 2;
+}
+
+def ai_nn_action(out)
+{
+    var idx = ai_argmax3(out[0], out[1], out[2]);
+    if (idx == 0) return -1;
+    if (idx == 1) return 0;
+    return 1;
+}
+
+def ai_make_genome()
+{
+    var g = [];
+    var i = 0;
+    while (i < AI_GENE_COUNT)
+    {
+        g.push(ai_randf(-1.0, 1.0));
+        i += 1;
+    }
+    return g;
+}
+
+def ai_clone_genome(g)
+{
+    var c = [];
+    var i = 0;
+    while (i < AI_GENE_COUNT)
+    {
+        c.push(g[i]);
+        i += 1;
+    }
+    return c;
+}
+
+def ai_validate_genome(g)
+{
+    if (!g) return false;
+    if (len(g) != AI_GENE_COUNT) return false;
+    var i = 0;
+    while (i < AI_GENE_COUNT)
+    {
+        if (!g[i]) g[i] = 0.0;
+        i += 1;
+    }
+    return true;
+}
+
+def ai_make_child(g1, g2)
+{
+    var c = [];
+    var i = 0;
+    while (i < AI_GENE_COUNT)
+    {
+        var gene = g1[i];
+        if (math.rand(0, 100) < 50) gene = g2[i];
+        if (math.rand(0, 10000) < int(AI_MUT_RATE * 10000.0))
+        {
+            gene += ai_randf(-AI_MUT_MAG, AI_MUT_MAG);
+        }
+        gene = ai_clampf(gene, -3.0, 3.0);
+        c.push(gene);
+        i += 1;
+    }
+    return c;
+}
+
+def ai_nn_forward(g, inp, store_vis)
+{
+    if (store_vis)
+    {
+        AI_LAST_IN.clear();
+        AI_LAST_H.clear();
+        AI_LAST_O.clear();
+        var ci = 0;
+        while (ci < AI_IN) { AI_LAST_IN.push(inp[ci]); ci += 1; }
+    }
+
+    var hidden = [];
+    var h = 0;
+    while (h < AI_H)
+    {
+        var sum = g[AI_OFF_B1 + h];
+        var i = 0;
+        while (i < AI_IN)
+        {
+            sum += inp[i] * g[AI_OFF_W1 + h * AI_IN + i];
+            i += 1;
+        }
+        var act = ai_sigmoid(sum);
+        hidden.push(act);
+        if (store_vis) AI_LAST_H.push(act);
+        h += 1;
+    }
+
+    var out = [];
+    var o = 0;
+    while (o < AI_OUT)
+    {
+        var sum2 = g[AI_OFF_B2 + o];
+        var j = 0;
+        while (j < AI_H)
+        {
+            sum2 += hidden[j] * g[AI_OFF_W2 + o * AI_H + j];
+            j += 1;
+        }
+        var act2 = ai_sigmoid(sum2);
+        out.push(act2);
+        if (store_vis) AI_LAST_O.push(act2);
+        o += 1;
+    }
+    return out;
+}
+
+def ai_reset()
+{
+    ai_rebuild_layout();
+    AI_POP.clear();
+    AI_FIT.clear();
+    AI_TOP_IDX.clear();
+
+    var i = 0;
+    while (i < AI_POP_SIZE)
+    {
+        AI_POP.push(ai_make_genome());
+        AI_FIT.push(0.0);
+        i += 1;
+    }
+
+    AI_BEST_GENOME = ai_clone_genome(AI_POP[0]);
+    AI_BEST_FIT_ALL = -999999.0;
+    AI_BEST_FROM_GEN = 0;
+
+    AI_GENERATION = 1;
+    AI_TRAIN_INDEX = 0;
+    AI_GEN_BEST_FIT = -999999.0;
+    AI_GEN_BEST_INDEX = -1;
+
+    AI_OFFLINE_ACTIVE = false;
+    AI_OFFLINE_BUDGET = 0;
+    AI_OFFLINE_DONE = 0;
+    AI_OFFLINE_TARGET = 0.0;
+}
+
+def ai_rebuild_top_indices()
+{
+    AI_TOP_IDX.clear();
+    var used = [];
+    var i = 0;
+    while (i < AI_POP_SIZE) { used.push(0); i += 1; }
+
+    var k = 0;
+    while (k < AI_PARENT_POOL && k < AI_POP_SIZE)
+    {
+        var best = -99999999.0;
+        var best_i = -1;
+        i = 0;
+        while (i < AI_POP_SIZE)
+        {
+            if (!used[i] && AI_FIT[i] > best)
+            {
+                best = AI_FIT[i];
+                best_i = i;
+            }
+            i += 1;
+        }
+        if (best_i == -1) break;
+        used[best_i] = 1;
+        AI_TOP_IDX.push(best_i);
+        k += 1;
+    }
+}
+
+def ai_evolve_generation()
+{
+    ai_rebuild_top_indices();
+    if (len(AI_TOP_IDX) <= 0) return;
+
+    var new_pop = [];
+    var i = 0;
+    while (i < AI_POP_SIZE)
+    {
+        if (i < AI_ELITE_KEEP && i < len(AI_TOP_IDX))
+        {
+            new_pop.push(ai_clone_genome(AI_POP[AI_TOP_IDX[i]]));
+        }
+        else
+        {
+            var p1 = AI_TOP_IDX[math.rand(0, len(AI_TOP_IDX) - 1)];
+            var p2 = AI_TOP_IDX[math.rand(0, len(AI_TOP_IDX) - 1)];
+            new_pop.push(ai_make_child(AI_POP[p1], AI_POP[p2]));
+        }
+        i += 1;
+    }
+
+    AI_POP = new_pop;
+    AI_FIT.clear();
+    i = 0;
+    while (i < AI_POP_SIZE) { AI_FIT.push(0.0); i += 1; }
+
+    AI_GENERATION += 1;
+    AI_TRAIN_INDEX = 0;
+    AI_GEN_BEST_FIT = -999999.0;
+    AI_GEN_BEST_INDEX = -1;
+}
+
+def ai_has_pending_genome()
+{
+    return AI_TRAIN_INDEX < AI_POP_SIZE;
+}
+
+def ai_get_current_genome()
+{
+    if (!ai_has_pending_genome()) return nil;
+    return AI_POP[AI_TRAIN_INDEX];
+}
+
+def ai_submit_fitness(fit)
+{
+    if (!ai_has_pending_genome()) return false;
+
+    AI_FIT[AI_TRAIN_INDEX] = fit;
+    if (fit > AI_GEN_BEST_FIT)
+    {
+        AI_GEN_BEST_FIT = fit;
+        AI_GEN_BEST_INDEX = AI_TRAIN_INDEX;
+    }
+    if (fit > AI_BEST_FIT_ALL)
+    {
+        AI_BEST_FIT_ALL = fit;
+        AI_BEST_GENOME = ai_clone_genome(AI_POP[AI_TRAIN_INDEX]);
+        AI_BEST_FROM_GEN = AI_GENERATION;
+    }
+
+    AI_TRAIN_INDEX += 1;
+    if (!ai_has_pending_genome()) ai_evolve_generation();
+    return true;
+}
+
+def ai_eval_genome(_g)
+{
+    // Replace this in your game-specific trainer.
+    // Example: run one episode and return a fitness score.
+    return math.rand(-1.0, 1.0);
+}
+
+def ai_train_batch_auto(evals)
+{
+    var total = int(evals);
+    if (total <= 0) return;
+    var done = 0;
+    while (done < total)
+    {
+        var g = ai_get_current_genome();
+        if (!g)
+        {
+            ai_evolve_generation();
+            continue;
+        }
+        var fit = ai_eval_genome(g);
+        ai_submit_fitness(fit);
+        done += 1;
+    }
+}
+
+def ai_save_best(path)
+{
+    if (!path) return false;
+    if (!ai_validate_genome(AI_BEST_GENOME)) return false;
+
+    var payload = {
+        input_count: int(AI_IN),
+        hidden_count: int(AI_H),
+        output_count: int(AI_OUT),
+        gene_count: int(AI_GENE_COUNT),
+        best_fit: AI_BEST_FIT_ALL,
+        best_from_gen: int(AI_BEST_FROM_GEN),
+        weights: AI_BEST_GENOME
+    };
+
+    var text = json.stringify(payload, 2);
+    if (text == nil || text == "") return false;
+    return fs.write(path, text);
+}
+
+def ai_load_best(path)
+{
+    if (!path) return false;
+    var text = fs.read(path);
+    if (text == nil || text == "") return false;
+
+    var data = nil;
+    try { data = json.parse(text); } catch (e) { return false; }
+    if (data == nil) return false;
+
+    if (data["input_count"] != nil) AI_IN = int(data["input_count"]);
+    if (data["hidden_count"] != nil) AI_H = int(data["hidden_count"]);
+    if (data["output_count"] != nil) AI_OUT = int(data["output_count"]);
+    ai_rebuild_layout();
+
+    var count = data["gene_count"];
+    if (count == nil || int(count) != AI_GENE_COUNT) return false;
+    var weights = data["weights"];
+    if (weights == nil || len(weights) != AI_GENE_COUNT) return false;
+
+    var loaded = [];
+    var i = 0;
+    while (i < AI_GENE_COUNT)
+    {
+        loaded.push(weights[i]);
+        i += 1;
+    }
+    if (!ai_validate_genome(loaded)) return false;
+
+    AI_BEST_GENOME = loaded;
+    if (data["best_fit"] != nil) AI_BEST_FIT_ALL = data["best_fit"];
+    if (data["best_from_gen"] != nil) AI_BEST_FROM_GEN = int(data["best_from_gen"]);
+    return true;
+}
+
+def ai_start_offline(max_evals, target_fit)
+{
+    var budget = int(max_evals);
+    if (budget <= 0) return false;
+    AI_OFFLINE_ACTIVE = true;
+    AI_OFFLINE_BUDGET = budget;
+    AI_OFFLINE_DONE = 0;
+    AI_OFFLINE_TARGET = target_fit;
+    return true;
+}
+
+def ai_cancel_offline()
+{
+    AI_OFFLINE_ACTIVE = false;
+}
+
+def ai_update_offline()
+{
+    if (!AI_OFFLINE_ACTIVE) return false;
+
+    if (AI_BEST_FIT_ALL >= AI_OFFLINE_TARGET)
+    {
+        AI_OFFLINE_ACTIVE = false;
+        ai_save_best(AI_WEIGHTS_FILE);
+        return false;
+    }
+
+    if (AI_OFFLINE_DONE >= AI_OFFLINE_BUDGET)
+    {
+        AI_OFFLINE_ACTIVE = false;
+        ai_save_best(AI_WEIGHTS_FILE);
+        return false;
+    }
+
+    var batch = AI_OFFLINE_BATCH_PER_FRAME;
+    var left = AI_OFFLINE_BUDGET - AI_OFFLINE_DONE;
+    if (batch > left) batch = left;
+    if (batch <= 0)
+    {
+        AI_OFFLINE_ACTIVE = false;
+        ai_save_best(AI_WEIGHTS_FILE);
+        return false;
+    }
+
+    ai_train_batch_auto(batch);
+    AI_OFFLINE_DONE += batch;
+    return true;
+}
+
+ai_reset();
+

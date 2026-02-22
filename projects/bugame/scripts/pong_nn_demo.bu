@@ -1,0 +1,1213 @@
+// === BU PONG NN DEMO ===
+// Train a tiny neural net (genetic algorithm) and visualize it in real-time.
+
+import math;
+import fs;
+import json;
+
+// --- Window / Field ---
+var VIEW_W = 1440;
+var VIEW_H = 840;
+
+var FIELD_X = 26;
+var FIELD_Y = 86;
+var FIELD_W = 780;
+var FIELD_H = 700;
+
+var PANEL_X = 840;
+var PANEL_W = VIEW_W - PANEL_X - 20;
+
+// --- Input keys ---
+var KEY_W = 87; var KEY_S = 83;
+var KEY_R = 82; var KEY_SPACE = 32; var KEY_T = 84; var KEY_H = 72;
+var KEY_G = 71; var KEY_L = 76; var KEY_I = 73; var KEY_O = 79; var KEY_P = 80;
+var KEY_ESCAPE = 256;
+
+// --- Pong constants ---
+var PADDLE_W = 16;
+var PADDLE_H = 108;
+var BALL_R = 10;
+
+var LEFT_X = FIELD_X + 24;
+var RIGHT_X = FIELD_X + FIELD_W - 24 - PADDLE_W;
+
+var PADDLE_SPEED = 520.0;
+var LEFT_BOT_SPEED = 450.0;
+
+var BALL_BASE_SPEED = 340.0;
+var BALL_MAX_SPEED = 700.0;
+
+var SIM_DT = 1.0 / 60.0;
+
+// --- NN topology ---
+var NN_IN = 6;
+var NN_H = 8;
+var NN_OUT = 3;
+
+var OFF_W1 = 0;
+var OFF_B1 = 48; // NN_IN * NN_H
+var OFF_W2 = 56; // OFF_B1 + NN_H
+var OFF_B2 = 80; // OFF_W2 + NN_H * NN_OUT
+var GENE_COUNT = 83; // OFF_B2 + NN_OUT
+
+// --- GA setup ---
+var POP_SIZE = 40;
+var ELITE_KEEP = 6;
+var PARENT_POOL = 12;
+
+var MUT_RATE = 0.085;
+var MUT_MAG = 0.42;
+
+var EPISODES_PER_GENOME = 3;
+var STEPS_PER_EPISODE = 1050;
+
+var TRAIN_GENOMES_PER_FRAME = 4;
+var TRAINING_ACTIVE = true;
+var TURBO_MODE = false;
+var HUMAN_LEFT = false;
+var AI_BOOT_ASSIST = false;
+var AI_BOOT_ASSIST_FIT = 1.2;
+var INSTANT_TRAIN_EVALS = 160;
+var OFFLINE_MAX_EVALS = 12000;
+var OFFLINE_TARGET_FIT = 5.0;
+var OFFLINE_BATCH_PER_FRAME = 120;
+var RUNNER_MODE = false;
+var OFFLINE_ACTIVE = false;
+var OFFLINE_BUDGET = 0;
+var OFFLINE_DONE = 0;
+var OFFLINE_TARGET = 0.0;
+
+// --- GA state ---
+var POPULATION = [];
+var FITNESS = [];
+var TOP_IDX = [];
+
+var GENERATION = 1;
+var TRAIN_INDEX = 0;
+var GEN_BEST_FIT = -999999.0;
+var GEN_BEST_INDEX = -1;
+
+var BEST_FIT_ALL = -999999.0;
+var BEST_GENOME = [];
+var BEST_FROM_GEN = 0;
+
+// --- Live match state ---
+var LIVE_LEFT_Y = 0.0;
+var LIVE_RIGHT_Y = 0.0;
+var LIVE_BALL_X = 0.0;
+var LIVE_BALL_Y = 0.0;
+var LIVE_BALL_VX = 0.0;
+var LIVE_BALL_VY = 0.0;
+
+var LIVE_SCORE_LEFT = 0;
+var LIVE_SCORE_AI = 0;
+var LIVE_HITS_AI = 0;
+var LIVE_LAST_ACTION = 0; // -1 up, 0 stay, 1 down
+
+// --- Visualization buffers ---
+var LAST_IN = [];
+var LAST_H = [];
+var LAST_O = [];
+var WEIGHTS_FILE = "pong_best_genome.json";
+var STATUS_TEXT = "";
+var STATUS_TIMER = 0.0;
+
+// ============================================
+// Helpers
+// ============================================
+
+def clampf(v, a, b)
+{
+    if (v < a) return a;
+    if (v > b) return b;
+    return v;
+}
+
+def safe_ratio(n, d)
+{
+    if (!d) return 0.0;
+    return n / d;
+}
+
+def randf(a, b)
+{
+    return math.rand(a, b);
+}
+
+def sigmoid(x)
+{
+    return 1.0 / (1.0 + exp(-x));
+}
+
+def argmax3(v0, v1, v2)
+{
+    if (v0 >= v1 && v0 >= v2) return 0;
+    if (v1 >= v0 && v1 >= v2) return 1;
+    return 2;
+}
+
+def node_y(idx, count, y0, y1)
+{
+    var mid = y0 + y1;
+    if (count <= 1) return mid * 0.5;
+
+    var f = safe_ratio(idx, count - 1);
+    var span = y1 - y0;
+    return y0 + f * span;
+}
+
+def random_ball_speed_x()
+{
+    if (math.rand(0, 100) < 50) return BALL_BASE_SPEED;
+    return -BALL_BASE_SPEED;
+}
+
+def set_status(msg)
+{
+    STATUS_TEXT = msg;
+    STATUS_TIMER = 2.4;
+}
+
+def action_name(_act)
+{
+    if (_act < 0) return "UP";
+    if (_act > 0) return "DOWN";
+    return "STAY";
+}
+
+def reset_live_ball(_towards_right)
+{
+    LIVE_BALL_X = FIELD_X + FIELD_W * 0.5;
+    LIVE_BALL_Y = FIELD_Y + FIELD_H * 0.5 + math.rand(-60, 60);
+    LIVE_BALL_VX = BALL_BASE_SPEED;
+    if (!_towards_right) LIVE_BALL_VX = -BALL_BASE_SPEED;
+    LIVE_BALL_VY = math.rand(-160, 160);
+}
+
+def reset_live_match()
+{
+    LIVE_LEFT_Y = FIELD_Y + FIELD_H * 0.5 - PADDLE_H * 0.5;
+    LIVE_RIGHT_Y = FIELD_Y + FIELD_H * 0.5 - PADDLE_H * 0.5;
+    LIVE_SCORE_LEFT = 0;
+    LIVE_SCORE_AI = 0;
+    LIVE_HITS_AI = 0;
+    LIVE_LAST_ACTION = 0;
+    reset_live_ball(true);
+}
+
+// ============================================
+// Neural network
+// ============================================
+
+def make_genome()
+{
+    var g = [];
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        g.push(randf(-1.0, 1.0));
+        i += 1;
+    }
+    return g;
+}
+
+def clone_genome(g)
+{
+    var c = [];
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        c.push(g[i]);
+        i += 1;
+    }
+    return c;
+}
+
+def validate_genome(g)
+{
+    if (!g) return false;
+    if (len(g) != GENE_COUNT) return false;
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        if (!g[i]) g[i] = 0.0;
+        i += 1;
+    }
+    return true;
+}
+
+def save_best_weights()
+{
+    if (!validate_genome(BEST_GENOME))
+    {
+        set_status("Save failed: best genome missing");
+        return false;
+    }
+
+    var payload = {
+        gene_count: int(GENE_COUNT),
+        best_fit: BEST_FIT_ALL,
+        best_from_gen: int(BEST_FROM_GEN),
+        weights: BEST_GENOME
+    };
+
+    var text = json.stringify(payload, 2);
+    if (text == nil || text == "")
+    {
+        set_status("Save failed: encode");
+        return false;
+    }
+
+    if (!fs.write(WEIGHTS_FILE, text))
+    {
+        set_status("Save failed: write");
+        return false;
+    }
+
+    set_status("Saved weights");
+    return true;
+}
+
+def load_best_weights()
+{
+    var text = fs.read(WEIGHTS_FILE);
+    if (text == nil || text == "")
+    {
+        set_status("Load failed: file missing");
+        return false;
+    }
+
+    var data = nil;
+    try
+    {
+        data = json.parse(text);
+    }
+    catch (e)
+    {
+        set_status("Load failed: parse");
+        return false;
+    }
+
+    if (data == nil)
+    {
+        set_status("Load failed: empty data");
+        return false;
+    }
+
+    var count = data["gene_count"];
+    if (count == nil || int(count) != GENE_COUNT)
+    {
+        set_status("Load failed: wrong genome size");
+        return false;
+    }
+
+    var weights = data["weights"];
+    if (weights == nil || len(weights) != GENE_COUNT)
+    {
+        set_status("Load failed: invalid weights");
+        return false;
+    }
+
+    var fit = data["best_fit"];
+    var gen = data["best_from_gen"];
+    var loaded = [];
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        loaded.push(weights[i]);
+        i += 1;
+    }
+
+    if (!validate_genome(loaded))
+    {
+        set_status("Load failed: invalid genome");
+        return false;
+    }
+
+    BEST_GENOME = loaded;
+    if (fit) BEST_FIT_ALL = fit;
+    if (gen) BEST_FROM_GEN = int(gen);
+
+    set_status("Loaded weights");
+    return true;
+}
+
+def auto_load_weights()
+{
+    var ok = load_best_weights();
+    if (!ok)
+    {
+        STATUS_TEXT = "";
+        STATUS_TIMER = 0.0;
+        return false;
+    }
+    return true;
+}
+
+def make_child(g1, g2)
+{
+    var c = [];
+    var i = 0;
+    while (i < GENE_COUNT)
+    {
+        var gene = g1[i];
+        if (math.rand(0, 100) < 50) gene = g2[i];
+
+        if (math.rand(0, 10000) < int(MUT_RATE * 10000.0))
+        {
+            gene += randf(-MUT_MAG, MUT_MAG);
+        }
+
+        gene = clampf(gene, -3.0, 3.0);
+        c.push(gene);
+        i += 1;
+    }
+    return c;
+}
+
+def nn_forward(g, inp, store_vis)
+{
+    if (store_vis)
+    {
+        LAST_IN.clear();
+        LAST_H.clear();
+        LAST_O.clear();
+        var ci = 0;
+        while (ci < NN_IN) { LAST_IN.push(inp[ci]); ci += 1; }
+    }
+
+    var hidden = [];
+    var h = 0;
+    while (h < NN_H)
+    {
+        var sum = g[OFF_B1 + h];
+        var i = 0;
+        while (i < NN_IN)
+        {
+            sum += inp[i] * g[OFF_W1 + h * NN_IN + i];
+            i += 1;
+        }
+        var act = sigmoid(sum);
+        hidden.push(act);
+        if (store_vis) LAST_H.push(act);
+        h += 1;
+    }
+
+    var out = [];
+    var o = 0;
+    while (o < NN_OUT)
+    {
+        var sum2 = g[OFF_B2 + o];
+        var j = 0;
+        while (j < NN_H)
+        {
+            sum2 += hidden[j] * g[OFF_W2 + o * NN_H + j];
+            j += 1;
+        }
+        var act2 = sigmoid(sum2);
+        out.push(act2);
+        if (store_vis) LAST_O.push(act2);
+        o += 1;
+    }
+    return out;
+}
+
+def nn_action(out)
+{
+    var idx = argmax3(out[0], out[1], out[2]);
+    if (idx == 0) return -1;
+    if (idx == 1) return 0;
+    return 1;
+}
+
+// ============================================
+// Training simulation (headless)
+// ============================================
+
+def simulate_episode(g)
+{
+    var left_y = FIELD_Y + FIELD_H * 0.5 - PADDLE_H * 0.5;
+    var right_y = FIELD_Y + FIELD_H * 0.5 - PADDLE_H * 0.5;
+
+    var bx = FIELD_X + FIELD_W * 0.5;
+    var by = FIELD_Y + FIELD_H * 0.5;
+    var bvx = random_ball_speed_x();
+    var bvy = randf(-160.0, 160.0);
+
+    var reward = 0.0;
+    var step = 0;
+    var ai_hits = 0;
+
+    while (step < STEPS_PER_EPISODE)
+    {
+        // Left bot tracks ball with small lag
+        var left_center = left_y + PADDLE_H * 0.5;
+        if (by < left_center - 7) left_y -= LEFT_BOT_SPEED * SIM_DT;
+        elif (by > left_center + 7) left_y += LEFT_BOT_SPEED * SIM_DT;
+        left_y = clampf(left_y, FIELD_Y, FIELD_Y + FIELD_H - PADDLE_H);
+
+        // NN input
+        var inp = [
+            safe_ratio(bx - FIELD_X, FIELD_W),
+            safe_ratio(by - FIELD_Y, FIELD_H),
+            safe_ratio(bvx, BALL_MAX_SPEED),
+            safe_ratio(bvy, BALL_MAX_SPEED),
+            safe_ratio(right_y - FIELD_Y, FIELD_H),
+            safe_ratio(left_y - FIELD_Y, FIELD_H)
+        ];
+
+        var out = nn_forward(g, inp, false);
+        var act = nn_action(out);
+
+        right_y += act * PADDLE_SPEED * SIM_DT;
+        right_y = clampf(right_y, FIELD_Y, FIELD_Y + FIELD_H - PADDLE_H);
+
+        // Ball move
+        bx += bvx * SIM_DT;
+        by += bvy * SIM_DT;
+
+        // Top/bottom bounce
+        if (by < FIELD_Y + BALL_R)
+        {
+            by = FIELD_Y + BALL_R;
+            bvy = abs(bvy);
+        }
+        if (by > FIELD_Y + FIELD_H - BALL_R)
+        {
+            by = FIELD_Y + FIELD_H - BALL_R;
+            bvy = -abs(bvy);
+        }
+
+        // Left paddle collision
+        if (bvx < 0 &&
+            bx - BALL_R <= LEFT_X + PADDLE_W &&
+            bx > LEFT_X &&
+            by >= left_y &&
+            by <= left_y + PADDLE_H)
+        {
+            bx = LEFT_X + PADDLE_W + BALL_R + 1;
+            bvx = abs(bvx);
+            var off_l = safe_ratio((by - (left_y + PADDLE_H * 0.5)), (PADDLE_H * 0.5));
+            bvy += off_l * 180.0;
+        }
+
+        // Right paddle collision (AI reward)
+        if (bvx > 0 &&
+            bx + BALL_R >= RIGHT_X &&
+            bx < RIGHT_X + PADDLE_W + BALL_R &&
+            by >= right_y &&
+            by <= right_y + PADDLE_H)
+        {
+            bx = RIGHT_X - BALL_R - 1;
+            bvx = -abs(bvx);
+            var off_r = safe_ratio((by - (right_y + PADDLE_H * 0.5)), (PADDLE_H * 0.5));
+            bvy += off_r * 230.0;
+            reward += 1.5;
+            ai_hits += 1;
+        }
+
+        // Speed clamp
+        if (bvx > BALL_MAX_SPEED) bvx = BALL_MAX_SPEED;
+        if (bvx < -BALL_MAX_SPEED) bvx = -BALL_MAX_SPEED;
+        if (bvy > BALL_MAX_SPEED) bvy = BALL_MAX_SPEED;
+        if (bvy < -BALL_MAX_SPEED) bvy = -BALL_MAX_SPEED;
+
+        // Miss / score logic
+        if (bx > FIELD_X + FIELD_W + 35)
+        {
+            // AI failed
+            reward -= 2.8;
+            break;
+        }
+        elif (bx < FIELD_X - 35)
+        {
+            // Opponent failed -> keep playing from center
+            reward += 0.8;
+            bx = FIELD_X + FIELD_W * 0.5;
+            by = FIELD_Y + FIELD_H * 0.5 + randf(-80.0, 80.0);
+            bvx = BALL_BASE_SPEED;
+            bvy = randf(-180.0, 180.0);
+        }
+
+        // Dense reward: stay aligned to ball
+        var right_center = right_y + PADDLE_H * 0.5;
+        var align = 1.0 - abs(safe_ratio(right_center - by, FIELD_H * 0.5));
+        if (align < 0) align = 0;
+        reward += align * 0.0018;
+
+        step += 1;
+    }
+
+    reward += ai_hits * 0.15;
+    reward += step * 0.0004;
+    return reward;
+}
+
+def evaluate_genome(g)
+{
+    var total = 0.0;
+    var e = 0;
+    while (e < EPISODES_PER_GENOME)
+    {
+        total += simulate_episode(g);
+        e += 1;
+    }
+    return safe_ratio(total, EPISODES_PER_GENOME);
+}
+
+// ============================================
+// Evolution
+// ============================================
+
+def rebuild_top_indices()
+{
+    TOP_IDX.clear();
+
+    var used = [];
+    var i = 0;
+    while (i < POP_SIZE) { used.push(0); i += 1; }
+
+    var k = 0;
+    while (k < PARENT_POOL && k < POP_SIZE)
+    {
+        var best = -99999999.0;
+        var best_i = -1;
+        i = 0;
+        while (i < POP_SIZE)
+        {
+            if (!used[i] && FITNESS[i] > best)
+            {
+                best = FITNESS[i];
+                best_i = i;
+            }
+            i += 1;
+        }
+        if (best_i == -1) break;
+        used[best_i] = 1;
+        TOP_IDX.push(best_i);
+        k += 1;
+    }
+}
+
+def evolve_generation()
+{
+    rebuild_top_indices();
+    if (len(TOP_IDX) <= 0) return;
+
+    var new_pop = [];
+
+    var i = 0;
+    while (i < POP_SIZE)
+    {
+        if (i < ELITE_KEEP && i < len(TOP_IDX))
+        {
+            new_pop.push(clone_genome(POPULATION[TOP_IDX[i]]));
+        }
+        else
+        {
+            var p1 = TOP_IDX[math.rand(0, len(TOP_IDX) - 1)];
+            var p2 = TOP_IDX[math.rand(0, len(TOP_IDX) - 1)];
+            new_pop.push(make_child(POPULATION[p1], POPULATION[p2]));
+        }
+        i += 1;
+    }
+
+    POPULATION = new_pop;
+    FITNESS.clear();
+    i = 0;
+    while (i < POP_SIZE) { FITNESS.push(0.0); i += 1; }
+
+    GENERATION += 1;
+    TRAIN_INDEX = 0;
+    GEN_BEST_FIT = -999999.0;
+    GEN_BEST_INDEX = -1;
+}
+
+def reset_training()
+{
+    POPULATION.clear();
+    FITNESS.clear();
+    TOP_IDX.clear();
+
+    var i = 0;
+    while (i < POP_SIZE)
+    {
+        POPULATION.push(make_genome());
+        FITNESS.push(0.0);
+        i += 1;
+    }
+
+    BEST_GENOME = clone_genome(POPULATION[0]);
+    BEST_FIT_ALL = -999999.0;
+    BEST_FROM_GEN = 0;
+
+    GENERATION = 1;
+    TRAIN_INDEX = 0;
+    GEN_BEST_FIT = -999999.0;
+    GEN_BEST_INDEX = -1;
+}
+
+def update_training()
+{
+    var loops = TRAIN_GENOMES_PER_FRAME;
+    while (loops > 0)
+    {
+        if (TRAIN_INDEX >= POP_SIZE)
+        {
+            evolve_generation();
+            break;
+        }
+
+        var g = POPULATION[TRAIN_INDEX];
+        var fit = evaluate_genome(g);
+        FITNESS[TRAIN_INDEX] = fit;
+
+        if (fit > GEN_BEST_FIT)
+        {
+            GEN_BEST_FIT = fit;
+            GEN_BEST_INDEX = TRAIN_INDEX;
+        }
+
+        if (fit > BEST_FIT_ALL)
+        {
+            BEST_FIT_ALL = fit;
+            BEST_GENOME = clone_genome(g);
+            BEST_FROM_GEN = GENERATION;
+        }
+
+        TRAIN_INDEX += 1;
+        loops -= 1;
+    }
+}
+
+def instant_train(evals)
+{
+    var total = int(evals);
+    if (total <= 0) return;
+
+    var done = 0;
+    while (done < total)
+    {
+        if (TRAIN_INDEX >= POP_SIZE)
+        {
+            evolve_generation();
+            continue;
+        }
+
+        var g = POPULATION[TRAIN_INDEX];
+        var fit = evaluate_genome(g);
+        FITNESS[TRAIN_INDEX] = fit;
+
+        if (fit > GEN_BEST_FIT)
+        {
+            GEN_BEST_FIT = fit;
+            GEN_BEST_INDEX = TRAIN_INDEX;
+        }
+
+        if (fit > BEST_FIT_ALL)
+        {
+            BEST_FIT_ALL = fit;
+            BEST_GENOME = clone_genome(g);
+            BEST_FROM_GEN = GENERATION;
+        }
+
+        TRAIN_INDEX += 1;
+        done += 1;
+    }
+}
+
+def start_offline_training(max_evals, target_fit)
+{
+    var budget = int(max_evals);
+    if (budget <= 0) return;
+
+    OFFLINE_ACTIVE = true;
+    OFFLINE_BUDGET = budget;
+    OFFLINE_DONE = 0;
+    OFFLINE_TARGET = target_fit;
+    RUNNER_MODE = false;
+    TRAINING_ACTIVE = false;
+    set_status(format("Offline training started ({} evals)", OFFLINE_BUDGET));
+}
+
+def finish_offline_training()
+{
+    OFFLINE_ACTIVE = false;
+    save_best_weights();
+    RUNNER_MODE = true;
+    TRAINING_ACTIVE = false;
+    set_status(format("Offline done: {} evals  fit={}", OFFLINE_DONE, int(BEST_FIT_ALL * 100) / 100.0));
+}
+
+def cancel_offline_training()
+{
+    OFFLINE_ACTIVE = false;
+    set_status("Offline training canceled");
+}
+
+def update_offline_training()
+{
+    if (!OFFLINE_ACTIVE) return;
+
+    if (BEST_FIT_ALL >= OFFLINE_TARGET)
+    {
+        finish_offline_training();
+        return;
+    }
+
+    if (OFFLINE_DONE >= OFFLINE_BUDGET)
+    {
+        finish_offline_training();
+        return;
+    }
+
+    var batch = OFFLINE_BATCH_PER_FRAME;
+    var left = OFFLINE_BUDGET - OFFLINE_DONE;
+    if (batch > left) batch = left;
+    if (batch <= 0)
+    {
+        finish_offline_training();
+        return;
+    }
+
+    instant_train(batch);
+    OFFLINE_DONE += batch;
+}
+
+// ============================================
+// Live match update + render
+// ============================================
+
+def update_live_match(dt)
+{
+    if (len(BEST_GENOME) < GENE_COUNT) return;
+
+    // Left paddle: human toggle or bot
+    if (HUMAN_LEFT)
+    {
+        if (key_down(KEY_W)) LIVE_LEFT_Y -= PADDLE_SPEED * dt;
+        if (key_down(KEY_S)) LIVE_LEFT_Y += PADDLE_SPEED * dt;
+    }
+    else
+    {
+        var lcenter = LIVE_LEFT_Y + PADDLE_H * 0.5;
+        if (LIVE_BALL_Y < lcenter - 6) LIVE_LEFT_Y -= LEFT_BOT_SPEED * dt;
+        elif (LIVE_BALL_Y > lcenter + 6) LIVE_LEFT_Y += LEFT_BOT_SPEED * dt;
+    }
+    LIVE_LEFT_Y = clampf(LIVE_LEFT_Y, FIELD_Y, FIELD_Y + FIELD_H - PADDLE_H);
+
+    // AI paddle
+    var inp = [
+        safe_ratio(LIVE_BALL_X - FIELD_X, FIELD_W),
+        safe_ratio(LIVE_BALL_Y - FIELD_Y, FIELD_H),
+        safe_ratio(LIVE_BALL_VX, BALL_MAX_SPEED),
+        safe_ratio(LIVE_BALL_VY, BALL_MAX_SPEED),
+        safe_ratio(LIVE_RIGHT_Y - FIELD_Y, FIELD_H),
+        safe_ratio(LIVE_LEFT_Y - FIELD_Y, FIELD_H)
+    ];
+    var out = nn_forward(BEST_GENOME, inp, true);
+    LIVE_LAST_ACTION = nn_action(out);
+
+    // Early generations can be visually static (network picks STAY most frames).
+    // Keep the demo readable: assist movement until the model reaches a minimal fitness.
+    if (AI_BOOT_ASSIST && BEST_FIT_ALL < AI_BOOT_ASSIST_FIT)
+    {
+        var rc = LIVE_RIGHT_Y + PADDLE_H * 0.5;
+        if (LIVE_BALL_Y < rc - 6) LIVE_LAST_ACTION = -1;
+        elif (LIVE_BALL_Y > rc + 6) LIVE_LAST_ACTION = 1;
+        else LIVE_LAST_ACTION = 0;
+    }
+
+    LIVE_RIGHT_Y += LIVE_LAST_ACTION * PADDLE_SPEED * dt;
+    LIVE_RIGHT_Y = clampf(LIVE_RIGHT_Y, FIELD_Y, FIELD_Y + FIELD_H - PADDLE_H);
+
+    // Ball movement
+    LIVE_BALL_X += LIVE_BALL_VX * dt;
+    LIVE_BALL_Y += LIVE_BALL_VY * dt;
+
+    // Top/bottom
+    if (LIVE_BALL_Y < FIELD_Y + BALL_R)
+    {
+        LIVE_BALL_Y = FIELD_Y + BALL_R;
+        LIVE_BALL_VY = abs(LIVE_BALL_VY);
+    }
+    if (LIVE_BALL_Y > FIELD_Y + FIELD_H - BALL_R)
+    {
+        LIVE_BALL_Y = FIELD_Y + FIELD_H - BALL_R;
+        LIVE_BALL_VY = -abs(LIVE_BALL_VY);
+    }
+
+    // Left paddle collision
+    if (LIVE_BALL_VX < 0 &&
+        LIVE_BALL_X - BALL_R <= LEFT_X + PADDLE_W &&
+        LIVE_BALL_X > LEFT_X &&
+        LIVE_BALL_Y >= LIVE_LEFT_Y &&
+        LIVE_BALL_Y <= LIVE_LEFT_Y + PADDLE_H)
+    {
+        LIVE_BALL_X = LEFT_X + PADDLE_W + BALL_R + 1;
+        LIVE_BALL_VX = abs(LIVE_BALL_VX);
+        var o1 = safe_ratio((LIVE_BALL_Y - (LIVE_LEFT_Y + PADDLE_H * 0.5)), (PADDLE_H * 0.5));
+        LIVE_BALL_VY += o1 * 180.0;
+    }
+
+    // Right paddle collision
+    if (LIVE_BALL_VX > 0 &&
+        LIVE_BALL_X + BALL_R >= RIGHT_X &&
+        LIVE_BALL_X < RIGHT_X + PADDLE_W + BALL_R &&
+        LIVE_BALL_Y >= LIVE_RIGHT_Y &&
+        LIVE_BALL_Y <= LIVE_RIGHT_Y + PADDLE_H)
+    {
+        LIVE_BALL_X = RIGHT_X - BALL_R - 1;
+        LIVE_BALL_VX = -abs(LIVE_BALL_VX);
+        var o2 = safe_ratio((LIVE_BALL_Y - (LIVE_RIGHT_Y + PADDLE_H * 0.5)), (PADDLE_H * 0.5));
+        LIVE_BALL_VY += o2 * 230.0;
+        LIVE_HITS_AI += 1;
+    }
+
+    // Clamp speed
+    LIVE_BALL_VX = clampf(LIVE_BALL_VX, -BALL_MAX_SPEED, BALL_MAX_SPEED);
+    LIVE_BALL_VY = clampf(LIVE_BALL_VY, -BALL_MAX_SPEED, BALL_MAX_SPEED);
+
+    // Goals
+    if (LIVE_BALL_X > FIELD_X + FIELD_W + 32)
+    {
+        LIVE_SCORE_LEFT += 1;
+        reset_live_ball(false);
+    }
+    elif (LIVE_BALL_X < FIELD_X - 32)
+    {
+        LIVE_SCORE_AI += 1;
+        reset_live_ball(true);
+    }
+}
+
+def draw_field()
+{
+    set_color(12, 18, 30);
+    draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+
+    set_color(20, 32, 50);
+    draw_rectangle(FIELD_X, FIELD_Y, FIELD_W, FIELD_H, true);
+    set_color(92, 118, 150);
+    draw_rectangle(FIELD_X, FIELD_Y, FIELD_W, FIELD_H, false);
+
+    // Center line
+    set_alpha(120);
+    set_color(130, 170, 210);
+    draw_line(FIELD_X + FIELD_W * 0.5, FIELD_Y + 10, FIELD_X + FIELD_W * 0.5, FIELD_Y + FIELD_H - 10);
+    set_alpha(255);
+
+    // Ball
+    set_color(255, 235, 160);
+    draw_circle(LIVE_BALL_X, LIVE_BALL_Y, BALL_R, true);
+
+    // Left paddle
+    if (HUMAN_LEFT) set_color(120, 220, 255);
+    else set_color(110, 150, 210);
+    draw_rectangle(LEFT_X, LIVE_LEFT_Y, PADDLE_W, PADDLE_H, true);
+
+    // Right paddle (AI)
+    set_color(240, 150, 120);
+    draw_rectangle(RIGHT_X, LIVE_RIGHT_Y, PADDLE_W, PADDLE_H, true);
+
+    // Header
+    set_color(220, 238, 255);
+    draw_text("BU Pong NN Demo", FIELD_X, 18, 36);
+    set_color(165, 190, 220);
+    draw_text("GA Training + Neural Network Visualization", FIELD_X, 54, 20);
+
+    // Scores
+    set_color(200, 220, 245);
+    draw_text(format("Left: {}", LIVE_SCORE_LEFT), FIELD_X + 250, 34, 28);
+    draw_text(format("AI: {}", LIVE_SCORE_AI), FIELD_X + 430, 34, 28);
+    set_color(255, 210, 140);
+    draw_text(format("AI Hits: {}", LIVE_HITS_AI), FIELD_X + 590, 34, 22);
+}
+
+def draw_network_panel()
+{
+    set_color(18, 26, 38);
+    draw_rectangle(PANEL_X, FIELD_Y, PANEL_W, FIELD_H, true);
+    set_color(92, 118, 150);
+    draw_rectangle(PANEL_X, FIELD_Y, PANEL_W, FIELD_H, false);
+
+    set_color(220, 238, 255);
+    draw_text("Neural Network", PANEL_X + 18, FIELD_Y + 14, 28);
+
+    if (len(BEST_GENOME) < GENE_COUNT) return;
+
+    var in_x = PANEL_X + 30;
+    var h_x = PANEL_X + 160;
+    var o_x = PANEL_X + 300;
+    var y0 = FIELD_Y + 82;
+    var y1 = FIELD_Y + FIELD_H - 44;
+
+    // Connections IN -> H
+    var h = 0;
+    while (h < NN_H)
+    {
+        var hy = node_y(h, NN_H, y0, y1);
+        var i = 0;
+        while (i < NN_IN)
+        {
+            var iy = node_y(i, NN_IN, y0, y1);
+            var w = BEST_GENOME[OFF_W1 + h * NN_IN + i];
+            var a = int(clampf(abs(w) * 170.0 + 18.0, 18.0, 190.0));
+            set_alpha(a);
+            if (w >= 0) set_color(75, 210, 95);
+            else set_color(230, 90, 90);
+            draw_line(in_x, iy, h_x, hy);
+            i += 1;
+        }
+        h += 1;
+    }
+
+    // Connections H -> O
+    var o = 0;
+    while (o < NN_OUT)
+    {
+        var oy = node_y(o, NN_OUT, y0 + 90, y1 - 90);
+        h = 0;
+        while (h < NN_H)
+        {
+            var hy2 = node_y(h, NN_H, y0, y1);
+            var w2 = BEST_GENOME[OFF_W2 + o * NN_H + h];
+            var a2 = int(clampf(abs(w2) * 180.0 + 18.0, 18.0, 200.0));
+            set_alpha(a2);
+            if (w2 >= 0) set_color(85, 220, 105);
+            else set_color(240, 95, 95);
+            draw_line(h_x, hy2, o_x, oy);
+            h += 1;
+        }
+        o += 1;
+    }
+    set_alpha(255);
+
+    // Input nodes
+    var labels_in = ["ballX", "ballY", "velX", "velY", "aiY", "leftY"];
+    var ii = 0;
+    while (ii < NN_IN)
+    {
+        var niy = node_y(ii, NN_IN, y0, y1);
+        var av = 0.0;
+        if (ii < len(LAST_IN)) av = LAST_IN[ii];
+        var c = int(clampf(abs(av) * 255.0, 40.0, 255.0));
+        set_color(c, c, 255);
+        draw_circle(in_x, niy, 10, true);
+        set_color(170, 190, 215);
+        draw_text(labels_in[ii], in_x + 16, niy - 7, 14);
+        ii += 1;
+    }
+
+    // Hidden nodes
+    h = 0;
+    while (h < NN_H)
+    {
+        var nhy = node_y(h, NN_H, y0, y1);
+        var ah = 0.0;
+        if (h < len(LAST_H)) ah = LAST_H[h];
+        var ch = int(clampf(ah * 255.0, 28.0, 255.0));
+        set_color(120, ch, 220);
+        draw_circle(h_x, nhy, 10, true);
+        h += 1;
+    }
+
+    // Output nodes
+    var labels_out = ["UP", "STAY", "DOWN"];
+    o = 0;
+    while (o < NN_OUT)
+    {
+        var noy = node_y(o, NN_OUT, y0 + 90, y1 - 90);
+        var ao = 0.0;
+        if (o < len(LAST_O)) ao = LAST_O[o];
+        var co = int(clampf(ao * 255.0, 35.0, 255.0));
+        set_color(255, co, 90);
+        draw_circle(o_x, noy, 12, true);
+        set_color(200, 215, 230);
+        draw_text(labels_out[o], o_x + 18, noy - 8, 14);
+        o += 1;
+    }
+
+    set_color(175, 200, 225);
+    draw_text(format("Action: {}", LIVE_LAST_ACTION), PANEL_X + 20, FIELD_Y + FIELD_H - 26, 18);
+
+    // "Thinking" bars for output activations (what AI is considering now)
+    set_color(200, 224, 245);
+    draw_text("AI Thinking", PANEL_X + 360, FIELD_Y + 120, 18);
+    var bo = 0;
+    while (bo < NN_OUT)
+    {
+        var lbl = labels_out[bo];
+        var vv = 0.0;
+        if (bo < len(LAST_O)) vv = LAST_O[bo];
+        var by = FIELD_Y + 154 + bo * 30;
+        var bw = int(clampf(vv, 0.0, 1.0) * 170);
+
+        set_color(80, 95, 120);
+        draw_rectangle(PANEL_X + 440, by, 170, 18, true);
+        if (bo == 0) set_color(100, 190, 255);
+        elif (bo == 1) set_color(250, 220, 130);
+        else set_color(255, 140, 120);
+        draw_rectangle(PANEL_X + 440, by, bw, 18, true);
+
+        set_color(190, 210, 235);
+        draw_text(lbl, PANEL_X + 360, by + 1, 14);
+        draw_text(format("{}", int(vv * 100)), PANEL_X + 618, by + 1, 14);
+        bo += 1;
+    }
+    set_color(255, 220, 150);
+    draw_text(format("Decision: {}", action_name(LIVE_LAST_ACTION)), PANEL_X + 360, FIELD_Y + 252, 16);
+}
+
+def draw_stats()
+{
+    var stats_y = 22;
+    var stats_step = 24;
+    set_color(205, 224, 245);
+    draw_text(format("Generation: {}", GENERATION), PANEL_X + 18, stats_y + stats_step * 0, 20);
+    draw_text(format("Eval: {}/{}", TRAIN_INDEX, POP_SIZE), PANEL_X + 18, stats_y + stats_step * 1, 20);
+    draw_text(format("Gen Best: {}", int(GEN_BEST_FIT * 100) / 100.0), PANEL_X + 18, stats_y + stats_step * 2, 20);
+    draw_text(format("Best Ever: {}", int(BEST_FIT_ALL * 100) / 100.0), PANEL_X + 18, stats_y + stats_step * 3, 20);
+    draw_text(format("Best Gen: {}", BEST_FROM_GEN), PANEL_X + 18, stats_y + stats_step * 4, 20);
+
+    if (TRAINING_ACTIVE) set_color(135, 250, 155);
+    else set_color(255, 190, 140);
+    draw_text(format("Training: {}", TRAINING_ACTIVE), PANEL_X + 18, stats_y + stats_step * 5, 20);
+
+    if (RUNNER_MODE) set_color(120, 235, 170);
+    else set_color(220, 190, 140);
+    draw_text(format("Runner mode: {}", RUNNER_MODE), PANEL_X + 18, stats_y + stats_step * 6, 20);
+
+    if (OFFLINE_ACTIVE) set_color(255, 220, 120);
+    else set_color(150, 170, 200);
+    draw_text(format("Offline: {} ({}/{})", OFFLINE_ACTIVE, OFFLINE_DONE, OFFLINE_BUDGET), PANEL_X + 18, stats_y + stats_step * 7, 18);
+
+    if (TURBO_MODE) set_color(255, 220, 120);
+    else set_color(160, 180, 205);
+    draw_text(format("Turbo: {}  ({} genomes/frame)", TURBO_MODE, TRAIN_GENOMES_PER_FRAME), PANEL_X + 18, stats_y + stats_step * 8, 20);
+    if (AI_BOOT_ASSIST && BEST_FIT_ALL < AI_BOOT_ASSIST_FIT)
+    {
+        set_color(255, 220, 140);
+        draw_text("Boot Assist: ON", PANEL_X + 18, stats_y + stats_step * 9, 18);
+    }
+    else
+    {
+        set_color(140, 220, 170);
+        draw_text("Boot Assist: OFF", PANEL_X + 18, stats_y + stats_step * 9, 18);
+    }
+
+    set_color(150, 180, 210);
+    var ctrl_y = VIEW_H - 152;
+    draw_text("Controls:", PANEL_X + 18, ctrl_y, 18);
+    draw_text("SPACE: pause/resume training", PANEL_X + 18, ctrl_y + 20, 16);
+    draw_text("T: turbo training", PANEL_X + 18, ctrl_y + 42, 16);
+    draw_text("H: toggle human left paddle", PANEL_X + 18, ctrl_y + 60, 16);
+    draw_text("I: instant train batch", PANEL_X + 18, ctrl_y + 78, 16);
+    draw_text("O: offline start/cancel", PANEL_X + 18, ctrl_y + 96, 16);
+    draw_text("P: runner mode on/off", PANEL_X + 18, ctrl_y + 114, 16);
+    draw_text("R: reset population", PANEL_X + 18, ctrl_y + 132, 16);
+    draw_text("G/L: save/load best weights", PANEL_X + 300, ctrl_y + 132, 16);
+
+    if (STATUS_TIMER > 0)
+    {
+        set_color(255, 230, 160);
+        draw_text(STATUS_TEXT, PANEL_X + 18, VIEW_H - 10, 18);
+    }
+}
+
+// ============================================
+// Main
+// ============================================
+
+set_window_size(VIEW_W, VIEW_H);
+set_window_title("Bu Pong NN Demo");
+set_design_resolution(VIEW_W, VIEW_H);
+set_virtual_screen_enabled(true);
+
+reset_training();
+reset_live_match();
+if (auto_load_weights())
+{
+    RUNNER_MODE = true;
+    TRAINING_ACTIVE = false;
+    OFFLINE_ACTIVE = false;
+    set_status("Loaded weights: runner mode");
+}
+
+loop
+{
+    var dt = delta();
+    if (dt <= 0.0) dt = SIM_DT;
+    if (dt > 0.05) dt = 0.05;
+
+    if (key_pressed(KEY_ESCAPE)) close_window();
+    if (key_pressed(KEY_SPACE))
+    {
+        if (RUNNER_MODE)
+        {
+            set_status("Runner mode ON (P to disable)");
+        }
+        else
+        {
+            TRAINING_ACTIVE = !TRAINING_ACTIVE;
+        }
+    }
+    if (key_pressed(KEY_H)) HUMAN_LEFT = !HUMAN_LEFT;
+    if (key_pressed(KEY_G)) save_best_weights();
+    if (key_pressed(KEY_L)) load_best_weights();
+    if (key_pressed(KEY_P))
+    {
+        RUNNER_MODE = !RUNNER_MODE;
+        if (RUNNER_MODE)
+        {
+            TRAINING_ACTIVE = false;
+            OFFLINE_ACTIVE = false;
+            set_status("Runner mode ON");
+        }
+        else
+        {
+            set_status("Runner mode OFF");
+        }
+    }
+    if (key_pressed(KEY_I))
+    {
+        instant_train(INSTANT_TRAIN_EVALS);
+        set_status(format("Instant trained {} evals", INSTANT_TRAIN_EVALS));
+    }
+    if (key_pressed(KEY_O))
+    {
+        if (OFFLINE_ACTIVE) cancel_offline_training();
+        else start_offline_training(OFFLINE_MAX_EVALS, OFFLINE_TARGET_FIT);
+    }
+    if (key_pressed(KEY_R))
+    {
+        reset_training();
+        reset_live_match();
+        RUNNER_MODE = false;
+        OFFLINE_ACTIVE = false;
+    }
+    if (key_pressed(KEY_T))
+    {
+        TURBO_MODE = !TURBO_MODE;
+        if (TURBO_MODE) TRAIN_GENOMES_PER_FRAME = 10;
+        else TRAIN_GENOMES_PER_FRAME = 4;
+    }
+
+    if (!RUNNER_MODE && TRAINING_ACTIVE) update_training();
+    update_offline_training();
+    update_live_match(dt);
+
+    if (STATUS_TIMER > 0)
+    {
+        STATUS_TIMER -= dt;
+        if (STATUS_TIMER < 0) STATUS_TIMER = 0;
+    }
+
+    set_draw_screen(true);
+    draw_field();
+    draw_network_panel();
+    draw_stats();
+    set_draw_screen(false);
+
+    frame;
+}
