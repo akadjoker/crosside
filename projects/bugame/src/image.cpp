@@ -132,6 +132,24 @@ namespace BindingsImage
         return false;
     }
 
+    static bool parse_bool_or_number(Value v, bool defaultValue, bool *outValue)
+    {
+        if (!outValue)
+            return false;
+        if (v.isBool())
+        {
+            *outValue = v.asBool();
+            return true;
+        }
+        if (v.isNumber())
+        {
+            *outValue = (v.asNumber() != 0.0);
+            return true;
+        }
+        *outValue = defaultValue;
+        return false;
+    }
+
     static int add_graph_from_image(const Image &image, const char *name)
     {
         if (!image.data || image.width <= 0 || image.height <= 0)
@@ -645,6 +663,233 @@ namespace BindingsImage
         return 1;
     }
 
+    static int native_image_blit(Interpreter *vm, void *data, int argCount, Value *args)
+    {
+        ScriptImage *dst = (ScriptImage *)data;
+        if (!has_image_data(dst))
+        {
+            Error("Image.blit called on invalid image");
+            return 0;
+        }
+
+        if (!(argCount == 3 || argCount == 7))
+        {
+            Error("Image.blit expects (srcImage, dstX, dstY) or (srcImage, dstX, dstY, srcX, srcY, srcW, srcH)");
+            return 0;
+        }
+        if (!args[1].isNumber() || !args[2].isNumber())
+        {
+            Error("Image.blit expects numeric dstX and dstY");
+            return 0;
+        }
+
+        ScriptImage *src = as_script_image(args[0]);
+        if (!has_image_data(src))
+        {
+            Error("Image.blit expects a valid source Image as first argument");
+            return 0;
+        }
+
+        int dstX = (int)args[1].asNumber();
+        int dstY = (int)args[2].asNumber();
+        Rectangle srcRec = {0, 0, (float)src->image.width, (float)src->image.height};
+        if (argCount == 7)
+        {
+            if (!args[3].isNumber() || !args[4].isNumber() || !args[5].isNumber() || !args[6].isNumber())
+            {
+                Error("Image.blit source rect expects numeric srcX, srcY, srcW, srcH");
+                return 0;
+            }
+            srcRec.x = (float)(int)args[3].asNumber();
+            srcRec.y = (float)(int)args[4].asNumber();
+            srcRec.width = (float)(int)args[5].asNumber();
+            srcRec.height = (float)(int)args[6].asNumber();
+            if (srcRec.width <= 0 || srcRec.height <= 0)
+            {
+                Error("Image.blit source rect expects positive srcW and srcH");
+                return 0;
+            }
+        }
+
+        Rectangle dstRec = {(float)dstX, (float)dstY, srcRec.width, srcRec.height};
+        ImageDraw(&dst->image, src->image, srcRec, dstRec, WHITE);
+        return 0;
+    }
+
+    static int native_image_draw_rect(Interpreter *vm, void *data, int argCount, Value *args)
+    {
+        ScriptImage *img = (ScriptImage *)data;
+        if (!has_image_data(img))
+        {
+            Error("Image.draw_rect called on invalid image");
+            return 0;
+        }
+
+        if (!(argCount == 7 || argCount == 8 || argCount == 9))
+        {
+            Error("Image.draw_rect expects (x, y, w, h, r, g, b[, a], [fill])");
+            return 0;
+        }
+
+        if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber() || !args[3].isNumber())
+        {
+            Error("Image.draw_rect expects numeric x, y, w, h");
+            return 0;
+        }
+
+        int x = (int)args[0].asNumber();
+        int y = (int)args[1].asNumber();
+        int w = (int)args[2].asNumber();
+        int h = (int)args[3].asNumber();
+        if (w <= 0 || h <= 0)
+            return 0;
+
+        int colorArgs = 3;
+        bool fill = true;
+        if (argCount == 8)
+        {
+            bool parsedAsBool = parse_bool_or_number(args[7], true, &fill);
+            colorArgs = parsedAsBool ? 3 : 4;
+        }
+        else if (argCount == 9)
+            colorArgs = 4;
+
+        Color c = WHITE;
+        if (!parse_color_args(args, 4 + colorArgs, 4, &c))
+        {
+            Error("Image.draw_rect color expects r,g,b[,a]");
+            return 0;
+        }
+
+        if (argCount == 9)
+            parse_bool_or_number(args[argCount - 1], true, &fill);
+
+        if (fill)
+            ImageDrawRectangle(&img->image, x, y, w, h, c);
+        else
+            ImageDrawRectangleLines(&img->image, (Rectangle){(float)x, (float)y, (float)w, (float)h}, 1, c);
+        return 0;
+    }
+
+    static int native_image_draw_circle(Interpreter *vm, void *data, int argCount, Value *args)
+    {
+        ScriptImage *img = (ScriptImage *)data;
+        if (!has_image_data(img))
+        {
+            Error("Image.draw_circle called on invalid image");
+            return 0;
+        }
+
+        if (!(argCount == 6 || argCount == 7 || argCount == 8))
+        {
+            Error("Image.draw_circle expects (x, y, radius, r, g, b[, a], [fill])");
+            return 0;
+        }
+        if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber())
+        {
+            Error("Image.draw_circle expects numeric x, y, radius");
+            return 0;
+        }
+
+        int x = (int)args[0].asNumber();
+        int y = (int)args[1].asNumber();
+        int radius = (int)args[2].asNumber();
+        if (radius <= 0)
+            return 0;
+
+        bool fill = true;
+        Color c = WHITE;
+
+        int colorArgCount = 3;
+        if (argCount == 7)
+        {
+            bool parsedAsBool = parse_bool_or_number(args[argCount - 1], true, &fill);
+            if (parsedAsBool)
+                colorArgCount = 3;
+            else
+                colorArgCount = 4;
+        }
+        else if (argCount == 8)
+            colorArgCount = 4;
+
+        if (!parse_color_args(args, 3 + colorArgCount, 3, &c))
+        {
+            Error("Image.draw_circle color expects r,g,b[,a]");
+            return 0;
+        }
+
+        if (fill)
+            ImageDrawCircle(&img->image, x, y, radius, c);
+        else
+            ImageDrawCircleLines(&img->image, x, y, radius, c);
+        return 0;
+    }
+
+    static int native_image_draw_line(Interpreter *vm, void *data, int argCount, Value *args)
+    {
+        ScriptImage *img = (ScriptImage *)data;
+        if (!has_image_data(img))
+        {
+            Error("Image.draw_line called on invalid image");
+            return 0;
+        }
+
+        if (!(argCount == 7 || argCount == 8))
+        {
+            Error("Image.draw_line expects (x1, y1, x2, y2, r, g, b[, a])");
+            return 0;
+        }
+        if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber() || !args[3].isNumber())
+        {
+            Error("Image.draw_line expects numeric x1, y1, x2, y2");
+            return 0;
+        }
+
+        int x1 = (int)args[0].asNumber();
+        int y1 = (int)args[1].asNumber();
+        int x2 = (int)args[2].asNumber();
+        int y2 = (int)args[3].asNumber();
+
+        Color c = WHITE;
+        if (!parse_color_args(args, argCount, 4, &c))
+        {
+            Error("Image.draw_line color expects r,g,b[,a]");
+            return 0;
+        }
+
+        ImageDrawLine(&img->image, x1, y1, x2, y2, c);
+        return 0;
+    }
+
+    static int native_image_crop(Interpreter *vm, void *data, int argCount, Value *args)
+    {
+        ScriptImage *img = (ScriptImage *)data;
+        if (!has_image_data(img))
+        {
+            Error("Image.crop called on invalid image");
+            return 0;
+        }
+        if (argCount != 4 || !args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber() || !args[3].isNumber())
+        {
+            Error("Image.crop expects (x, y, w, h)");
+            return 0;
+        }
+
+        int x = (int)args[0].asNumber();
+        int y = (int)args[1].asNumber();
+        int w = (int)args[2].asNumber();
+        int h = (int)args[3].asNumber();
+        if (w <= 0 || h <= 0)
+        {
+            Error("Image.crop expects positive w and h");
+            return 0;
+        }
+
+        ImageCrop(&img->image, (Rectangle){(float)x, (float)y, (float)w, (float)h});
+        img->bpp = bpp_from_format(img->image.format);
+        return 0;
+    }
+
     static int native_create_image(Interpreter *vm, int argCount, Value *args)
     {
         if (!(argCount == 2 || argCount == 3))
@@ -789,6 +1034,11 @@ namespace BindingsImage
         vm.addNativeMethod(gImageClassDef, "save", native_image_save);
         vm.addNativeMethod(gImageClassDef, "to_graph", native_image_to_graph);
         vm.addNativeMethod(gImageClassDef, "update_graph", native_image_update_graph);
+        vm.addNativeMethod(gImageClassDef, "blit", native_image_blit);
+        vm.addNativeMethod(gImageClassDef, "draw_rect", native_image_draw_rect);
+        vm.addNativeMethod(gImageClassDef, "draw_circle", native_image_draw_circle);
+        vm.addNativeMethod(gImageClassDef, "draw_line", native_image_draw_line);
+        vm.addNativeMethod(gImageClassDef, "crop", native_image_crop);
 
         vm.registerNative("create_image", native_create_image, -1);
         vm.registerNative("create_image_from_file", native_create_image_from_file, 1);

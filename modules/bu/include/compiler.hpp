@@ -31,6 +31,7 @@ enum Precedence
 {
   PREC_NONE,
   PREC_ASSIGNMENT,
+  PREC_CONDITIONAL, // ?:
   PREC_OR,          // ||
   PREC_AND,         // &&
   PREC_BITWISE_OR,  // |
@@ -337,6 +338,7 @@ private:
 
   // Parse functions (infix)
   void binary(bool canAssign);
+  void ternary(bool canAssign);
   void and_(bool canAssign);
   void or_(bool canAssign);
   void call(bool canAssign);

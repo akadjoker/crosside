@@ -703,6 +703,8 @@ class Interpreter
   bool debugMode_;
 
   Compiler *compiler;
+  FileLoaderCallback fileLoaderCallback_ = nullptr;
+  void *fileLoaderUserdata_ = nullptr;
   Upvalue *openUpvalues;
 
   VMHooks hooks;

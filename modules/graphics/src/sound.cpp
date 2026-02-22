@@ -101,4 +101,94 @@ void SoundLib::destroy()
         UnloadSound(sounds[i].sound);
     }
     sounds.clear();
+    for (size_t i = 0; i < musics.size(); i++)
+    {
+        UnloadMusicStream(musics[i].music);
+    }
+    musics.clear();
+}
+
+// --- Music Implementation in SoundLib ---
+
+int SoundLib::loadMusic(const char *name, const char *musicPath)
+{
+    if (!IsAudioDeviceReady())
+    {
+        InitAudioDevice();
+    }
+
+    Music mus = LoadMusicStream(musicPath);
+    MusicData md;
+    md.id = (int)musics.size();
+    md.music = mus;
+    strncpy(md.name, name, MAXNAME - 1);
+    md.name[MAXNAME - 1] = '\0';
+    md.music.looping = true; // Default to looping for music
+
+    musics.push_back(md);
+
+    return md.id;
+}
+
+MusicData *SoundLib::getMusicData(int id)
+{
+    if (id < 0 || id >= (int)musics.size())
+        return nullptr;
+    return &musics[id];
+}
+
+void SoundLib::playMusic(int id)
+{
+    if (id < 0 || id >= (int)musics.size()) return;
+    PlayMusicStream(musics[id].music);
+}
+
+void SoundLib::stopMusic(int id)
+{
+    if (id < 0 || id >= (int)musics.size()) return;
+    StopMusicStream(musics[id].music);
+}
+
+void SoundLib::pauseMusic(int id)
+{
+    if (id < 0 || id >= (int)musics.size()) return;
+    PauseMusicStream(musics[id].music);
+}
+
+void SoundLib::resumeMusic(int id)
+{
+    if (id < 0 || id >= (int)musics.size()) return;
+    ResumeMusicStream(musics[id].music);
+}
+
+void SoundLib::setMusicVolume(int id, float volume)
+{
+    if (id < 0 || id >= (int)musics.size()) return;
+    SetMusicVolume(musics[id].music, volume);
+}
+
+bool SoundLib::isMusicPlaying(int id)
+{
+    if (id < 0 || id >= (int)musics.size()) return false;
+    return IsMusicStreamPlaying(musics[id].music);
+}
+
+void SoundLib::updateMusicStreams()
+{
+    for (size_t i = 0; i < musics.size(); i++)
+    {
+        if (IsMusicStreamPlaying(musics[i].music))
+        {
+            UpdateMusicStream(musics[i].music);
+        }
+    }
+}
+
+void SoundLib::destroyMusic()
+{
+    for (size_t i = 0; i < musics.size(); i++)
+    {
+        UnloadMusicStream(musics[i].music);
+    }
+    musics.clear();
 }

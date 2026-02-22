@@ -7,6 +7,7 @@
 #include <cstring>
 #include <string>
 #include <cmath>
+#include <rlgl.h>
 #include <algorithm>
 
 #define PAK_MAGIC "IMBU"
@@ -818,16 +819,29 @@ struct SoundData
     int id;
     char name[MAXNAME];
 };
+struct MusicData
+{
+    Music music;
+    int id;
+    char name[MAXNAME];
+};
 
 struct SoundLib
 {
 
     std::vector<SoundData> sounds;
+    std::vector<MusicData> musics;
+
 
     int load(const char *name, const char *soundPath);
 
+    int loadMusic(const char *name, const char *musicPath);
+
     Sound *getSound(int id);
     SoundData *getSoundData(int id);
+
+    Music *getMusic(int id);
+    MusicData *getMusicData(int id);
 
     // Play direto pelo ID
     void play(int id, float volume = 1.0f, float pitch = 1.0f);
@@ -835,13 +849,85 @@ struct SoundLib
     void pause(int id);
     void resume(int id);
 
+    // Music control
+    void playMusic(int id);
+    void stopMusic(int id);
+    void pauseMusic(int id);
+    void resumeMusic(int id);
+    void setMusicVolume(int id, float volume);
+    bool isMusicPlaying(int id);
+    void updateMusicStreams();
+    void destroyMusic();
+
     // Info
     bool isSoundPlaying(int id);
     int getSoundCount() const { return sounds.size(); }
-
+    int getMusicCount() const { return musics.size(); }
     // Cleanup
     void destroy();
 };
+
+// --- Procedural Mesh Generation ---
+struct PolyMesh
+{
+    std::vector<float> bodyVertices;
+    std::vector<float> bodyUVs;
+    std::vector<unsigned short> bodyIndices;
+    std::vector<float> edgeVertices;
+    std::vector<float> edgeUVs;
+    std::vector<unsigned short> edgeIndices;
+    // Strip data for immediate quad rendering (track mode)
+    std::vector<Vector2> bodyTopStrip;
+    std::vector<Vector2> bodyBottomStrip;
+    std::vector<float> bodyUStrip;
+    std::vector<Vector2> edgeTopStrip;
+    std::vector<Vector2> edgeBottomStrip;
+    std::vector<float> edgeUStrip;
+    float bodyUScaleStrip = 1.0f;
+    float bodyVScaleStrip = 1.0f;
+    float edgeUScaleStrip = 1.0f;
+    float edgeVScaleStrip = 1.0f;
+    float bodyScaleX = 1.0f;
+    float bodyScaleY = 1.0f;
+    float edgeScaleX = 1.0f;
+    float edgeScaleY = 1.0f;
+    Texture2D bodyTex = {0};
+    Texture2D edgeTex = {0};
+    std::vector<Vector2> points;
+    bool bodyReady = false;
+    bool edgeReady = false;
+
+    PolyMesh();
+    ~PolyMesh();
+
+    void addPoint(float x, float y);
+    void clear();
+    
+    // Compat legacy: gera apenas o corpo
+    void buildTrack(float depth, float uvScale);
+    // Gera corpo + topo (edge) em meshes separadas
+    void buildTrackLayered(float depth, float edgeWidth, float bodyUvScale, float edgeUvScale, float bodyVScale = 1.0f, float edgeVScale = 1.0f);
+    // Triangula um poligono fechado a partir de `points` e gera mesh estatica
+    void buildPolygon(float uvScale);
+    
+    void setTexture(Texture2D tex);
+    void setBodyTexture(Texture2D tex);
+    void setEdgeTexture(Texture2D tex);
+    void setTopScale(float sx, float sy);
+    void setBottomScale(float sx, float sy);
+    void draw(float x, float y, float rotation, float scale, Color tint);
+};
+
+struct MeshLib
+{
+    std::vector<PolyMesh*> meshes;
+    
+    int create();
+    PolyMesh* get(int id);
+    void destroy();
+};
+
+extern MeshLib gMeshLib;
 
 void InitScene();
 void DestroyScene();

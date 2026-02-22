@@ -38,7 +38,7 @@ namespace BindingsDraw
 
     static std::vector<LoadedShader> loadedShaders;
 
-    static Shader *getLoadedShader(int shaderId)
+    Shader *getLoadedShader(int shaderId)
     {
         if (shaderId < 0 || shaderId >= (int)loadedShaders.size())
             return nullptr;

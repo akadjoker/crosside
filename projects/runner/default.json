@@ -1,0 +1,15 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.burunner",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "Bu Runner",
+    "CONTENT_ROOT": "../bugame"
+  },
+  "Web": {
+    "SHELL": "../bugame/shell.html",
+    "CONTENT_ROOT": "../bugame"
+  },
+  "Desktop": {
+    "CONTENT_ROOT": "../bugame"
+  }
+}

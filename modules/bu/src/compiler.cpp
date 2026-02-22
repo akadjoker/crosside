@@ -111,6 +111,7 @@ void Compiler::initRules()
   rules[TOKEN_MINUS_MINUS] = {&Compiler::prefixDecrement, nullptr, PREC_NONE};
 
   // Logical
+  rules[TOKEN_QUESTION] = {nullptr, &Compiler::ternary, PREC_CONDITIONAL};
   rules[TOKEN_AND_AND] = {nullptr, &Compiler::and_, PREC_AND};
   rules[TOKEN_OR_OR] = {nullptr, &Compiler::or_, PREC_OR};
   rules[TOKEN_BANG] = {&Compiler::unary, nullptr, PREC_NONE};

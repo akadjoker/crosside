@@ -5,9 +5,17 @@
 #include "utils.hpp"
 #include <stdarg.h>
 
+#ifndef BU_RUNTIME_ONLY
+#define BU_RUNTIME_ONLY 0
+#endif
+
 Interpreter::Interpreter()
 {
+#if BU_RUNTIME_ONLY
+  compiler = nullptr;
+#else
   compiler = new Compiler(this);
+#endif
   debugMode_ = false;
   hasFatalError_ = false;
 
@@ -235,7 +243,12 @@ void Interpreter::reset()
   currentTime = 0.0f;
   hasFatalError_ = false;
 
-  compiler->clear();
+#if !BU_RUNTIME_ONLY
+  if (compiler)
+  {
+    compiler->clear();
+  }
+#endif
 }
 
 Interpreter::~Interpreter()
@@ -261,7 +274,13 @@ Interpreter::~Interpreter()
   }
 
   modules.clear();
-  delete compiler;
+#if !BU_RUNTIME_ONLY
+  if (compiler)
+  {
+    delete compiler;
+    compiler = nullptr;
+  }
+#endif
 
   freeInstances();
   freeRunningProcesses();
@@ -312,7 +331,14 @@ void Interpreter::freeBuffer(BufferInstance *b)
 
 void Interpreter::setFileLoader(FileLoaderCallback loader, void *userdata)
 {
-  compiler->setFileLoader(loader, userdata);
+  fileLoaderCallback_ = loader;
+  fileLoaderUserdata_ = userdata;
+#if !BU_RUNTIME_ONLY
+  if (compiler)
+  {
+    compiler->setFileLoader(loader, userdata);
+  }
+#endif
 }
 
 NativeClassDef *Interpreter::registerNativeClass(const char *name,
@@ -811,6 +837,11 @@ void Interpreter::resetFiber()
 
 Function *Interpreter::compile(const char *source)
 {
+#if BU_RUNTIME_ONLY
+  (void)source;
+  safetimeError("compile: compiler disabled in runtime-only build");
+  return nullptr;
+#else
   ProcessDef *proc = compiler->compile(source);
   
   // Copy global index to name mapping from compiler (convert std::vector to Vector<String*>)
@@ -830,10 +861,16 @@ Function *Interpreter::compile(const char *source)
   
   Function *mainFunc = proc->frames[0].func;
   return mainFunc;
+#endif
 }
 
 Function *Interpreter::compileExpression(const char *source)
 {
+#if BU_RUNTIME_ONLY
+  (void)source;
+  safetimeError("compileExpression: compiler disabled in runtime-only build");
+  return nullptr;
+#else
   ProcessDef *proc = compiler->compileExpression(source);
   
   // Copy global index to name mapping from compiler
@@ -853,10 +890,17 @@ Function *Interpreter::compileExpression(const char *source)
   
   Function *mainFunc = proc->frames[0].func;
   return mainFunc;
+#endif
 }
 
 bool Interpreter::run(const char *source, bool _dump)
 {
+#if BU_RUNTIME_ONLY
+  (void)source;
+  (void)_dump;
+  safetimeError("run: source execution disabled in runtime-only build, load bytecode instead");
+  return false;
+#else
   reset();
 
   ProcessDef *proc = compiler->compile(source);
@@ -894,9 +938,16 @@ bool Interpreter::run(const char *source, bool _dump)
   run_process(mainProcess);
 
   return !hasFatalError_;
+#endif
 }
 bool Interpreter::compile(const char *source, bool dump)
 {
+#if BU_RUNTIME_ONLY
+  (void)source;
+  (void)dump;
+  safetimeError("compile: compiler disabled in runtime-only build");
+  return false;
+#else
   reset();
 
   ProcessDef *proc = compiler->compile(source);
@@ -928,6 +979,7 @@ bool Interpreter::compile(const char *source, bool dump)
   }
 
   return !hasFatalError_;
+#endif
 }
 
 void Interpreter::setHooks(const VMHooks &h) { hooks = h; }

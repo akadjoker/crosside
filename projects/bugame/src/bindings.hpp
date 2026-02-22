@@ -1,7 +1,10 @@
 #pragma once
 
 #include "interpreter.hpp"
+#include "renderer.hpp"
+#include "sound.hpp"
 
+struct Shader;
 class b2Draw;
 
 namespace Bindings
@@ -45,6 +48,7 @@ namespace BindingsDraw
     void RenderWorldCommands();
     void RenderScreenCommands();
     void resetDrawCommands();
+    Shader* getLoadedShader(int shaderId);
     void unloadFonts();
    
     void addLineCommand(int x1, int y1, int x2, int y2, bool screenSpace);
@@ -72,4 +76,5 @@ namespace BindingsMessage
 {
     void registerAll(Interpreter &vm);
     void clearAllMessages();
+
 }

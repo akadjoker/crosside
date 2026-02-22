@@ -77,6 +77,7 @@ enum TokenType
     TOKEN_MINUS_MINUS,     // --
 
     TOKEN_COLON,           // :
+    TOKEN_QUESTION,        // ?
     TOKEN_RBRACKET,        //[
     TOKEN_LBRACKET,        //]
 

@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.winters",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "winters",
+    "CONTENT_ROOT": "releases/winters"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/winters"
+  }
+}

@@ -13,6 +13,7 @@
 	"/media/projectos/projects/cpp/crosside/projects/bugame/src/camera.cpp",
 	"/media/projectos/projects/cpp/crosside/projects/bugame/src/draw.cpp", 
 	"/media/projectos/projects/cpp/crosside/projects/bugame/src/ease.cpp",
+	"/media/projectos/projects/cpp/crosside/projects/bugame/src/sound.cpp",
 	"/media/projectos/projects/cpp/crosside/projects/bugame/src/image.cpp",
 	"/media/projectos/projects/cpp/crosside/projects/bugame/src/input.cpp", 
 	"/media/projectos/projects/cpp/crosside/projects/bugame/src/main.cpp",

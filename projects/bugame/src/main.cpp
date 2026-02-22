@@ -5,6 +5,7 @@
 #include "interpreter.hpp"
 #include "bindings.hpp"
 #include "camera.hpp"
+#include "sound.hpp"
 #include "platform.hpp"
 #include <cstdio>
 #include <cstdlib>
@@ -26,6 +27,7 @@ struct FileLoaderContext
     int pathCount;
     char fullPath[512];
     FileBuffer fileBuffer;
+    std::vector<unsigned char> rawFileData;
 };
 
 static bool isAbsolutePath(const char *path)
@@ -81,6 +83,22 @@ static void pathDirname(const char *path, char *out, size_t outSize)
     out[len] = '\0';
 }
 
+static bool hasSuffix(const char *str, const char *suffix)
+{
+    if (!str || !suffix)
+        return false;
+    size_t strLen = std::strlen(str);
+    size_t suffixLen = std::strlen(suffix);
+    if (suffixLen > strLen)
+        return false;
+    return std::strcmp(str + (strLen - suffixLen), suffix) == 0;
+}
+
+static bool isBytecodePath(const char *path)
+{
+    return hasSuffix(path, ".buc") || hasSuffix(path, ".bubc") || hasSuffix(path, ".bytecode");
+}
+
 const char *multiPathFileLoader(const char *filename, size_t *outSize, void *userdata)
 {
     if (!filename || !outSize || !userdata)
@@ -88,6 +106,33 @@ const char *multiPathFileLoader(const char *filename, size_t *outSize, void *use
 
     FileLoaderContext *ctx = (FileLoaderContext *)userdata;
     *outSize = 0;
+
+    auto tryLoadPath = [&](const char *path) -> const char *
+    {
+        if (!path || !*path)
+            return nullptr;
+
+        if (ctx->fileBuffer.load(path))
+        {
+            ctx->rawFileData.clear();
+            *outSize = ctx->fileBuffer.size();
+            return ctx->fileBuffer.c_str();
+        }
+
+        int bytesRead = 0;
+        unsigned char *raw = LoadFileData(path, &bytesRead);
+        if (raw && bytesRead > 0)
+        {
+            ctx->rawFileData.assign(raw, raw + bytesRead);
+            UnloadFileData(raw);
+            *outSize = ctx->rawFileData.size();
+            return reinterpret_cast<const char *>(ctx->rawFileData.data());
+        }
+
+        if (raw)
+            UnloadFileData(raw);
+        return nullptr;
+    };
 
     // If include path starts with '/' (ex: "/scripts/main.bu"), also keep relative form.
     const char *relativeName = filename;
@@ -99,12 +144,7 @@ const char *multiPathFileLoader(const char *filename, size_t *outSize, void *use
     // Absolute filesystem path: try directly.
     if (isAbsolutePath(filename))
     {
-        if (ctx->fileBuffer.load(filename))
-        {
-            *outSize = ctx->fileBuffer.size();
-            return ctx->fileBuffer.c_str();
-        }
-        return nullptr;
+        return tryLoadPath(filename);
     }
 
     // Relative include: search configured script roots first.
@@ -112,24 +152,17 @@ const char *multiPathFileLoader(const char *filename, size_t *outSize, void *use
     for (int i = 0; i < ctx->pathCount; i++)
     {
         snprintf(ctx->fullPath, sizeof(ctx->fullPath), "%s/%s", ctx->searchPaths[i], namePart);
-        if (!ctx->fileBuffer.load(ctx->fullPath))
-            continue;
-
-        *outSize = ctx->fileBuffer.size();
-        return ctx->fileBuffer.c_str();
+        const char *loaded = tryLoadPath(ctx->fullPath);
+        if (loaded)
+            return loaded;
     }
 
     // Last fallback: current working directory relative.
-    if (ctx->fileBuffer.load(filename))
-    {
-        *outSize = ctx->fileBuffer.size();
-        return ctx->fileBuffer.c_str();
-    }
-    if (relativeName != filename && ctx->fileBuffer.load(relativeName))
-    {
-        *outSize = ctx->fileBuffer.size();
-        return ctx->fileBuffer.c_str();
-    }
+    const char *loaded = tryLoadPath(filename);
+    if (loaded)
+        return loaded;
+    if (relativeName != filename)
+        return tryLoadPath(relativeName);
 
     return nullptr;
 }
@@ -453,7 +486,7 @@ int main(int argc, char *argv[])
 #if defined(PLATFORM_ANDROID)
     SetTraceLogLevel(LOG_INFO);
 #else
-    SetTraceLogLevel(LOG_WARNING);
+  //  SetTraceLogLevel(LOG_WARNING);
 #endif
 
     Interpreter vm;
@@ -480,16 +513,93 @@ int main(int argc, char *argv[])
 
     FileLoaderContext ctx{};
 
+    enum class LaunchMode
+    {
+        RunSource,
+        RunBytecode,
+        CompileBytecode
+    };
+
+#ifdef BU_RUNNER_ONLY
+    LaunchMode mode = LaunchMode::RunBytecode;
+#else
+    LaunchMode mode = LaunchMode::RunSource;
+#endif
     const char *scriptFile = nullptr;
+    const char *bytecodeOutFile = nullptr;
     std::string code;
+
     if (argc > 1)
-        scriptFile = argv[1];
+    {
+#ifdef BU_RUNNER_ONLY
+        if (std::strcmp(argv[1], "--compile-bc") == 0 || std::strcmp(argv[1], "--compile-bytecode") == 0)
+        {
+            std::string msg = "Runner build is bytecode-only. Use desktop main to compile .buc files.";
+            TraceLog(LOG_ERROR, "%s", msg.c_str());
+            return 1;
+        }
+#endif
+        if (std::strcmp(argv[1], "--compile-bc") == 0 || std::strcmp(argv[1], "--compile-bytecode") == 0)
+        {
+            mode = LaunchMode::CompileBytecode;
+            if (argc < 4)
+            {
+                std::string msg = "Usage: main --compile-bc <input.bu> <output.buc>";
+                TraceLog(LOG_ERROR, "%s", msg.c_str());
+                showFatalScreen(msg);
+                return 1;
+            }
+            scriptFile = argv[2];
+            bytecodeOutFile = argv[3];
+        }
+        else if (std::strcmp(argv[1], "--run-bc") == 0 || std::strcmp(argv[1], "--run-bytecode") == 0)
+        {
+            mode = LaunchMode::RunBytecode;
+            if (argc < 3)
+            {
+                std::string msg = "Usage: main --run-bc <file.buc>";
+                TraceLog(LOG_ERROR, "%s", msg.c_str());
+                showFatalScreen(msg);
+                return 1;
+            }
+            scriptFile = argv[2];
+        }
+        else
+        {
+            scriptFile = argv[1];
+            if (isBytecodePath(scriptFile))
+            {
+                mode = LaunchMode::RunBytecode;
+            }
+#ifdef BU_RUNNER_ONLY
+            else
+            {
+                std::string msg = "Runner expects a bytecode file (.buc/.bubc/.bytecode).";
+                TraceLog(LOG_ERROR, "%s", msg.c_str());
+                return 1;
+            }
+#endif
+        }
+    }
 
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE.c_str());
-    SetExitKey(KEY_NULL); // Disable default ESC exit from Raylib.
-    InitSound();
-
-    if (scriptFile != nullptr)
+    if (mode == LaunchMode::RunBytecode)
+    {
+        if (!scriptFile)
+        {
+#ifdef BU_RUNNER_ONLY
+            std::string msg = "Usage: runner <file.buc> or runner --run-bc <file.buc>";
+            TraceLog(LOG_ERROR, "%s", msg.c_str());
+            return 1;
+#else
+            std::string msg = "No bytecode file specified.";
+            TraceLog(LOG_ERROR, "%s", msg.c_str());
+            showFatalScreen(msg);
+            return 1;
+#endif
+        }
+    }
+#ifndef BU_RUNNER_ONLY
+    else if (scriptFile != nullptr)
     {
         code = loadFile(scriptFile, false);
         if (code.empty())
@@ -501,8 +611,10 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
+#endif
 
-    if (code.empty())
+#ifndef BU_RUNNER_ONLY
+    if (mode == LaunchMode::RunSource && code.empty())
     {
         static const char *defaultCandidates[] = {
 #ifdef __EMSCRIPTEN__
@@ -533,7 +645,21 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
-    TraceLog(LOG_INFO, "Using script: %s", scriptFile ? scriptFile : "<none>");
+#endif
+    if (mode == LaunchMode::RunBytecode)
+    {
+        TraceLog(LOG_INFO, "Using bytecode: %s", scriptFile ? scriptFile : "<none>");
+    }
+    else if (mode == LaunchMode::CompileBytecode)
+    {
+        TraceLog(LOG_INFO, "Compiling script to bytecode: %s -> %s",
+                 scriptFile ? scriptFile : "<none>",
+                 bytecodeOutFile ? bytecodeOutFile : "<none>");
+    }
+    else
+    {
+        TraceLog(LOG_INFO, "Using script: %s", scriptFile ? scriptFile : "<none>");
+    }
 
     // Build include search paths anchored to the loaded main script location.
     char scriptPathAbs[512] = {0};
@@ -578,6 +704,26 @@ int main(int argc, char *argv[])
 
     vm.setFileLoader(multiPathFileLoader, &ctx);
 
+    if (mode == LaunchMode::CompileBytecode)
+    {
+        bool compileOk = vm.compileToBytecode(code.c_str(), bytecodeOutFile, false);
+        if (!compileOk)
+        {
+            std::string msg = "Failed to compile bytecode: ";
+            msg += (bytecodeOutFile ? bytecodeOutFile : "<null>");
+            Error("%s", msg.c_str());
+            showFatalScreen(msg);
+            return 1;
+        }
+
+        TraceLog(LOG_INFO, "Bytecode saved: %s", bytecodeOutFile ? bytecodeOutFile : "<none>");
+        return 0;
+    }
+
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE.c_str());
+    SetExitKey(KEY_NULL); // Disable default ESC exit from Raylib.
+    InitSound();
+
     InitScene();
     gCamera.init(WINDOW_WIDTH, WINDOW_HEIGHT);
     gCamera.setScreenScaleMode(SCALE_NONE);
@@ -587,7 +733,10 @@ int main(int argc, char *argv[])
 #if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
     try
     {
-        scriptOk = vm.run(code.c_str(), false);
+        if (mode == LaunchMode::RunBytecode)
+            scriptOk = vm.loadBytecode(scriptFile);
+        else
+            scriptOk = vm.run(code.c_str(), false);
     }
     catch (const std::exception &e)
     {
@@ -607,13 +756,22 @@ int main(int argc, char *argv[])
         return 1;
     }
 #else
-    scriptOk = vm.run(code.c_str(), false);
+    if (mode == LaunchMode::RunBytecode)
+        scriptOk = vm.loadBytecode(scriptFile);
+    else
+        scriptOk = vm.run(code.c_str(), false);
 #endif
 
     if (!scriptOk)
     {
-        Error("Failed to execute script: %s", scriptFile);
-        std::string msg = "Failed to execute script: ";
+        if (mode == LaunchMode::RunBytecode)
+            Error("Failed to execute bytecode: %s", scriptFile);
+        else
+            Error("Failed to execute script: %s", scriptFile);
+
+        std::string msg = (mode == LaunchMode::RunBytecode)
+                              ? "Failed to execute bytecode: "
+                              : "Failed to execute script: ";
         msg += (scriptFile ? scriptFile : "<null>");
         showFatalScreen(msg);
         CloseWindow();
@@ -668,7 +826,9 @@ int main(int argc, char *argv[])
         float dt = GetFrameTime();
         BindingsInput::update();
         gCamera.update(dt);
+        BindingsSound::updateMusicStreams();
         UpdateFade(dt);
+        gParticleSystem.update(dt);
         gScene.updateCollision();
 
          
@@ -676,7 +836,6 @@ int main(int argc, char *argv[])
         BeginDrawing();
         ClearBackground(BACKGROUND_COLOR);
         gCamera.begin();
-        gParticleSystem.update(dt);
         BindingsDraw::resetDrawCommands();
         vm.update(dt);
         RenderScene();
@@ -696,6 +855,7 @@ int main(int argc, char *argv[])
     }
     BindingsMessage::clearAllMessages();
     gParticleSystem.clear();
+    BindingsSound::shutdown();
     BindingsBox2D::shutdownPhysics();
     BindingsDraw::unloadFonts();
  

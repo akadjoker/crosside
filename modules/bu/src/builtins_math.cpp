@@ -231,6 +231,32 @@ int native_math_lerp(Interpreter *vm, int argCount, Value *args)
     return 1;
 }
 
+// catmull(p0, p1, p2, p3, t) -> Catmull-Rom interpolation (scalar)
+int native_math_catmull(Interpreter *vm, int argCount, Value *args)
+{
+    if (argCount != 5)
+    {
+        vm->runtimeError("catmull expects 5 arguments (p0, p1, p2, p3, t)");
+        return 0;
+    }
+
+    const double p0 = args[0].asNumber();
+    const double p1 = args[1].asNumber();
+    const double p2 = args[2].asNumber();
+    const double p3 = args[3].asNumber();
+    const double t = args[4].asNumber();
+
+    const double t2 = t * t;
+    const double t3 = t2 * t;
+    const double out = 0.5 * ((2.0 * p1) +
+                              (-p0 + p2) * t +
+                              (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 +
+                              (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3);
+
+    vm->push(vm->makeDouble(out));
+    return 1;
+}
+
 // map(value, inMin, inMax, outMin, outMax) -> Remapeia valores
 int native_math_map(Interpreter *vm, int argCount, Value *args)
 {
@@ -491,6 +517,7 @@ void Interpreter::registerMath()
 
         // Utils de Jogos/Lógica
         .addFunction("lerp", native_math_lerp, 3)
+        .addFunction("catmull", native_math_catmull, 5)
         .addFunction("map", native_math_map, 5)
         .addFunction("sign", native_math_sign, 1)
         .addFunction("hypot", native_math_hypot, 2)

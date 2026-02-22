@@ -406,6 +406,28 @@ void Compiler::binary(bool canAssign)
     }
 }
 
+void Compiler::ternary(bool canAssign)
+{
+    (void)canAssign;
+
+    // Condition value is already on stack.
+    int elseJump = emitJump(OP_JUMP_IF_FALSE);
+    emitByte(OP_POP); // Pop condition for true branch
+
+    // True expression
+    parsePrecedence(PREC_ASSIGNMENT);
+    consume(TOKEN_COLON, "Expect ':' in conditional expression");
+
+    int endJump = emitJump(OP_JUMP);
+
+    // False expression
+    patchJump(elseJump);
+    emitByte(OP_POP); // Pop condition for false branch
+    parsePrecedence(PREC_ASSIGNMENT);
+
+    patchJump(endJump);
+}
+
 void Compiler::bufferLiteral(bool canAssign)
 {
     (void)canAssign; // Buffers não podem ser l-values

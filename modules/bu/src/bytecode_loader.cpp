@@ -18,7 +18,14 @@ static const uint32 kInvalidIpOffset = 0xFFFFFFFFu;
 class BytecodeReader
 {
 public:
-  explicit BytecodeReader(FILE *file) : file_(file), ok_(true) {}
+  BytecodeReader()
+      : file_(nullptr), memory_(nullptr), memorySize_(0), memoryOffset_(0), ok_(true) {}
+
+  explicit BytecodeReader(FILE *file)
+      : file_(file), memory_(nullptr), memorySize_(0), memoryOffset_(0), ok_(true) {}
+
+  BytecodeReader(const uint8 *memory, size_t memorySize)
+      : file_(nullptr), memory_(memory), memorySize_(memorySize), memoryOffset_(0), ok_(true) {}
 
   bool ok() const { return ok_; }
 
@@ -40,7 +47,19 @@ public:
       return false;
     }
 
-    if (fread(data, 1, size, file_) != size)
+    if (memory_)
+    {
+      if (memoryOffset_ + size > memorySize_)
+      {
+        ok_ = false;
+        return false;
+      }
+      std::memcpy(data, memory_ + memoryOffset_, size);
+      memoryOffset_ += size;
+      return true;
+    }
+
+    if (!file_ || fread(data, 1, size, file_) != size)
     {
       ok_ = false;
       return false;
@@ -155,6 +174,9 @@ public:
 
 private:
   FILE *file_;
+  const uint8 *memory_;
+  size_t memorySize_;
+  size_t memoryOffset_;
   bool ok_;
 };
 
@@ -1671,14 +1693,43 @@ bool Interpreter::loadBytecode(const char *filename)
     return false;
   }
 
-  FILE *file = std::fopen(filename, "rb");
-  if (!file)
+  const uint8 *bytecodeData = nullptr;
+  size_t bytecodeSize = 0;
+
+  if (fileLoaderCallback_)
   {
-    safetimeError("loadBytecode: failed to open '%s' for reading", filename);
-    return false;
+    size_t loadedSize = 0;
+    const char *loadedData = fileLoaderCallback_(filename, &loadedSize, fileLoaderUserdata_);
+    if (loadedData && loadedSize > 0)
+    {
+      bytecodeData = reinterpret_cast<const uint8 *>(loadedData);
+      bytecodeSize = loadedSize;
+    }
   }
 
-  BytecodeReader reader(file);
+  FILE *file = nullptr;
+  if (!bytecodeData)
+  {
+    file = std::fopen(filename, "rb");
+    if (!file)
+    {
+      safetimeError("loadBytecode: failed to open '%s' for reading", filename);
+      return false;
+    }
+  }
+
+  auto closeInputFile = [&]()
+  {
+    if (file)
+    {
+      std::fclose(file);
+      file = nullptr;
+    }
+  };
+
+  BytecodeReader reader = bytecodeData
+                              ? BytecodeReader(bytecodeData, bytecodeSize)
+                              : BytecodeReader(file);
 
   uint8 magic[sizeof(BytecodeFormat::MAGIC)] = {};
   uint16 versionMajor = 0;
@@ -1709,14 +1760,14 @@ bool Interpreter::loadBytecode(const char *filename)
   if (!ok)
   {
     safetimeError("loadBytecode: failed to read header from '%s'", filename);
-    std::fclose(file);
+    closeInputFile();
     return false;
   }
 
   if (std::memcmp(magic, BytecodeFormat::MAGIC, sizeof(BytecodeFormat::MAGIC)) != 0)
   {
     safetimeError("loadBytecode: invalid magic in '%s'", filename);
-    std::fclose(file);
+    closeInputFile();
     return false;
   }
 
@@ -1729,7 +1780,7 @@ bool Interpreter::loadBytecode(const char *filename)
                   filename,
                   BytecodeFormat::VERSION_MAJOR,
                   BytecodeFormat::VERSION_MINOR);
-    std::fclose(file);
+    closeInputFile();
     return false;
   }
 
@@ -1788,11 +1839,33 @@ bool Interpreter::loadBytecode(const char *filename)
   if (!ok || !reader.ok())
   {
     safetimeError("loadBytecode: failed to deserialize '%s'", filename);
-    std::fclose(file);
+    closeInputFile();
     reset();
     return false;
   }
 
-  std::fclose(file);
+  closeInputFile();
+
+  // Match Interpreter::run() bootstrap behavior:
+  // spawn the first process as main and execute initial script pass.
+  if (!processes.empty() && processes[0] != nullptr)
+  {
+    mainProcess = spawnProcess(processes[0]);
+    if (!mainProcess)
+    {
+      safetimeError("loadBytecode: failed to spawn main process from '%s'", filename);
+      reset();
+      return false;
+    }
+
+    currentProcess = mainProcess;
+    run_process(mainProcess);
+    if (hasFatalError_)
+    {
+      safetimeError("loadBytecode: fatal error while bootstrapping '%s'", filename);
+      return false;
+    }
+  }
+
   return true;
 }

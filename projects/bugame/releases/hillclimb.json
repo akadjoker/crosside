@@ -1,0 +1,12 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.hillclimb",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "hillclimb",
+    "CONTENT_ROOT": "releases/hillclimb"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/hillclimb"
+  }
+}

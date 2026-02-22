@@ -2432,7 +2432,7 @@ void Compiler::dot(bool canAssign)
 
 void Compiler::subscript(bool canAssign)
 {
-    // arr[index] ou arr[index] = value
+    // arr[index], arr[index] = value ou arr[index] op= value
 
     expression(); // Index expression
     consume(TOKEN_RBRACKET, "Expect ']' after subscript");
@@ -2441,6 +2441,47 @@ void Compiler::subscript(bool canAssign)
     {
         // arr[i] = value
         expression(); // Value
+        emitByte(OP_SET_INDEX);
+    }
+    else if (canAssign && match(TOKEN_PLUS_EQUAL))
+    {
+        // Stack: [container, index]
+        emitByte(OP_COPY2);    // [container, index, container, index]
+        emitByte(OP_GET_INDEX); // [container, index, old_value]
+        expression();          // [container, index, old_value, value]
+        emitByte(OP_ADD);      // [container, index, new_value]
+        emitByte(OP_SET_INDEX); // [new_value]
+    }
+    else if (canAssign && match(TOKEN_MINUS_EQUAL))
+    {
+        emitByte(OP_COPY2);
+        emitByte(OP_GET_INDEX);
+        expression();
+        emitByte(OP_SUBTRACT);
+        emitByte(OP_SET_INDEX);
+    }
+    else if (canAssign && match(TOKEN_STAR_EQUAL))
+    {
+        emitByte(OP_COPY2);
+        emitByte(OP_GET_INDEX);
+        expression();
+        emitByte(OP_MULTIPLY);
+        emitByte(OP_SET_INDEX);
+    }
+    else if (canAssign && match(TOKEN_SLASH_EQUAL))
+    {
+        emitByte(OP_COPY2);
+        emitByte(OP_GET_INDEX);
+        expression();
+        emitByte(OP_DIVIDE);
+        emitByte(OP_SET_INDEX);
+    }
+    else if (canAssign && match(TOKEN_PERCENT_EQUAL))
+    {
+        emitByte(OP_COPY2);
+        emitByte(OP_GET_INDEX);
+        expression();
+        emitByte(OP_MODULO);
         emitByte(OP_SET_INDEX);
     }
     else

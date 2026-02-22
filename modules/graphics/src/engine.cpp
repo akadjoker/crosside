@@ -42,6 +42,7 @@ void DestroyScene()
     {
         gScene.layers[i].destroy();
     }
+    gMeshLib.destroy();
     gGraphLib.destroy();
 }
 

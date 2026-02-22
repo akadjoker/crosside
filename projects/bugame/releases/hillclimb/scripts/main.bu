@@ -1,0 +1,977 @@
+// === FUN HILL CLIMB DEMO ===
+// Loads track points from JSON, builds mesh terrain and Box2D chain.
+
+import math;
+import fs;
+import json;
+
+var VIEW_W = 1280;
+var VIEW_H = 720;
+
+var KEY_A = 65;
+var KEY_D = 68;
+var KEY_S = 83;
+var KEY_R = 82;
+var KEY_F1 = 290;
+var KEY_ESCAPE = 256;
+
+var CAM_X = 0.0;
+var CAM_Y = 0.0;
+
+var MESH_ID = -1;
+var BODY_TEX = -1;
+var EDGE_TEX = -1;
+
+var TRACK_FILE_PRIMARY = "track_points.json";
+var TRACK_FILE_FALLBACK = "bin/track_points.json";
+
+var TRACK_DEPTH = 860.0;
+var TRACK_STEPS = 8;
+
+var TOP_SCALE_X = 1.0;
+var TOP_SCALE_Y = 1.0;
+var BOTTOM_SCALE_X = 2.0;
+var BOTTOM_SCALE_Y = 10.0;
+
+var TRACK_X = [];
+var TRACK_Y = [];
+var SPLINE_X = [];
+var SPLINE_Y = [];
+
+var WORLD_MIN_X = -400.0;
+var WORLD_MAX_X = 4000.0;
+var WORLD_MIN_Y = -300.0;
+var WORLD_MAX_Y = 2600.0;
+
+var GROUND_BODY = nil;
+
+var CAR_BODY = nil;
+var WHEEL_REAR = nil;
+var WHEEL_FRONT = nil;
+var JOINT_REAR = nil;
+var JOINT_FRONT = nil;
+
+var CAR_HALF_W = 70.0;
+var CAR_HALF_H = 20.0;
+var WHEEL_RADIUS = 30.0;
+var AXLE_Y = 42.0;
+var AXLE_REAR_X = -50.0;
+var AXLE_FRONT_X = 60.0;
+
+var MOTOR_SPEED = 0.0;
+var MOTOR_SPEED_FWD = 1060.0;
+var MOTOR_SPEED_REV = -100.0;
+var MOTOR_TORQUE_MAX = 2500.0;
+
+var SUSP_HERTZ = 8.0;
+var SUSP_DAMP_RATIO = 0.1;
+var PI = 3.14159265;
+
+var LAST_TRACK_FILE = "";
+var INFO_TEXT = "";
+var PHYS_DEBUG = true;
+var RESET_COOLDOWN = 0.0;
+var FLIP_TIMER = 0.0;
+var FLIP_RESET_TIME = 2.20;
+var FLIP_ANGLE_LIMIT = 145.0;
+var FLIP_WARNING = false;
+var FLIP_COUNTDOWN_PREV = -1;
+
+// --- Run loop (fuel + coins) ---
+var RUN_START_X = 0.0;
+var RUN_DISTANCE_M = 0.0;
+var BEST_DISTANCE_M = 0.0;
+var RUN_COINS = 0;
+var TOTAL_COINS = 0;
+
+var FUEL_MAX = 100.0;
+var FUEL = 100.0;
+var FUEL_CONSUME_DRIVE = 8.2;
+var FUEL_CONSUME_IDLE = 1.1;
+var FUEL_CONSUME_BRAKE = 0.6;
+var FUEL_PICKUP_AMOUNT = 34.0;
+var FUEL_EMPTY_WARNED = false;
+
+var PICKUP_X = [];
+var PICKUP_Y = [];
+var PICKUP_KIND = [];   // 0=coin, 1=fuel
+var PICKUP_ACTIVE = [];
+var PICKUP_COUNT = 0;
+
+
+def clamp(v, min_v, max_v)
+{
+    if (v < min_v) return min_v;
+    if (v > max_v) return max_v;
+    return v;
+}
+
+def set_info(_msg)
+{
+    INFO_TEXT = _msg;
+}
+
+def normalize_angle_deg(a)
+{
+    while (a > 180) a -= 360;
+    while (a < -180) a += 360;
+    return a;
+}
+
+def commit_run_progress()
+{
+    if (RUN_DISTANCE_M > BEST_DISTANCE_M) BEST_DISTANCE_M = RUN_DISTANCE_M;
+}
+
+def update_world_bounds()
+{
+    if (len(TRACK_X) < 2)
+    {
+        WORLD_MIN_X = -400;
+        WORLD_MAX_X = 4000;
+        WORLD_MIN_Y = -300;
+        WORLD_MAX_Y = 2600;
+        return;
+    }
+
+    var min_x = TRACK_X[0];
+    var max_x = TRACK_X[0];
+    var min_y = TRACK_Y[0];
+    var max_y = TRACK_Y[0];
+
+    var i = 1;
+    while (i < len(TRACK_X))
+    {
+        var x = TRACK_X[i];
+        var y = TRACK_Y[i];
+        if (x < min_x) min_x = x;
+        if (x > max_x) max_x = x;
+        if (y < min_y) min_y = y;
+        if (y > max_y) max_y = y;
+        i += 1;
+    }
+
+    WORLD_MIN_X = min_x - 700;
+    WORLD_MAX_X = max_x + 700;
+    WORLD_MIN_Y = min_y - 550;
+    WORLD_MAX_Y = max_y + TRACK_DEPTH + 450;
+}
+
+def load_track_from_json()
+{
+    TRACK_X.clear();
+    TRACK_Y.clear();
+
+    var raw = fs.read(TRACK_FILE_PRIMARY);
+    LAST_TRACK_FILE = TRACK_FILE_PRIMARY;
+    if (!raw)
+    {
+        raw = fs.read(TRACK_FILE_FALLBACK);
+        LAST_TRACK_FILE = TRACK_FILE_FALLBACK;
+    }
+
+    if (!raw)
+    {
+        // Fallback profile if file is missing.
+        var i = 0;
+        while (i < 20)
+        {
+            var x = i * 180;
+            var y = 360 + sin(i * 0.45) * 85 + sin(i * 0.17) * 35;
+            TRACK_X.push(x);
+            TRACK_Y.push(y);
+            i += 1;
+        }
+        TRACK_STEPS = 8;
+        TRACK_DEPTH = 860;
+        set_info("Track file not found, using fallback profile");
+        return;
+    }
+
+    var obj = json.parse(raw);
+    if (!obj)
+    {
+        set_info("JSON parse failed, using fallback profile");
+
+        var j = 0;
+        while (j < 20)
+        {
+            var fx = j * 180;
+            var fy = 360 + sin(j * 0.45) * 85 + sin(j * 0.17) * 35;
+            TRACK_X.push(fx);
+            TRACK_Y.push(fy);
+            j += 1;
+        }
+        TRACK_STEPS = 8;
+        TRACK_DEPTH = 860;
+        return;
+    }
+
+    var pts = obj["points"];
+    if (!pts || len(pts) < 2)
+    {
+        set_info("Invalid points in JSON, using fallback profile");
+
+        var k = 0;
+        while (k < 20)
+        {
+            var gx = k * 180;
+            var gy = 360 + sin(k * 0.45) * 85 + sin(k * 0.17) * 35;
+            TRACK_X.push(gx);
+            TRACK_Y.push(gy);
+            k += 1;
+        }
+        TRACK_STEPS = 8;
+        TRACK_DEPTH = 860;
+        return;
+    }
+
+    var p = 0;
+    while (p < len(pts))
+    {
+        var entry = pts[p];
+        if (entry && len(entry) >= 2)
+        {
+            TRACK_X.push(entry[0]);
+            TRACK_Y.push(entry[1]);
+        }
+        p += 1;
+    }
+
+    if (len(TRACK_X) < 2)
+    {
+        // very defensive fallback
+        TRACK_X.clear();
+        TRACK_Y.clear();
+
+        var n = 0;
+        while (n < 20)
+        {
+            TRACK_X.push(n * 180);
+            TRACK_Y.push(360 + sin(n * 0.45) * 85);
+            n += 1;
+        }
+    }
+
+    var v_depth = obj["depth"];
+    if (v_depth) TRACK_DEPTH = v_depth;
+
+    var v_steps = obj["steps"];
+    if (v_steps) TRACK_STEPS = int(v_steps);
+    TRACK_STEPS = clamp(TRACK_STEPS, 2, 24);
+
+    set_info("Loaded track: " + LAST_TRACK_FILE);
+}
+
+def build_spline_points()
+{
+    SPLINE_X.clear();
+    SPLINE_Y.clear();
+
+    var n = len(TRACK_X);
+    if (n < 2) return;
+
+    if (n == 2)
+    {
+        SPLINE_X.push(TRACK_X[0]); SPLINE_Y.push(TRACK_Y[0]);
+        SPLINE_X.push(TRACK_X[1]); SPLINE_Y.push(TRACK_Y[1]);
+        return;
+    }
+
+    var i = 0;
+    while (i < n - 1)
+    {
+        var i0 = i - 1; if (i0 < 0) i0 = 0;
+        var i1 = i;
+        var i2 = i + 1;
+        var i3 = i + 2; if (i3 > n - 1) i3 = n - 1;
+
+        var p0x = TRACK_X[i0]; var p0y = TRACK_Y[i0];
+        var p1x = TRACK_X[i1]; var p1y = TRACK_Y[i1];
+        var p2x = TRACK_X[i2]; var p2y = TRACK_Y[i2];
+        var p3x = TRACK_X[i3]; var p3y = TRACK_Y[i3];
+
+        var s = 0;
+        while (s < TRACK_STEPS)
+        {
+            var t = s / TRACK_STEPS;
+            var sx = math.catmull(p0x, p1x, p2x, p3x, t);
+            var sy = math.catmull(p0y, p1y, p2y, p3y, t);
+
+            if (len(SPLINE_X) > 0)
+            {
+                var prev_x = SPLINE_X[len(SPLINE_X) - 1];
+                if (sx < prev_x + 1) sx = prev_x + 1;
+            }
+
+            SPLINE_X.push(sx);
+            SPLINE_Y.push(sy);
+            s += 1;
+        }
+
+        i += 1;
+    }
+
+    SPLINE_X.push(TRACK_X[n - 1]);
+    SPLINE_Y.push(TRACK_Y[n - 1]);
+}
+
+def build_pickups()
+{
+    PICKUP_X.clear();
+    PICKUP_Y.clear();
+    PICKUP_KIND.clear();
+    PICKUP_ACTIVE.clear();
+    PICKUP_COUNT = 0;
+
+    if (len(SPLINE_X) < 8) return;
+
+    var next_coin_x = SPLINE_X[0] + 180;
+    var next_fuel_x = SPLINE_X[0] + 700;
+
+    var i = 0;
+    while (i < len(SPLINE_X))
+    {
+        var x = SPLINE_X[i];
+        var y = SPLINE_Y[i];
+
+        if (x >= next_coin_x)
+        {
+            PICKUP_X.push(x);
+            PICKUP_Y.push(y - 42);
+            PICKUP_KIND.push(0);
+            PICKUP_ACTIVE.push(true);
+            PICKUP_COUNT += 1;
+            next_coin_x += math.rand(150, 240);
+        }
+
+        if (x >= next_fuel_x)
+        {
+            PICKUP_X.push(x);
+            PICKUP_Y.push(y - 56);
+            PICKUP_KIND.push(1);
+            PICKUP_ACTIVE.push(true);
+            PICKUP_COUNT += 1;
+            next_fuel_x += math.rand(840, 1180);
+        }
+
+        i += 1;
+    }
+}
+
+def reset_pickups()
+{
+    var i = 0;
+    while (i < PICKUP_COUNT)
+    {
+        PICKUP_ACTIVE[i] = true;
+        i += 1;
+    }
+}
+
+def rebuild_mesh()
+{
+    mesh_clear(MESH_ID);
+
+    var i = 0;
+    while (i < len(SPLINE_X))
+    {
+        mesh_add_point(MESH_ID, SPLINE_X[i], SPLINE_Y[i]);
+        i += 1;
+    }
+
+    mesh_set_scale_top(MESH_ID, TOP_SCALE_X, TOP_SCALE_Y);
+    mesh_set_scale_bottom(MESH_ID, BOTTOM_SCALE_X, BOTTOM_SCALE_Y);
+
+    mesh_build_track(MESH_ID, TRACK_DEPTH);
+
+    if (BODY_TEX != -1) mesh_set_body_texture(MESH_ID, BODY_TEX);
+    if (EDGE_TEX != -1) mesh_set_edge_texture(MESH_ID, EDGE_TEX);
+}
+
+def rebuild_ground_chain()
+{
+    if (GROUND_BODY) GROUND_BODY.remove();
+
+    var ground_def = create_bodydef(BODY_STATIC);
+    ground_def.set_position(0, 0);
+    GROUND_BODY = create_body(ground_def);
+
+    var fx = create_fixture_def();
+    fx.set_friction(1.0);
+    fx.set_restitution(0.0);
+
+    var chain_points = [];
+    var i = 0;
+    while (i < len(SPLINE_X))
+    {
+        chain_points.push(SPLINE_X[i]);
+        chain_points.push(SPLINE_Y[i]);
+        i += 1;
+    }
+
+    if (len(chain_points) >= 4)
+    {
+        GROUND_BODY.add_chain(chain_points, false, fx);
+    }
+
+    // Safety walls so car doesn't escape the world.
+    var left_x = SPLINE_X[0] - 40;
+    var right_x = SPLINE_X[len(SPLINE_X) - 1] + 40;
+    GROUND_BODY.add_edge(left_x, SPLINE_Y[0] - 1200, left_x, SPLINE_Y[0] + TRACK_DEPTH + 200, fx);
+    GROUND_BODY.add_edge(right_x, SPLINE_Y[len(SPLINE_Y) - 1] - 1200, right_x, SPLINE_Y[len(SPLINE_Y) - 1] + TRACK_DEPTH + 200, fx);
+}
+
+def destroy_car()
+{
+    if (JOINT_REAR) JOINT_REAR.destroy();
+    if (JOINT_FRONT) JOINT_FRONT.destroy();
+    JOINT_REAR = nil;
+    JOINT_FRONT = nil;
+
+    if (WHEEL_REAR) WHEEL_REAR.remove();
+    if (WHEEL_FRONT) WHEEL_FRONT.remove();
+    if (CAR_BODY) CAR_BODY.remove();
+
+    WHEEL_REAR = nil;
+    WHEEL_FRONT = nil;
+    CAR_BODY = nil;
+}
+
+def spawn_car(px, py)
+{
+    // Reuse existing bodies/joints on reset to avoid native pointer churn/crashes.
+    if (CAR_BODY && WHEEL_REAR && WHEEL_FRONT && JOINT_REAR && JOINT_FRONT)
+    {
+        CAR_BODY.set_transform(px, py, 0);
+        CAR_BODY.set_linear_velocity(0, 0);
+        CAR_BODY.set_angular_velocity(0);
+        CAR_BODY.set_awake(true);
+
+        WHEEL_REAR.set_transform(px + AXLE_REAR_X, py + AXLE_Y, 0);
+        WHEEL_REAR.set_linear_velocity(0, 0);
+        WHEEL_REAR.set_angular_velocity(0);
+        WHEEL_REAR.set_awake(true);
+
+        WHEEL_FRONT.set_transform(px + AXLE_FRONT_X, py + AXLE_Y, 0);
+        WHEEL_FRONT.set_linear_velocity(0, 0);
+        WHEEL_FRONT.set_angular_velocity(0);
+        WHEEL_FRONT.set_awake(true);
+
+        MOTOR_SPEED = 0;
+        JOINT_REAR.set_motor_speed(0);
+        JOINT_FRONT.set_motor_speed(0);
+        FLIP_TIMER = 0.0;
+        FLIP_WARNING = false;
+        FLIP_COUNTDOWN_PREV = -1;
+        return;
+    }
+
+    var car_def = create_bodydef(BODY_DYNAMIC);
+    car_def.set_position(px, py);
+    car_def.set_linear_damping(0.10);
+    car_def.set_angular_damping(0.80);
+    CAR_BODY = create_body(car_def);
+
+    var car_fx = create_fixture_def();
+    car_fx.set_box_shape(CAR_HALF_W, CAR_HALF_H);
+    car_fx.set_density(0.1);
+    car_fx.set_friction(0.1);
+    car_fx.set_restitution(0.05);
+    CAR_BODY.add_fixture(car_fx);
+
+    var wr_def = create_bodydef(BODY_DYNAMIC);
+    wr_def.set_position(px + AXLE_REAR_X, py + AXLE_Y);
+    wr_def.set_linear_damping(0.05);
+    WHEEL_REAR = create_body(wr_def);
+
+    var wf_def = create_bodydef(BODY_DYNAMIC);
+    wf_def.set_position(px + AXLE_FRONT_X, py + AXLE_Y);
+    wf_def.set_linear_damping(0.05);
+    WHEEL_FRONT = create_body(wf_def);
+
+    var wheel_rear_fx = create_fixture_def();
+    wheel_rear_fx.set_circle_shape(WHEEL_RADIUS);
+    wheel_rear_fx.set_density(0.80);
+    wheel_rear_fx.set_friction(1.20);
+    wheel_rear_fx.set_restitution(0.04);
+    WHEEL_REAR.add_fixture(wheel_rear_fx);
+
+    var wheel_front_fx = create_fixture_def();
+    wheel_front_fx.set_circle_shape(WHEEL_RADIUS);
+    wheel_front_fx.set_density(0.80);
+    wheel_front_fx.set_friction(1.00);
+    wheel_front_fx.set_restitution(0.04);
+    WHEEL_FRONT.add_fixture(wheel_front_fx);
+
+    var mass = WHEEL_REAR.get_mass();
+    var omega = 2.0 * PI * SUSP_HERTZ;
+    var susp_stiff = mass * omega * omega;
+    var susp_damp = 2.0 * mass * SUSP_DAMP_RATIO * omega;
+
+    var j1 = WheelJointDef();
+    j1.initialize(CAR_BODY, WHEEL_REAR, px + AXLE_REAR_X, py + AXLE_Y, 0, 1);
+    j1.set_collide_connected(false);
+    j1.set_enable_motor(true);
+    j1.set_max_motor_torque(MOTOR_TORQUE_MAX);
+    j1.set_motor_speed(0);
+    j1.set_stiffness(susp_stiff);
+    j1.set_damping(susp_damp);
+    JOINT_REAR = WheelJoint(j1);
+
+    var j2 = WheelJointDef();
+    j2.initialize(CAR_BODY, WHEEL_FRONT, px + AXLE_FRONT_X, py + AXLE_Y, 0, 1);
+    j2.set_collide_connected(false);
+    j2.set_enable_motor(false);
+    j2.set_max_motor_torque(MOTOR_TORQUE_MAX);
+    j2.set_motor_speed(0);
+    j2.set_stiffness(susp_stiff);
+    j2.set_damping(susp_damp);
+    JOINT_FRONT = WheelJoint(j2);
+
+    MOTOR_SPEED = 0;
+    FLIP_TIMER = 0.0;
+    FLIP_WARNING = false;
+    FLIP_COUNTDOWN_PREV = -1;
+}
+
+def reset_car_to_start()
+{
+    if (len(SPLINE_X) < 2) return;
+
+    var sx = SPLINE_X[0] + 120;
+    var sy = SPLINE_Y[0] - 90;
+    RUN_START_X = sx;
+
+    spawn_car(sx, sy);
+    CAM_X = sx - VIEW_W * 0.35;
+    CAM_Y = sy - VIEW_H * 0.65;
+}
+
+def restart_run(_reason)
+{
+    commit_run_progress();
+
+    RUN_DISTANCE_M = 0.0;
+    RUN_COINS = 0;
+    FUEL = FUEL_MAX;
+    FUEL_EMPTY_WARNED = false;
+    FLIP_TIMER = 0.0;
+    FLIP_WARNING = false;
+    FLIP_COUNTDOWN_PREV = -1;
+
+    reset_pickups();
+    reset_car_to_start();
+
+    if (_reason) set_info(_reason);
+}
+
+def update_run_distance()
+{
+    if (!CAR_BODY) return;
+    var (cx, cy) = CAR_BODY.get_position();
+    var d = (cx - RUN_START_X) / 30.0;
+    if (d < 0) d = 0;
+    if (d > RUN_DISTANCE_M) RUN_DISTANCE_M = d;
+}
+
+def update_fuel(dt)
+{
+    if (!CAR_BODY) return;
+
+    var consume = FUEL_CONSUME_IDLE;
+    if (key_down(KEY_D) || key_down(KEY_A)) consume = FUEL_CONSUME_DRIVE;
+    elif (key_down(KEY_S)) consume = FUEL_CONSUME_BRAKE;
+
+    FUEL -= consume * dt;
+    if (FUEL < 0) FUEL = 0;
+
+    if (FUEL <= 0 && !FUEL_EMPTY_WARNED)
+    {
+        set_info("Sem combustivel! Apanha um bidon.");
+        FUEL_EMPTY_WARNED = true;
+    }
+}
+
+def update_pickups()
+{
+    if (!CAR_BODY || PICKUP_COUNT <= 0) return;
+
+    var (cx, cy) = CAR_BODY.get_position();
+    var i = 0;
+    while (i < PICKUP_COUNT)
+    {
+        if (!PICKUP_ACTIVE[i]) { i += 1; continue; }
+
+        var dx = cx - PICKUP_X[i];
+        var dy = cy - PICKUP_Y[i];
+        var d2 = dx * dx + dy * dy;
+
+        if (PICKUP_KIND[i] == 0)
+        {
+            if (d2 < 26 * 26)
+            {
+                PICKUP_ACTIVE[i] = false;
+                RUN_COINS += 1;
+                TOTAL_COINS += 1;
+                set_info(format("Moeda +1  ({} run / {} total)", RUN_COINS, TOTAL_COINS));
+            }
+        }
+        else
+        {
+            if (d2 < 34 * 34)
+            {
+                PICKUP_ACTIVE[i] = false;
+                FUEL += FUEL_PICKUP_AMOUNT;
+                if (FUEL > FUEL_MAX) FUEL = FUEL_MAX;
+                FUEL_EMPTY_WARNED = false;
+                set_info(format("Combustivel +{}", int(FUEL_PICKUP_AMOUNT)));
+            }
+        }
+
+        i += 1;
+    }
+}
+
+def update_car_controls(dt)
+{
+    if (!JOINT_REAR) return;
+    if (FUEL <= 0)
+    {
+        MOTOR_SPEED = 0;
+        JOINT_REAR.set_max_motor_torque(0);
+        JOINT_REAR.set_motor_speed(0);
+        return;
+    }
+
+    if (key_down(KEY_D))
+    {
+        MOTOR_SPEED = MOTOR_SPEED_FWD;
+    }
+    elif (key_down(KEY_A))
+    {
+        MOTOR_SPEED = MOTOR_SPEED_REV;
+    }
+    else
+    {
+        MOTOR_SPEED = 0.0;
+    }
+
+    if (key_down(KEY_S)) MOTOR_SPEED = 0.0;
+
+    JOINT_REAR.set_max_motor_torque(MOTOR_TORQUE_MAX);
+    JOINT_REAR.set_motor_speed(MOTOR_SPEED);
+}
+
+def update_camera(dt)
+{
+    if (!CAR_BODY) return;
+
+    var (cx, cy) = CAR_BODY.get_position();
+    var (vx, vy) = CAR_BODY.get_linear_velocity();
+
+    var look_ahead = clamp(vx * 0.24, -180, 180);
+    var target_x = cx - VIEW_W * 0.35 + look_ahead;
+    var target_y = cy - VIEW_H * 0.68;
+
+    var max_x = WORLD_MAX_X - VIEW_W;
+    var max_y = WORLD_MAX_Y - VIEW_H;
+
+    target_x = clamp(target_x, WORLD_MIN_X, max_x);
+    target_y = clamp(target_y, WORLD_MIN_Y, max_y);
+
+    CAM_X += (target_x - CAM_X) * clamp(dt * 6.0, 0.0, 1.0);
+    CAM_Y += (target_y - CAM_Y) * clamp(dt * 6.0, 0.0, 1.0);
+}
+
+def draw_background()
+{
+    set_color(18, 24, 36);
+    draw_rectangle(CAM_X - 300, CAM_Y - 300, VIEW_W + 600, VIEW_H + 600, true);
+
+    set_alpha(22);
+    set_color(90, 110, 145);
+
+    var gx = int(CAM_X / 200) * 200;
+    while (gx < CAM_X + VIEW_W + 220)
+    {
+        draw_line(gx, CAM_Y - 50, gx, CAM_Y + VIEW_H + 50);
+        gx += 200;
+    }
+
+    var gy = int(CAM_Y / 200) * 200;
+    while (gy < CAM_Y + VIEW_H + 220)
+    {
+        draw_line(CAM_X - 50, gy, CAM_X + VIEW_W + 50, gy);
+        gy += 200;
+    }
+
+    set_alpha(255);
+}
+
+def draw_car()
+{
+    if (!CAR_BODY) return;
+
+    var (cx, cy) = CAR_BODY.get_position();
+    var ca = CAR_BODY.get_angle();
+
+    var (rwx, rwy) = WHEEL_REAR.get_position();
+    var (fwx, fwy) = WHEEL_FRONT.get_position();
+
+    var rear_ax = cx + AXLE_REAR_X;
+    var rear_ay = cy + AXLE_Y;
+    var front_ax = cx + AXLE_FRONT_X;
+    var front_ay = cy + AXLE_Y;
+
+    if (JOINT_REAR)
+    {
+        var (ax1, ay1) = JOINT_REAR.get_anchor_a();
+        rear_ax = ax1;
+        rear_ay = ay1;
+    }
+    if (JOINT_FRONT)
+    {
+        var (ax2, ay2) = JOINT_FRONT.get_anchor_a();
+        front_ax = ax2;
+        front_ay = ay2;
+    }
+
+    // Suspension links
+    set_color(180, 188, 208);
+    draw_line(rear_ax, rear_ay, rwx, rwy);
+    draw_line(front_ax, front_ay, fwx, fwy);
+
+    // Wheels
+    set_color(34, 38, 46);
+    draw_circle(rwx, rwy, WHEEL_RADIUS + 2, true);
+    draw_circle(fwx, fwy, WHEEL_RADIUS + 2, true);
+
+    set_color(90, 96, 110);
+    draw_circle(rwx, rwy, WHEEL_RADIUS - 4, true);
+    draw_circle(fwx, fwy, WHEEL_RADIUS - 4, true);
+
+    // Chassis
+    set_color(200, 74, 62);
+    draw_rotated_rectangle(cx, cy, CAR_HALF_W * 2, CAR_HALF_H * 2, ca, true);
+    set_color(235, 118, 98);
+    draw_rotated_rectangle(cx + 2, cy - 4, 40, 14, ca, true);
+
+    if (PHYS_DEBUG)
+    {
+        // set_color(255, 230, 120);
+        // draw_circle(rear_ax, rear_ay, 3, true);
+        // draw_circle(front_ax, front_ay, 3, true);
+    }
+}
+
+def draw_world()
+{
+    set_draw_screen(false);
+    draw_background();
+
+    mesh_draw(MESH_ID, 0, 0, 0, 1);
+
+    // Pickups
+    var i_pick = 0;
+    while (i_pick < PICKUP_COUNT)
+    {
+        if (PICKUP_ACTIVE[i_pick])
+        {
+            var px = PICKUP_X[i_pick];
+            var py = PICKUP_Y[i_pick] + sin(time() * 4.2 + i_pick * 0.4) * 2.0;
+
+            if (PICKUP_KIND[i_pick] == 0)
+            {
+                set_color(255, 216, 90);
+                draw_circle(px, py, 10, true);
+                set_color(160, 120, 30);
+                draw_circle(px, py, 4, false);
+            }
+            else
+            {
+                set_color(90, 220, 130);
+                draw_rectangle(px - 9, py - 12, 18, 24, true);
+                set_color(220, 255, 230);
+                draw_rectangle(px - 3, py - 7, 6, 14, true);
+                set_color(60, 120, 80);
+                draw_rectangle(px - 4, py - 15, 8, 4, true);
+            }
+        }
+        i_pick += 1;
+    }
+
+    // Optional top debug line for terrain profile.
+    set_color(156, 245, 168);
+    var i = 0;
+    while (i + 1 < len(SPLINE_X))
+    {
+        draw_line(SPLINE_X[i], SPLINE_Y[i], SPLINE_X[i + 1], SPLINE_Y[i + 1]);
+        i += 1;
+    }
+
+    draw_car();
+
+    set_draw_screen(true);
+}
+
+def draw_ui()
+{
+    set_color(238, 246, 255);
+    draw_text("FUN HILL CLIMB  ", 24, 22, 30);
+
+    set_color(176, 198, 228);
+    draw_text("D: throttle  A: reverse  S: brake  R: reset run  F1: debug", 24, 62, 20);
+    draw_text("ESC: exit", 24, 88, 20);
+
+    var speed = 0;
+    var speed_ms = 0.0;
+    if (CAR_BODY)
+    {
+        var (vx, vy) = CAR_BODY.get_linear_velocity();
+        speed_ms = sqrt(vx * vx + vy * vy);
+        speed = int(speed_ms * 3.6);
+    }
+
+    set_color(255, 222, 130);
+    draw_text(format("Speed: {} km/h", speed), 24, 122, 24);
+    if (PHYS_DEBUG) draw_text(format("Raw speed: {} m/s", int(speed_ms * 100) / 100.0), 24, 146, 18);
+    draw_text(format("Dist: {}m  Best: {}m", int(RUN_DISTANCE_M), int(BEST_DISTANCE_M)), 24, 170, 20);
+    draw_text(format("Coins: {} run / {} total", RUN_COINS, TOTAL_COINS), 24, 194, 20);
+    draw_text(format("Physics debug: {}", PHYS_DEBUG), 24, 218, 20);
+
+    var fuel_pct = FUEL / FUEL_MAX;
+    if (fuel_pct < 0) fuel_pct = 0;
+    if (fuel_pct > 1) fuel_pct = 1;
+    set_color(40, 48, 58);
+    draw_rectangle(24, 246, 260, 16, true);
+    if (fuel_pct > 0.45) set_color(90, 220, 130);
+    elif (fuel_pct > 0.2) set_color(235, 190, 80);
+    else set_color(240, 95, 85);
+    draw_rectangle(26, 248, 256 * fuel_pct, 12, true);
+    set_color(210, 225, 245);
+    draw_text(format("Fuel: {}%", int(FUEL)), 294, 242, 20);
+
+    set_color(150, 170, 198);
+    draw_text(INFO_TEXT, 24, VIEW_H - 34, 18);
+
+    if (FLIP_WARNING)
+    {
+        var left_big = int((FLIP_RESET_TIME - FLIP_TIMER) + 0.999);
+        if (left_big < 0) left_big = 0;
+        set_color(255, 130, 110);
+        draw_text(format("CAPOTADO - RESET EM {}s", left_big), VIEW_W / 2 - 220, VIEW_H / 2 - 20, 34);
+    }
+}
+
+set_window_size(VIEW_W, VIEW_H);
+set_window_title("Fun Hill Climb - Bu");
+set_design_resolution(VIEW_W, VIEW_H);
+set_virtual_screen_enabled(true);
+set_screen_scale_mode(3);
+
+create_world(0, 9.8);
+set_physics_debug(PHYS_DEBUG);
+
+MESH_ID = create_mesh();
+BODY_TEX = load_graph("assets/tile5.png");
+EDGE_TEX = load_graph("assets/tile2.png");
+
+load_track_from_json();
+build_spline_points();
+build_pickups();
+update_world_bounds();
+rebuild_mesh();
+rebuild_ground_chain();
+restart_run("Corrida iniciada");
+
+loop
+{
+    var dt = delta();
+    if (RESET_COOLDOWN > 0)
+    {
+        RESET_COOLDOWN -= dt;
+        if (RESET_COOLDOWN < 0) RESET_COOLDOWN = 0;
+    }
+
+    if (key_pressed(KEY_ESCAPE))
+    {
+        let_me_alone();
+        break;
+    }
+
+    if (key_pressed(KEY_R) && RESET_COOLDOWN <= 0)
+    {
+        restart_run("Run reset");
+        RESET_COOLDOWN = 0.12;
+        FLIP_TIMER = 0.0;
+        FLIP_WARNING = false;
+        FLIP_COUNTDOWN_PREV = -1;
+    }
+    if (key_pressed(KEY_F1))
+    {
+        PHYS_DEBUG = !PHYS_DEBUG;
+        set_physics_debug(PHYS_DEBUG);
+        if (PHYS_DEBUG) set_info("Physics debug ON");
+        else set_info("Physics debug OFF");
+    }
+
+    update_fuel(dt);
+    update_car_controls(dt);
+    update_world(dt);
+    update_pickups();
+    update_run_distance();
+
+    if (CAR_BODY)
+    {
+        var (cx, cy) = CAR_BODY.get_position();
+        var body_ang = normalize_angle_deg(CAR_BODY.get_angle());
+
+        if (abs(body_ang) > FLIP_ANGLE_LIMIT)
+        {
+            FLIP_TIMER += dt;
+            FLIP_WARNING = true;
+
+            var left = int((FLIP_RESET_TIME - FLIP_TIMER) + 0.999);
+            if (left < 0) left = 0;
+            if (left != FLIP_COUNTDOWN_PREV)
+            {
+                FLIP_COUNTDOWN_PREV = left;
+                set_info(format("De pernas para o ar! Reset em {}s", left));
+            }
+
+            if (FLIP_TIMER >= FLIP_RESET_TIME)
+            {
+                restart_run("Capotou! Run reset.");
+                RESET_COOLDOWN = 0.20;
+                FLIP_TIMER = 0.0;
+                FLIP_WARNING = false;
+                FLIP_COUNTDOWN_PREV = -1;
+            }
+        }
+        else
+        {
+            if (FLIP_WARNING) set_info("Recuperaste o carro.");
+            FLIP_TIMER = 0.0;
+            FLIP_WARNING = false;
+            FLIP_COUNTDOWN_PREV = -1;
+        }
+
+        if (cy > WORLD_MAX_Y + 300)
+        {
+            restart_run("Saiu da pista! Run reset.");
+            FLIP_TIMER = 0.0;
+            FLIP_WARNING = false;
+            FLIP_COUNTDOWN_PREV = -1;
+        }
+    }
+
+    update_camera(dt);
+    set_scroll(CAM_X, CAM_Y);
+
+    draw_world();
+    draw_ui();
+
+    frame;
+}
+
