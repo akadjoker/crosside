@@ -1847,10 +1847,45 @@ bool Interpreter::loadBytecode(const char *filename)
   closeInputFile();
 
   // Match Interpreter::run() bootstrap behavior:
-  // spawn the first process as main and execute initial script pass.
-  if (!processes.empty() && processes[0] != nullptr)
+  // prefer compiler-generated script bootstrap process, then sensible fallbacks.
+  ProcessDef *entryProcess = nullptr;
+  if (!processes.empty())
   {
-    mainProcess = spawnProcess(processes[0]);
+    auto findProcessByName = [&](const char *name) -> ProcessDef *
+    {
+      if (!name || name[0] == '\0')
+        return nullptr;
+      for (auto *proc : processes)
+      {
+        if (!proc || !proc->name)
+          continue;
+        if (std::strcmp(proc->name->chars(), name) == 0)
+          return proc;
+      }
+      return nullptr;
+    };
+
+    entryProcess = findProcessByName("__main_process__");
+    if (!entryProcess)
+      entryProcess = findProcessByName("main");
+    if (!entryProcess)
+      entryProcess = findProcessByName("__main__");
+    if (!entryProcess)
+    {
+      for (auto *proc : processes)
+      {
+        if (proc)
+        {
+          entryProcess = proc;
+          break;
+        }
+      }
+    }
+  }
+
+  if (entryProcess)
+  {
+    mainProcess = spawnProcess(entryProcess);
     if (!mainProcess)
     {
       safetimeError("loadBytecode: failed to spawn main process from '%s'", filename);
