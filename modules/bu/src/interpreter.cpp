@@ -253,7 +253,7 @@ void Interpreter::reset()
 
 Interpreter::~Interpreter()
 {
-  //dumpToFile("main.dump");
+  dumpToFile("main.dump");
   Info("VM shutdown");
   Info("Memory allocated : %s", formatBytes(totalAllocated));
   Info("Classes          : %zu", getTotalClasses());

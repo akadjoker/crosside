@@ -1273,7 +1273,7 @@ op_call:
         int classId = callee.asClassNativeId();
         NativeClassDef *klass = nativeClasses[classId];
 
-        if (argCount != klass->argCount)
+        if (klass->argCount != -1 && argCount != klass->argCount)
         {
             runtimeError("Native class expects %d args, got %d",
                          klass->argCount, argCount);

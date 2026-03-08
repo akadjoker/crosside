@@ -303,6 +303,7 @@ void Interpreter::registerBase()
 void Interpreter::registerAll()
 {
   registerBase();
+  registerArray();
 
 #ifdef BU_ENABLE_MATH
   registerMath();

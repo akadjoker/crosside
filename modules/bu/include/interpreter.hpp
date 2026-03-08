@@ -1097,6 +1097,7 @@ public:
 
   // modules
   void registerBase();
+  void registerArray();
   void registerMath();
   void registerOS();
   void registerPath();
@@ -1492,3 +1493,5 @@ public:
     return v;
   }
 };
+
+bool getBuiltinTypedArrayData(const Value &value, const void **outData);
