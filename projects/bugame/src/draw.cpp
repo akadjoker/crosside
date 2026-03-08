@@ -154,6 +154,10 @@ namespace BindingsDraw
         Triangle,
         Graph,
         GraphEx,
+        GraphPart,
+        GraphPartEx,
+        Ellipse,
+        Ring,
         ClipBegin,
         ClipEnd
     };
@@ -171,6 +175,10 @@ namespace BindingsDraw
     struct TriangleCmd { int x1, y1, x2, y2, x3, y3; bool fill; };
     struct GraphCmd { int graphId; int x, y; };
     struct GraphExCmd { int graphId; int x, y; float rotation, sizeX, sizeY; bool flipX, flipY; };
+    struct GraphPartCmd { int graphId; int srcX, srcY, srcW, srcH; int x, y; };
+    struct GraphPartExCmd { int graphId; int srcX, srcY, srcW, srcH; int x, y; float rotation, sizeX, sizeY; bool flipX, flipY; };
+    struct EllipseCmd { int x, y, radiusX, radiusY; bool fill; };
+    struct RingCmd { int x, y; float innerRadius, outerRadius, startAngle, endAngle; bool fill; };
     struct ClipCmd { int x, y, width, height; };
 
     struct DrawCommand
@@ -201,6 +209,14 @@ namespace BindingsDraw
         float thickness = 1.0f;
         float originX = 0.0f;
         float originY = 0.0f;
+        float innerRadius = 0.0f;
+        float outerRadius = 0.0f;
+        float startAngle = 0.0f;
+        float endAngle = 0.0f;
+        int srcX = 0;
+        int srcY = 0;
+        int srcW = 0;
+        int srcH = 0;
         bool fill = false;
         bool flipX = false;
         bool flipY = false;
@@ -322,6 +338,44 @@ namespace BindingsDraw
         applyCurrentRenderState(cmd);
         screenCommands.push_back(std::move(cmd));
     }
+    static void enqueueScreenCommand(DrawCommandType type, Color color, const GraphPartCmd &p)
+    {
+        DrawCommand cmd;
+        cmd.type = type; cmd.color = color;
+        cmd.graphId = p.graphId; cmd.srcX = p.srcX; cmd.srcY = p.srcY; cmd.srcW = p.srcW; cmd.srcH = p.srcH;
+        cmd.x1 = p.x; cmd.y1 = p.y;
+        applyCurrentRenderState(cmd);
+        screenCommands.push_back(std::move(cmd));
+    }
+    static void enqueueScreenCommand(DrawCommandType type, Color color, const GraphPartExCmd &p)
+    {
+        DrawCommand cmd;
+        cmd.type = type; cmd.color = color;
+        cmd.graphId = p.graphId; cmd.srcX = p.srcX; cmd.srcY = p.srcY; cmd.srcW = p.srcW; cmd.srcH = p.srcH;
+        cmd.x1 = p.x; cmd.y1 = p.y; cmd.rotation = p.rotation;
+        cmd.sizeX = p.sizeX; cmd.sizeY = p.sizeY; cmd.flipX = p.flipX; cmd.flipY = p.flipY;
+        applyCurrentRenderState(cmd);
+        screenCommands.push_back(std::move(cmd));
+    }
+    static void enqueueScreenCommand(DrawCommandType type, Color color, const EllipseCmd &p)
+    {
+        DrawCommand cmd;
+        cmd.type = type; cmd.color = color;
+        cmd.x1 = p.x; cmd.y1 = p.y; cmd.width = p.radiusX; cmd.height = p.radiusY; cmd.fill = p.fill;
+        applyCurrentRenderState(cmd);
+        screenCommands.push_back(std::move(cmd));
+    }
+    static void enqueueScreenCommand(DrawCommandType type, Color color, const RingCmd &p)
+    {
+        DrawCommand cmd;
+        cmd.type = type; cmd.color = color;
+        cmd.x1 = p.x; cmd.y1 = p.y;
+        cmd.innerRadius = p.innerRadius; cmd.outerRadius = p.outerRadius;
+        cmd.startAngle = p.startAngle; cmd.endAngle = p.endAngle;
+        cmd.fill = p.fill;
+        applyCurrentRenderState(cmd);
+        screenCommands.push_back(std::move(cmd));
+    }
     static void enqueueScreenCommand(DrawCommandType type, Color color, const ClipCmd &p)
     {
         DrawCommand cmd;
@@ -358,6 +412,70 @@ namespace BindingsDraw
         }
         Font &font = loadedFonts[cmd.fontId];
         DrawTextPro(font, cmd.text.c_str(), {(float)cmd.x1, (float)cmd.y1}, {cmd.pivotX, cmd.pivotY}, cmd.rotation, (float)cmd.size, cmd.spacing, cmd.color);
+    }
+
+    static bool resolve_graph_part_source(int graphId, int srcX, int srcY, int srcW, int srcH, Texture2D **outTex, Rectangle *outSrc)
+    {
+        if (!outTex || !outSrc || srcW <= 0 || srcH <= 0)
+            return false;
+
+        Graph *graph = gGraphLib.getGraph(graphId);
+        if (!graph)
+            return false;
+
+        Texture2D *tex = gGraphLib.getTexture(graph->texture);
+        if (!tex)
+            return false;
+
+        float x = (float)srcX;
+        float y = (float)srcY;
+        float w = (float)srcW;
+        float h = (float)srcH;
+
+        if (x < 0.0f)
+        {
+            w += x;
+            x = 0.0f;
+        }
+        if (y < 0.0f)
+        {
+            h += y;
+            y = 0.0f;
+        }
+        if (x >= graph->clip.width || y >= graph->clip.height)
+            return false;
+
+        if (x + w > graph->clip.width)
+            w = graph->clip.width - x;
+        if (y + h > graph->clip.height)
+            h = graph->clip.height - y;
+
+        if (w <= 0.0f || h <= 0.0f)
+            return false;
+
+        *outTex = tex;
+        *outSrc = {graph->clip.x + x, graph->clip.y + y, w, h};
+        return true;
+    }
+
+    static void draw_graph_part_ex_impl(int graphId, int srcX, int srcY, int srcW, int srcH,
+                                        float x, float y, float angle, float sizeX, float sizeY,
+                                        bool flipX, bool flipY, Color color)
+    {
+        Texture2D *tex = nullptr;
+        Rectangle src{};
+        if (!resolve_graph_part_source(graphId, srcX, srcY, srcW, srcH, &tex, &src))
+            return;
+
+        if (angle == 0.0f && sizeX == 100.0f && sizeY == 100.0f && !flipX && !flipY)
+        {
+            DrawTextureRec(*tex, src, {x, y}, color);
+            return;
+        }
+
+        int pivotX = (int)(src.width / 2.0f);
+        int pivotY = (int)(src.height / 2.0f);
+        RenderTexturePivotRotateSizeXY(*tex, pivotX, pivotY, src, x, y, angle, sizeX, sizeY, flipX, flipY, color);
     }
 
     static void renderCommand(const DrawCommand &cmd)
@@ -442,6 +560,32 @@ namespace BindingsDraw
             }
             break;
         }
+        case DrawCommandType::GraphPart:
+        {
+            Texture2D *tex = nullptr;
+            Rectangle src{};
+            if (!resolve_graph_part_source(cmd.graphId, cmd.srcX, cmd.srcY, cmd.srcW, cmd.srcH, &tex, &src))
+                break;
+            DrawTextureRec(*tex, src, {(float)cmd.x1, (float)cmd.y1}, cmd.color);
+            break;
+        }
+        case DrawCommandType::GraphPartEx:
+            draw_graph_part_ex_impl(cmd.graphId, cmd.srcX, cmd.srcY, cmd.srcW, cmd.srcH,
+                                    (float)cmd.x1, (float)cmd.y1, cmd.rotation, cmd.sizeX, cmd.sizeY,
+                                    cmd.flipX, cmd.flipY, cmd.color);
+            break;
+        case DrawCommandType::Ellipse:
+            if (cmd.fill)
+                DrawEllipse(cmd.x1, cmd.y1, (float)cmd.width, (float)cmd.height, cmd.color);
+            else
+                DrawEllipseLines(cmd.x1, cmd.y1, (float)cmd.width, (float)cmd.height, cmd.color);
+            break;
+        case DrawCommandType::Ring:
+            if (cmd.fill)
+                DrawRing({(float)cmd.x1, (float)cmd.y1}, cmd.innerRadius, cmd.outerRadius, cmd.startAngle, cmd.endAngle, 64, cmd.color);
+            else
+                DrawRingLines({(float)cmd.x1, (float)cmd.y1}, cmd.innerRadius, cmd.outerRadius, cmd.startAngle, cmd.endAngle, 64, cmd.color);
+            break;
         case DrawCommandType::ClipBegin:
             BeginScissorMode(cmd.x1, cmd.y1, cmd.width, cmd.height);
             activeClipDepth += 1;
@@ -694,6 +838,91 @@ namespace BindingsDraw
         return 0;
     }
 
+    static int native_draw_ellipse(Interpreter *vm, int argCount, Value *args)
+    {
+        if (argCount != 5)
+        {
+            Error("draw_ellipse expects 5 arguments (x, y, radiusX, radiusY, fill)");
+            return 0;
+        }
+        if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber() || !args[3].isNumber())
+        {
+            Error("draw_ellipse expects 4 number arguments plus fill");
+            return 0;
+        }
+
+        int x = (int)args[0].asNumber();
+        int y = (int)args[1].asNumber();
+        int radiusX = (int)args[2].asNumber();
+        int radiusY = (int)args[3].asNumber();
+        bool fill = args[4].asBool();
+
+        if (radiusX <= 0 || radiusY <= 0)
+            return 0;
+
+        if (screen)
+        {
+            enqueueScreenCommand(DrawCommandType::Ellipse, currentColor, EllipseCmd{x, y, radiusX, radiusY, fill});
+            return 0;
+        }
+
+        Layer &l = gScene.layers[layer];
+        x -= l.scroll_x;
+        y -= l.scroll_y;
+
+        if (fill)
+            DRAW_IMMEDIATE(DrawEllipse(x, y, (float)radiusX, (float)radiusY, currentColor));
+        else
+            DRAW_IMMEDIATE(DrawEllipseLines(x, y, (float)radiusX, (float)radiusY, currentColor));
+        return 0;
+    }
+
+    static int native_draw_ring(Interpreter *vm, int argCount, Value *args)
+    {
+        if (argCount != 7)
+        {
+            Error("draw_ring expects 7 arguments (x, y, innerRadius, outerRadius, startAngle, endAngle, fill)");
+            return 0;
+        }
+        if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber() || !args[3].isNumber() ||
+            !args[4].isNumber() || !args[5].isNumber())
+        {
+            Error("draw_ring expects 6 number arguments plus fill");
+            return 0;
+        }
+
+        int x = (int)args[0].asNumber();
+        int y = (int)args[1].asNumber();
+        float innerRadius = (float)args[2].asNumber();
+        float outerRadius = (float)args[3].asNumber();
+        float startAngle = (float)args[4].asNumber();
+        float endAngle = (float)args[5].asNumber();
+        bool fill = args[6].asBool();
+
+        if (innerRadius < 0.0f)
+            innerRadius = 0.0f;
+        if (outerRadius < innerRadius)
+            std::swap(innerRadius, outerRadius);
+        if (outerRadius <= 0.0f)
+            return 0;
+
+        if (screen)
+        {
+            enqueueScreenCommand(DrawCommandType::Ring, currentColor, RingCmd{x, y, innerRadius, outerRadius, startAngle, endAngle, fill});
+            return 0;
+        }
+
+        Layer &l = gScene.layers[layer];
+        x -= l.scroll_x;
+        y -= l.scroll_y;
+
+        if (fill)
+            DRAW_IMMEDIATE(DrawRing({(float)x, (float)y}, innerRadius, outerRadius, startAngle, endAngle, 64, currentColor));
+        else
+            DRAW_IMMEDIATE(DrawRingLines({(float)x, (float)y}, innerRadius, outerRadius, startAngle, endAngle, 64, currentColor));
+        return 0;
+    }
+
     static int native_rectangle(Interpreter *vm, int argCount, Value *args)
     {
         if (argCount != 5)
@@ -943,40 +1172,34 @@ namespace BindingsDraw
         return 0;
     }
 
-    static int native_draw_graph_size(Interpreter *vm, int argCount, Value *args)
+    static int native_draw_graph_part(Interpreter *vm, int argCount, Value *args)
     {
-        if (argCount != 5)
+        if (argCount != 7)
         {
-            Error("draw_graph_size expects 5 arguments (graphId, x, y, width, height)");
+            Error("draw_graph_part expects 7 arguments (graphId, srcX, srcY, srcW, srcH, x, y)");
+            return 0;
+        }
+        if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber() || !args[3].isNumber() ||
+            !args[4].isNumber() || !args[5].isNumber() || !args[6].isNumber())
+        {
+            Error("draw_graph_part expects 7 number arguments");
             return 0;
         }
 
         int graphId = (int)args[0].asNumber();
-        float x = (float)args[1].asNumber();
-        float y = (float)args[2].asNumber();
-        float width = (float)args[3].asNumber();
-        float height = (float)args[4].asNumber();
-
-        if (width <= 0.0f || height <= 0.0f)
-        {
-            return 0;
-        }
-
-        Graph *graph = gGraphLib.getGraph(graphId);
-        if (!graph) return 0;
-        Texture2D *tex = gGraphLib.getTexture(graph->texture);
-        if (!tex) return 0;
-        if (graph->clip.width <= 0.0f || graph->clip.height <= 0.0f) return 0;
-
-        float sizeX = (width / graph->clip.width) * 100.0f;
-        float sizeY = (height / graph->clip.height) * 100.0f;
+        int srcX = (int)args[1].asNumber();
+        int srcY = (int)args[2].asNumber();
+        int srcW = (int)args[3].asNumber();
+        int srcH = (int)args[4].asNumber();
+        float x = (float)args[5].asNumber();
+        float y = (float)args[6].asNumber();
 
         if (screen)
         {
             enqueueScreenCommand(
-                DrawCommandType::GraphEx,
+                DrawCommandType::GraphPart,
                 currentColor,
-                GraphExCmd{graphId, (int)x, (int)y, 0.0f, sizeX, sizeY, false, false});
+                GraphPartCmd{graphId, srcX, srcY, srcW, srcH, (int)x, (int)y});
             return 0;
         }
 
@@ -984,11 +1207,57 @@ namespace BindingsDraw
         x -= l.scroll_x;
         y -= l.scroll_y;
 
-        int pivotX = (int)(graph->clip.width / 2);
-        int pivotY = (int)(graph->clip.height / 2);
-        DRAW_IMMEDIATE(RenderTexturePivotRotateSizeXY(*tex, pivotX, pivotY, graph->clip,
-                                                      x, y, 0.0f, sizeX, sizeY,
-                                                      false, false, currentColor));
+        Texture2D *tex = nullptr;
+        Rectangle src{};
+        if (!resolve_graph_part_source(graphId, srcX, srcY, srcW, srcH, &tex, &src))
+            return 0;
+
+        DRAW_IMMEDIATE(DrawTextureRec(*tex, src, {x, y}, currentColor));
+        return 0;
+    }
+
+    static int native_draw_graph_part_ex(Interpreter *vm, int argCount, Value *args)
+    {
+        if (argCount != 12)
+        {
+            Error("draw_graph_part_ex expects 12 arguments (graphId, srcX, srcY, srcW, srcH, x, y, angle, sizeX, sizeY, flipX, flipY)");
+            return 0;
+        }
+        if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber() || !args[3].isNumber() ||
+            !args[4].isNumber() || !args[5].isNumber() || !args[6].isNumber() || !args[7].isNumber() ||
+            !args[8].isNumber() || !args[9].isNumber())
+        {
+            Error("draw_graph_part_ex expects numeric values for graph/source/transform arguments");
+            return 0;
+        }
+
+        int graphId = (int)args[0].asNumber();
+        int srcX = (int)args[1].asNumber();
+        int srcY = (int)args[2].asNumber();
+        int srcW = (int)args[3].asNumber();
+        int srcH = (int)args[4].asNumber();
+        float x = (float)args[5].asNumber();
+        float y = (float)args[6].asNumber();
+        float angle = (float)args[7].asNumber();
+        float sizeX = (float)args[8].asNumber();
+        float sizeY = (float)args[9].asNumber();
+        bool flipX = args[10].asBool();
+        bool flipY = args[11].asBool();
+
+        if (screen)
+        {
+            enqueueScreenCommand(
+                DrawCommandType::GraphPartEx,
+                currentColor,
+                GraphPartExCmd{graphId, srcX, srcY, srcW, srcH, (int)x, (int)y, angle, sizeX, sizeY, flipX, flipY});
+            return 0;
+        }
+
+        Layer &l = gScene.layers[layer];
+        x -= l.scroll_x;
+        y -= l.scroll_y;
+
+        DRAW_IMMEDIATE(draw_graph_part_ex_impl(graphId, srcX, srcY, srcW, srcH, x, y, angle, sizeX, sizeY, flipX, flipY, currentColor));
         return 0;
     }
 
@@ -1706,6 +1975,8 @@ namespace BindingsDraw
     {
         vm.registerNative("draw_line", native_line, 4);
         vm.registerNative("draw_circle", native_circle, 4);
+        vm.registerNative("draw_ellipse", native_draw_ellipse, 5);
+        vm.registerNative("draw_ring", native_draw_ring, 7);
         vm.registerNative("draw_point", native_point, 2);
         vm.registerNative("draw_text", native_text, 4);
         vm.registerNative("draw_font", native_draw_font, 6);
@@ -1714,7 +1985,8 @@ namespace BindingsDraw
         vm.registerNative("draw_triangle", native_triangle, 7);
         vm.registerNative("draw_graph", native_draw_graph, 3);
         vm.registerNative("draw_graph_ex", native_draw_graph_ex, 8);
-        vm.registerNative("draw_graph_size", native_draw_graph_size, 5);
+        vm.registerNative("draw_graph_part", native_draw_graph_part, 7);
+        vm.registerNative("draw_graph_part_ex", native_draw_graph_part_ex, 12);
 
         vm.registerNative("draw_line_ex", native_line_ex, 5);
         vm.registerNative("draw_rotated_rectangle", native_rotated_rectangle, 6);

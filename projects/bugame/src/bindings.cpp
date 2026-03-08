@@ -864,12 +864,15 @@ namespace Bindings
         if (argCount != 1)
         {
             Error("load_graph expects 1 string argument (path)");
-            return 0;
+            vm->pushInt(-1);
+            return 1;
         }
         if (!args[0].isString())
         {
             Error("load_graph expects 1 string argument (path)");
-            return 0;
+
+            vm->pushInt(-1);
+            return 1;
         }
 
         const char *path = args[0].asStringChars();
@@ -878,7 +881,8 @@ namespace Bindings
         if (graphId < 0)
         {
             Error("Failed to load graph: %s from path: %s", name, path);
-            return 0;
+            vm->pushInt(-1);
+            return 1;
         }
 
         vm->pushInt(graphId);
@@ -902,7 +906,8 @@ namespace Bindings
         if (graphId < 0)
         {
             Error("Failed to load atlas: %s from path: %s", name, path);
-            return 0;
+            vm->pushInt(-1);
+            return 1;
         }
 
         vm->pushInt(graphId);
@@ -915,12 +920,14 @@ namespace Bindings
         if (argCount != 6)
         {
             Error("load_subgraph expects 6 arguments (parentId, name, x, y, width, height)");
-            return 0;
+            vm->pushInt(-1);
+            return 1;
         }
         if (!args[0].isNumber() || !args[1].isString() || !args[2].isNumber() || !args[3].isNumber() || !args[4].isNumber() || !args[5].isNumber())
         {
             Error("load_subgraph expects 6 arguments (parentId, name, x, y, width, height)");
-            return 0;
+            vm->pushInt(-1);
+            return 1;
         }
 
         int parentId = (int)args[0].asNumber();
@@ -934,7 +941,8 @@ namespace Bindings
         if (graphId < 0)
         {
             Error("Failed to load subgraph: %s from parent ID: %d", name, parentId);
-            return 0;
+            vm->pushInt(-1);
+            return 1;
         }
 
         vm->pushInt(graphId);

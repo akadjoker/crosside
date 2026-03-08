@@ -21,6 +21,38 @@ Entity *Scene::addEntity(int graphId, int layer, double x, double y)
     return node;
 }
 
+void Scene::sortLayer(int layer)
+{
+    if (layer < 0 || layer >= MAX_LAYERS)
+        return;
+
+    auto &nodes = layers[layer].nodes;
+    if (nodes.size() < 2)
+    {
+        
+        return;
+    }
+
+    std::stable_sort(nodes.begin(), nodes.end(), [](const Entity *a, const Entity *b)
+    {
+        if (a == b)
+            return false;
+        if (!a)
+            return false;
+        if (!b)
+            return true;
+        if (a->z != b->z)
+            return a->z < b->z;
+        return a->procID < b->procID;
+    });
+
+    for (uint32 i = 0; i < nodes.size(); ++i)
+    {
+        if (nodes[i])
+            nodes[i]->id = i;
+    }
+}
+
 void Scene::moveEntityToLayer(Entity *node, int layer)
 {
     if (!node)
@@ -72,6 +104,10 @@ void Scene::moveEntityToLayer(Entity *node, int layer)
     remove->layer = (uint8)layer;
     remove->id = (uint32)layers[layer].nodes.size();
     layers[layer].nodes.push_back(remove);
+
+    // Mantém ordem determinística por z em ambas as layers.
+    sortLayer(srcLayer);
+    sortLayer(layer);
 }
 
 void Scene::moveEntityToParent(Entity *node, Entity *newParent, bool front)
@@ -101,6 +137,8 @@ void Scene::moveEntityToParent(Entity *node, Entity *newParent, bool front)
     else
         newParent->childsBack.push_back(node);
     node->parent = newParent;
+
+    sortLayer(node->layer);
 }
 
 bool Scene::IsOutOfScreen(Entity *entity) const
@@ -142,6 +180,8 @@ void Scene::removeEntity(Entity *node)
 
     // marca para destruir mais tarde
     nodesToRemove.push_back(node);
+
+    sortLayer(node->layer);
 }
 
 void Scene::destroy()

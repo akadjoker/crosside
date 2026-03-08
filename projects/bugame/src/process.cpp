@@ -573,7 +573,25 @@ namespace BindingsProcess
             return 0;
 
         int layer = (int)args[0].asNumber();
-        entity->layer = layer;
+        gScene.moveEntityToLayer(entity, layer);
+        return 0;
+    }
+
+    int native_update_order(Interpreter *vm, Process *proc, int argCount, Value *args)
+    {
+        (void)vm;
+        (void)args;
+        if (argCount != 0)
+        {
+            Error("update_order expects 0 arguments");
+            return 0;
+        }
+
+        Entity *entity = requireEntity(proc, "update_order");
+        if (!entity)
+            return 0;
+
+        gScene.sortLayer((int)entity->layer);
         return 0;
     }
 
@@ -968,6 +986,7 @@ namespace BindingsProcess
         vm.registerNativeProcess("atach", native_atach, 2);
         vm.registerNativeProcess("out_screen", native_out_screen, 0);
         vm.registerNativeProcess("set_layer", native_set_layer, 1);
+        vm.registerNativeProcess("update_order", native_update_order, 0);
         vm.registerNativeProcess("get_layer", native_get_layer, 0);
         vm.registerNativeProcess("let_me_alone", native_let_me_alone, 0);
 

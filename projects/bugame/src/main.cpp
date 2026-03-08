@@ -23,7 +23,7 @@ extern CameraManager gCamera;
 
 struct FileLoaderContext
 {
-    const char *searchPaths[16];
+    const char *searchPaths[8];
     int pathCount;
     char fullPath[512];
     FileBuffer fileBuffer;
@@ -329,6 +329,7 @@ void onCreate(Interpreter *vm, Process *proc)
     entity->blueprint = proc->blueprint;
     entity->ready = false;
     entity->layer = 0;
+    entity->z = 0;
     entity->flags = B_VISIBLE | B_COLLISION;
 }
 
@@ -341,18 +342,9 @@ void onStart(Interpreter *vm, Process *proc)
     int graph = proc->privates[3].asInt();
     int angle = proc->privates[4].asInt();
     int size = proc->privates[5].asInt();
-    double sizeX = 1.0;
-    if (proc->privates[(int)PrivateIndex::SIZEX].isInt())
-        sizeX = proc->privates[(int)PrivateIndex::SIZEX].asInt();
-    else if (proc->privates[(int)PrivateIndex::SIZEX].isNumber())
-        sizeX = proc->privates[(int)PrivateIndex::SIZEX].asNumber();
-    double sizeY = 1.0;
-    if (proc->privates[(int)PrivateIndex::SIZEY].isInt())
-        sizeY = proc->privates[(int)PrivateIndex::SIZEY].asInt();
-    else if (proc->privates[(int)PrivateIndex::SIZEY].isNumber())
-        sizeY = proc->privates[(int)PrivateIndex::SIZEY].asNumber();
     int flags = proc->privates[6].asInt();
     int id = proc->privates[7].asInt();
+    int father = proc->privates[8].asInt();
     double red = 1.0;
     if (proc->privates[(int)PrivateIndex::iGREEN].isInt())
         red = proc->privates[9].asInt() / 255.0;
@@ -375,7 +367,7 @@ void onStart(Interpreter *vm, Process *proc)
     else if (proc->privates[(int)PrivateIndex::iALPHA].isNumber())
         alpha = proc->privates[12].asNumber();
 
-    // Info("Create process: ID:%d  Layer:%d  angle:%d  Size:%d   FLAGS: %d X:%f Y:%f  GRAPH:%d", id, z, angle, size,  flags, x, y, graph);
+    // Info("Create process: ID:%d  Layer:%d  angle:%d  Size:%d   FLAGS: %d X:%f Y:%f  FATHER:%d  GRAPH:%d", id, z, angle, size,  flags, x, y, father, graph);
 
     Entity *entity = (Entity *)proc->userData;
     if (!entity)
@@ -383,23 +375,14 @@ void onStart(Interpreter *vm, Process *proc)
         // Warning("Process %d has no associated entity!", proc->id);
         return;
     }
-    int safeLayer = z;
-    if (safeLayer < 0 || safeLayer >= MAX_LAYERS)
-        safeLayer = 0;
-
-    if (entity->layer != safeLayer)
-    {
-
-        gScene.moveEntityToLayer(entity, safeLayer);
-    }
+ 
 
     entity->graph = graph;
+    entity->z = z;
     entity->procID = proc->id;
     entity->setPosition(x, y);
     entity->setAngle(angle);
     entity->setSize(size);
-    entity->size_x = sizeX;
-    entity->size_y = sizeY;
     entity->color.r = (uint8)(red * 255.0);
     entity->color.g = (uint8)(green * 255.0);
     entity->color.b = (uint8)(blue * 255.0);
@@ -426,18 +409,9 @@ void onUpdate(Interpreter *vm, Process *proc, float dt)
     int graph = proc->privates[3].asInt();
     int angle = proc->privates[4].asInt();
     int size = proc->privates[5].asInt();
-    double sizeX = 1.0;
-    if (proc->privates[(int)PrivateIndex::SIZEX].isInt())
-        sizeX = proc->privates[(int)PrivateIndex::SIZEX].asInt();
-    else if (proc->privates[(int)PrivateIndex::SIZEX].isNumber())
-        sizeX = proc->privates[(int)PrivateIndex::SIZEX].asNumber();
-    double sizeY = 1.0;
-    if (proc->privates[(int)PrivateIndex::SIZEY].isInt())
-        sizeY = proc->privates[(int)PrivateIndex::SIZEY].asInt();
-    else if (proc->privates[(int)PrivateIndex::SIZEY].isNumber())
-        sizeY = proc->privates[(int)PrivateIndex::SIZEY].asNumber();
     int flags = proc->privates[6].asInt();
     int id = proc->privates[7].asInt();
+    int father = proc->privates[8].asInt();
     double red = 1.0;
     if (proc->privates[(int)PrivateIndex::iGREEN].isInt())
         red = proc->privates[9].asInt() / 255.0;
@@ -460,20 +434,12 @@ void onUpdate(Interpreter *vm, Process *proc, float dt)
     else if (proc->privates[(int)PrivateIndex::iALPHA].isNumber())
         alpha = proc->privates[12].asNumber();
 
-    int safeLayer = z;
-    if (safeLayer < 0 || safeLayer >= MAX_LAYERS)
-        safeLayer = 0;
-
-    if (entity->layer != safeLayer)
-    {
-        gScene.moveEntityToLayer(entity, safeLayer);
-    }
+   
     entity->graph = graph;
+    entity->z = z;
     entity->setPosition(x, y);
     entity->setAngle(angle);
     entity->setSize(size);
-    entity->size_x = sizeX;
-    entity->size_y = sizeY;
     entity->color.r = (uint8)(red * 255.0);
     entity->color.g = (uint8)(green * 255.0);
     entity->color.b = (uint8)(blue * 255.0);
@@ -532,18 +498,6 @@ int main(int argc, char *argv[])
     vm.registerNative("set_window_resizable", native_set_window_resizable, 1);
     vm.registerNative("close_window", native_close_window, 0);
     vm.registerNative("set_log_level", native_set_log_level, 1);
-
-    bool windowInitialized = IsWindowReady();
-#if defined(PLATFORM_ANDROID)
-    // On Android, asset loading through LoadFileData requires NativeActivity/asset manager ready.
-    // Initialize window before probing scripts in APK assets.
-    if (!windowInitialized)
-    {
-        InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE.c_str());
-        SetExitKey(KEY_NULL);
-        windowInitialized = true;
-    }
-#endif
 
     FileLoaderContext ctx{};
 
@@ -618,64 +572,6 @@ int main(int argc, char *argv[])
 
     if (mode == LaunchMode::RunBytecode)
     {
-        if (!scriptFile)
-        {
-#ifdef BU_RUNNER_ONLY
-            static const char *defaultBytecodeCandidates[] = {
-#ifdef __EMSCRIPTEN__
-                "/assets/main.buc",
-                "/assets/main.bubc",
-                "/main.buc",
-                "/main.bubc",
-#endif
-                "assets/main.buc",
-                "assets/main.bubc",
-                "./assets/main.buc",
-                "./assets/main.bubc",
-                "main.buc",
-                "main.bubc",
-            };
-#else
-            static const char *defaultBytecodeCandidates[] = {
-#ifdef __EMSCRIPTEN__
-                "/scripts/main.buc",
-                "/scripts/main.bubc",
-                "/main.buc",
-                "/main.bubc",
-#endif
-                "scripts/main.buc",
-                "scripts/main.bubc",
-                "./scripts/main.buc",
-                "./scripts/main.bubc",
-                "main.buc",
-                "main.bubc",
-                "../scripts/main.buc",
-                "../scripts/main.bubc",
-            };
-#endif
-
-            for (const char *candidate : defaultBytecodeCandidates)
-            {
-                FileBuffer probe;
-                if (probe.load(candidate))
-                {
-                    scriptFile = candidate;
-                    break;
-                }
-
-                int bytesRead = 0;
-                unsigned char *raw = LoadFileData(candidate, &bytesRead);
-                if (raw && bytesRead > 0)
-                {
-                    UnloadFileData(raw);
-                    scriptFile = candidate;
-                    break;
-                }
-                if (raw)
-                    UnloadFileData(raw);
-            }
-        }
-
         if (!scriptFile)
         {
 #ifdef BU_RUNNER_ONLY
@@ -776,7 +672,7 @@ int main(int argc, char *argv[])
     ctx.pathCount = 0;
     auto addSearchPath = [&](const char *p)
     {
-        if (!p || !*p || ctx.pathCount >= 16)
+        if (!p || !*p || ctx.pathCount >= 8)
             return;
         for (int i = 0; i < ctx.pathCount; ++i)
         {
@@ -788,17 +684,10 @@ int main(int argc, char *argv[])
 
     addSearchPath(scriptDir);
     addSearchPath(scriptParentDir);
-#ifdef BU_RUNNER_ONLY
-    addSearchPath("/assets");
-    addSearchPath("assets");
-    addSearchPath("./assets");
-    addSearchPath("../assets");
-#else
     addSearchPath("/scripts");
     addSearchPath("scripts");
     addSearchPath("./scripts");
     addSearchPath("../scripts");
-#endif
     addSearchPath(".");
 
     vm.setFileLoader(multiPathFileLoader, &ctx);
@@ -819,16 +708,9 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    if (!windowInitialized)
-    {
-        InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE.c_str());
-        SetExitKey(KEY_NULL); // Disable default ESC exit from Raylib.
-        windowInitialized = true;
-    }
-    if (!IsAudioDeviceReady())
-    {
-        InitSound();
-    }
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE.c_str());
+    SetExitKey(KEY_NULL); // Disable default ESC exit from Raylib.
+    InitSound();
 
     InitScene();
     gCamera.init(WINDOW_WIDTH, WINDOW_HEIGHT);

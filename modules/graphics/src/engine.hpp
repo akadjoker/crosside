@@ -144,7 +144,7 @@ struct Entity
     Shape *shape;
     uint8 layer;
     double last_x, last_y;
-
+    int z = 0; // para ordenação de render (quanto maior, mais na frente)
     double x, y;
     double angle;
     bool flip_x, flip_y;
@@ -639,6 +639,7 @@ struct Scene
 
     Layer layers[6];
     Entity *addEntity(int graphId, int layer, double x, double y);
+    void sortLayer(int layer);
     void moveEntityToLayer(Entity *node, int layer);
     void removeEntity(Entity *node);
     void destroy();
