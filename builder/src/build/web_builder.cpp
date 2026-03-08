@@ -634,6 +634,22 @@ bool ensureWebOutputExists(const crosside::Context &ctx, const fs::path &outputH
     return false;
 }
 
+bool createWebIndexAlias(const crosside::Context &ctx, const fs::path &outputHtml) {
+    if (lower(outputHtml.filename().string()) == "index.html") {
+        return true;
+    }
+
+    const fs::path indexHtml = outputHtml.parent_path() / "index.html";
+    std::error_code ec;
+    fs::copy_file(outputHtml, indexHtml, fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        ctx.error("Failed to create Web index alias: ", indexHtml.string(), " (", ec.message(), ")");
+        return false;
+    }
+
+    return true;
+}
+
 void appendWebTemplateAndAssets(
     const crosside::Context &ctx,
     const crosside::model::ProjectSpec &project,
@@ -951,6 +967,9 @@ bool buildProjectWeb(
         return false;
     }
     if (!ensureWebOutputExists(ctx, outHtml, outputName)) {
+        return false;
+    }
+    if (!createWebIndexAlias(ctx, outHtml)) {
         return false;
     }
 
