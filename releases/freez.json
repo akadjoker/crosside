@@ -1,0 +1,17 @@
+{
+  "Android": {
+    "PACKAGE": "com.djokersoft.freez",
+    "ACTIVITY": "android.app.NativeActivity",
+    "LABEL": "freez",
+    "CONTENT_ROOT": "releases/freez"
+  },
+  "Web": {
+    "SHELL": "shell.html",
+    "CONTENT_ROOT": "releases/freez",
+    "LD": [
+      "-sALLOW_MEMORY_GROWTH=1",
+      "-sINITIAL_MEMORY=33554432",
+      "-sMAXIMUM_MEMORY=268435456"
+    ]
+  }
+}

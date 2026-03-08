@@ -1,0 +1,17 @@
+{
+  "Web": {
+    "SHELL": "../bugame/shell.html",
+    "CONTENT_ROOT": "../../releases/freez",
+    "LD": [
+      "-sALLOW_MEMORY_GROWTH=1",
+      "-sINITIAL_MEMORY=33554432",
+      "-sMAXIMUM_MEMORY=268435456"
+    ]
+  },
+  "Desktop": {
+    "CONTENT_ROOT": "../../releases/freez"
+  },
+  "Android": {
+    "CONTENT_ROOT": "../../releases/freez"
+  }
+}

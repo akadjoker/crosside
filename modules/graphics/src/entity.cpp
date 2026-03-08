@@ -64,11 +64,12 @@ double Entity::getAngle()
 
 Vector2 Entity::getLocalPoint(double px, double py)
 {
-    float scale_final = (float)size / 100.0f;
+    float scale_final_x = ((float)size / 100.0f) * (float)size_x;
+    float scale_final_y = ((float)size / 100.0f) * (float)size_y;
 
     Matrix2D mat = GetRelativeTransformation(
         (float)x, (float)y,
-        scale_final, scale_final,
+        scale_final_x, scale_final_y,
         0.0f, 0.0f,
         center_x, center_y,
         angle);
@@ -269,14 +270,15 @@ Matrix2D Entity::GetAbsoluteTransformation() const
     Layer &l = gScene.layers[layer];
     float finalX = (float)(x - l.scroll_x);
     float finalY = (float)(y - l.scroll_y);
-    float scale_final = (float)size / 100.0f;
+    float scale_final_x = ((float)size / 100.0f) * (float)size_x;
+    float scale_final_y = ((float)size / 100.0f) * (float)size_y;
 
    // Info("Entity %d absolute transformation: pos=(%f, %f) scroll=(%f, %f) size=%f", id, finalX, finalY, l.scroll_x, l.scroll_y, scale_final);
  
 
     return GetRelativeTransformation(
         finalX, finalY,
-        scale_final, scale_final,
+        scale_final_x, scale_final_y,
         0.0f, 0.0f,
         center_x, center_y,
         angle);

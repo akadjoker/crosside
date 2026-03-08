@@ -1130,17 +1130,53 @@ bool packageWeb(const fs::path &runnerRoot,
         return false;
     }
 
-    // Keep runtime names for JS/WASM/DATA, but always export HTML as index.html.
-    const std::vector<std::string> runtimeFiles = {"runner.js", "runner.wasm", "runner.data"};
-    for (const auto &file : runtimeFiles)
+    const fs::path webRoot = runnerRoot / "Web";
+    auto hasRuntimeSet = [&](const std::string &base) -> bool
     {
-        fs::path src = runnerRoot / "Web" / file;
-        if (!copyFileSafe(src, outDir / file))
+        return fs::exists(webRoot / (base + ".js")) &&
+               fs::exists(webRoot / (base + ".wasm")) &&
+               fs::exists(webRoot / (base + ".data")) &&
+               fs::exists(webRoot / (base + ".html"));
+    };
+
+    // Prefer release-specific runtime bundle (<release>.js/.wasm/.data/.html).
+    // Fallback to runner.* for backward compatibility.
+    std::string runtimeBase = release.name;
+    if (!hasRuntimeSet(runtimeBase))
+    {
+        runtimeBase = "runner";
+    }
+    if (!hasRuntimeSet(runtimeBase))
+    {
+        std::cerr << "[ERROR] Missing web runtime files in: " << webRoot << std::endl;
+        std::cerr << "Expected either:" << std::endl;
+        std::cerr << "  - " << (webRoot / (release.name + ".js")) << std::endl;
+        std::cerr << "  - " << (webRoot / (release.name + ".wasm")) << std::endl;
+        std::cerr << "  - " << (webRoot / (release.name + ".data")) << std::endl;
+        std::cerr << "  - " << (webRoot / (release.name + ".html")) << std::endl;
+        std::cerr << "or:" << std::endl;
+        std::cerr << "  - " << (webRoot / "runner.js") << std::endl;
+        std::cerr << "  - " << (webRoot / "runner.wasm") << std::endl;
+        std::cerr << "  - " << (webRoot / "runner.data") << std::endl;
+        std::cerr << "  - " << (webRoot / "runner.html") << std::endl;
+        return false;
+    }
+
+    if (runtimeBase != "runner")
+    {
+        std::cout << "[pack] web runtime: " << runtimeBase << ".*" << std::endl;
+    }
+
+    const std::vector<std::string> runtimeFiles = {".js", ".wasm", ".data"};
+    for (const auto &ext : runtimeFiles)
+    {
+        const std::string file = runtimeBase + ext;
+        if (!copyFileSafe(webRoot / file, outDir / file))
         {
             return false;
         }
     }
-    if (!copyFileSafe(runnerRoot / "Web" / "runner.html", outDir / "index.html"))
+    if (!copyFileSafe(webRoot / (runtimeBase + ".html"), outDir / "index.html"))
     {
         return false;
     }

@@ -943,6 +943,55 @@ namespace BindingsDraw
         return 0;
     }
 
+    static int native_draw_graph_size(Interpreter *vm, int argCount, Value *args)
+    {
+        if (argCount != 5)
+        {
+            Error("draw_graph_size expects 5 arguments (graphId, x, y, width, height)");
+            return 0;
+        }
+
+        int graphId = (int)args[0].asNumber();
+        float x = (float)args[1].asNumber();
+        float y = (float)args[2].asNumber();
+        float width = (float)args[3].asNumber();
+        float height = (float)args[4].asNumber();
+
+        if (width <= 0.0f || height <= 0.0f)
+        {
+            return 0;
+        }
+
+        Graph *graph = gGraphLib.getGraph(graphId);
+        if (!graph) return 0;
+        Texture2D *tex = gGraphLib.getTexture(graph->texture);
+        if (!tex) return 0;
+        if (graph->clip.width <= 0.0f || graph->clip.height <= 0.0f) return 0;
+
+        float sizeX = (width / graph->clip.width) * 100.0f;
+        float sizeY = (height / graph->clip.height) * 100.0f;
+
+        if (screen)
+        {
+            enqueueScreenCommand(
+                DrawCommandType::GraphEx,
+                currentColor,
+                GraphExCmd{graphId, (int)x, (int)y, 0.0f, sizeX, sizeY, false, false});
+            return 0;
+        }
+
+        Layer &l = gScene.layers[layer];
+        x -= l.scroll_x;
+        y -= l.scroll_y;
+
+        int pivotX = (int)(graph->clip.width / 2);
+        int pivotY = (int)(graph->clip.height / 2);
+        DRAW_IMMEDIATE(RenderTexturePivotRotateSizeXY(*tex, pivotX, pivotY, graph->clip,
+                                                      x, y, 0.0f, sizeX, sizeY,
+                                                      false, false, currentColor));
+        return 0;
+    }
+
     static int native_set_blend_mode(Interpreter *vm, int argCount, Value *args)
     {
         (void)vm;
@@ -1665,6 +1714,7 @@ namespace BindingsDraw
         vm.registerNative("draw_triangle", native_triangle, 7);
         vm.registerNative("draw_graph", native_draw_graph, 3);
         vm.registerNative("draw_graph_ex", native_draw_graph_ex, 8);
+        vm.registerNative("draw_graph_size", native_draw_graph_size, 5);
 
         vm.registerNative("draw_line_ex", native_line_ex, 5);
         vm.registerNative("draw_rotated_rectangle", native_rotated_rectangle, 6);

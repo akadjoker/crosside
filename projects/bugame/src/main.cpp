@@ -341,9 +341,18 @@ void onStart(Interpreter *vm, Process *proc)
     int graph = proc->privates[3].asInt();
     int angle = proc->privates[4].asInt();
     int size = proc->privates[5].asInt();
+    double sizeX = 1.0;
+    if (proc->privates[(int)PrivateIndex::SIZEX].isInt())
+        sizeX = proc->privates[(int)PrivateIndex::SIZEX].asInt();
+    else if (proc->privates[(int)PrivateIndex::SIZEX].isNumber())
+        sizeX = proc->privates[(int)PrivateIndex::SIZEX].asNumber();
+    double sizeY = 1.0;
+    if (proc->privates[(int)PrivateIndex::SIZEY].isInt())
+        sizeY = proc->privates[(int)PrivateIndex::SIZEY].asInt();
+    else if (proc->privates[(int)PrivateIndex::SIZEY].isNumber())
+        sizeY = proc->privates[(int)PrivateIndex::SIZEY].asNumber();
     int flags = proc->privates[6].asInt();
     int id = proc->privates[7].asInt();
-    int father = proc->privates[8].asInt();
     double red = 1.0;
     if (proc->privates[(int)PrivateIndex::iGREEN].isInt())
         red = proc->privates[9].asInt() / 255.0;
@@ -366,7 +375,7 @@ void onStart(Interpreter *vm, Process *proc)
     else if (proc->privates[(int)PrivateIndex::iALPHA].isNumber())
         alpha = proc->privates[12].asNumber();
 
-    // Info("Create process: ID:%d  Layer:%d  angle:%d  Size:%d   FLAGS: %d X:%f Y:%f  FATHER:%d  GRAPH:%d", id, z, angle, size,  flags, x, y, father, graph);
+    // Info("Create process: ID:%d  Layer:%d  angle:%d  Size:%d   FLAGS: %d X:%f Y:%f  GRAPH:%d", id, z, angle, size,  flags, x, y, graph);
 
     Entity *entity = (Entity *)proc->userData;
     if (!entity)
@@ -389,6 +398,8 @@ void onStart(Interpreter *vm, Process *proc)
     entity->setPosition(x, y);
     entity->setAngle(angle);
     entity->setSize(size);
+    entity->size_x = sizeX;
+    entity->size_y = sizeY;
     entity->color.r = (uint8)(red * 255.0);
     entity->color.g = (uint8)(green * 255.0);
     entity->color.b = (uint8)(blue * 255.0);
@@ -415,9 +426,18 @@ void onUpdate(Interpreter *vm, Process *proc, float dt)
     int graph = proc->privates[3].asInt();
     int angle = proc->privates[4].asInt();
     int size = proc->privates[5].asInt();
+    double sizeX = 1.0;
+    if (proc->privates[(int)PrivateIndex::SIZEX].isInt())
+        sizeX = proc->privates[(int)PrivateIndex::SIZEX].asInt();
+    else if (proc->privates[(int)PrivateIndex::SIZEX].isNumber())
+        sizeX = proc->privates[(int)PrivateIndex::SIZEX].asNumber();
+    double sizeY = 1.0;
+    if (proc->privates[(int)PrivateIndex::SIZEY].isInt())
+        sizeY = proc->privates[(int)PrivateIndex::SIZEY].asInt();
+    else if (proc->privates[(int)PrivateIndex::SIZEY].isNumber())
+        sizeY = proc->privates[(int)PrivateIndex::SIZEY].asNumber();
     int flags = proc->privates[6].asInt();
     int id = proc->privates[7].asInt();
-    int father = proc->privates[8].asInt();
     double red = 1.0;
     if (proc->privates[(int)PrivateIndex::iGREEN].isInt())
         red = proc->privates[9].asInt() / 255.0;
@@ -452,6 +472,8 @@ void onUpdate(Interpreter *vm, Process *proc, float dt)
     entity->setPosition(x, y);
     entity->setAngle(angle);
     entity->setSize(size);
+    entity->size_x = sizeX;
+    entity->size_y = sizeY;
     entity->color.r = (uint8)(red * 255.0);
     entity->color.g = (uint8)(green * 255.0);
     entity->color.b = (uint8)(blue * 255.0);

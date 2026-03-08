@@ -1,0 +1,1922 @@
+// Mini Jame Gam #52 2026 - "Freeze Panic!" 
+
+import math;
+import os;
+
+// --- Janela ---
+var VIEW_W = 1024;
+var VIEW_H = 720;
+
+// --- Input ---
+var KEY_W = 87; var KEY_A = 65; var KEY_S = 83; var KEY_D = 68;
+var KEY_UP = 265; var KEY_LEFT = 263; var KEY_DOWN = 264; var KEY_RIGHT = 262;
+var KEY_ESCAPE = 256; var KEY_ENTER = 257;
+
+// --- Estados ---
+var STATE_MENU = 0;
+var STATE_GAME = 1;
+var STATE_CREDITS = 2;
+var GAME_STATE = STATE_MENU;
+
+// --- Transicoes de estado (fade) ---
+var TRANS_ACTIVE = false;
+var TRANS_TARGET_STATE = STATE_MENU;
+var TRANS_PHASE_OUT = 0;
+var TRANS_PHASE_IN = 1;
+var TRANS_PHASE = 0;
+var TRANS_ALPHA = 0.0;
+var TRANS_SPEED = 520.0;
+
+// --- Ponteiro (mouse + touch) ---
+var POINTER_X = 0.0;
+var POINTER_Y = 0.0;
+var POINTER_DOWN = false;
+var POINTER_PRESSED = false;
+var POINTER_WAS_DOWN = false;
+
+// --- Menu ---
+var MENU_INDEX = 0; // 0 = Play, 1 = Credits
+var MENU_INPUT_GUARD = 0.0;
+var BTN_W = 220;
+var BTN_H = 74;
+var BTN_PLAY_X = VIEW_W / 2 - BTN_W / 2 -60;
+var BTN_PLAY_Y = VIEW_H - 370;
+var BTN_CREDITS_X = VIEW_W / 2 - BTN_W / 2 -60;
+var BTN_CREDITS_Y = VIEW_H - 250;
+var BTN_BACK_X = 20;
+var BTN_BACK_Y = VIEW_H - 240;
+var BTN_BACK_W = 180;
+var BTN_BACK_H = 64;
+var SOUND_BTN_W = 78;
+var SOUND_BTN_H = 30;
+var SOUND_BTN_X = VIEW_W - SOUND_BTN_W - 14;
+var SOUND_BTN_Y = 12;
+var WHISTLE_BTN_X = VIEW_W - 130;
+var WHISTLE_BTN_Y = VIEW_H - 120;
+var WHISTLE_BTN_W = 85;
+var WHISTLE_BTN_H = 85;
+var HUD_FOOD_TARGET_X = 154;
+var HUD_FOOD_TARGET_Y = 64;
+
+// --- Gameplay base ---
+var GAME_TIME_LIMIT = 60.0;
+var GAME_TIME_LEFT = 60.0;
+var GOOD_TARGET = 30;
+var GOOD_COLLECT_TWEEN_TIME = 0.34;
+var GOOD_COLLECTED = 0;
+var BAD_HITS = 0;
+var PLAYER_X = VIEW_W / 2;
+var PLAYER_Y = VIEW_H - 120;
+var PLAYER_SPEED = 300.0;
+var PLAYER_FACING_RIGHT = true;
+var PLAYER_WALK_T = 0.0;
+var GAME_FROZEN_MODE = false;
+var FREEZE_TIMER = 0.0;
+var FREEZE_DURATION = 6.0;
+var FREEZE_TRANSITION_ACTIVE = false;
+var FREEZE_TRANSITION_T = 0.0;
+var FREEZE_TRANSITION_TIME = 0.55;
+var STRESS_CLEAR_ACTIVE = false;
+var STRESS_CLEAR_TIMER = 0.0;
+var STRESS_CLEAR_DURATION = 0.48;
+var STRESS_SAFE_TIMER = 0.0;
+var STRESS_SAFE_DURATION = 1.6;
+var BAD_ALERT_ACTIVE = false;
+var BAD_ALERT_TIMER = 0.0;
+var BAD_ALERT_WINDOW = 1.4;
+var TIMEOUT_SWEEP_ACTIVE = false;
+var TIMEOUT_SWEEP_TIMER = 0.0;
+var TIMEOUT_SWEEP_DURATION = 0.52;
+var TIMEOUT_SWEEP_WIN = false;
+var TIMEOUT_SURVIVE_BONUS = 0;
+var LOSE_POPUP_ACTIVE = false;
+var LOSE_CAUSE = 0;
+var LOSE_CAUSE_BAD = 1;
+var LOSE_CAUSE_TIMEOUT = 2;
+var LOSE_POPUP_DELAY_TIME = 0.34;
+var LOSE_POPUP_IN_TIME = 0.40;
+var LOSE_POPUP_OUT_TIME = 0.38;
+var LOSE_POPUP_DELAY = 0.0;
+var LOSE_POPUP_T = 0.0;
+var LOSE_POPUP_STATE_WAIT = 0;
+var LOSE_POPUP_STATE_IN = 1;
+var LOSE_POPUP_STATE_IDLE = 2;
+var LOSE_POPUP_STATE_OUT = 3;
+var LOSE_POPUP_STATE = 0;
+var LOSE_POPUP_ACTION_NONE = 0;
+var LOSE_POPUP_ACTION_RESTART = 1;
+var LOSE_POPUP_ACTION_MENU = 2;
+var LOSE_POPUP_ACTION = 0;
+var LOSE_POPUP_W = 460;
+var LOSE_POPUP_H = 252;
+var LOSE_POPUP_X = VIEW_W / 2 - LOSE_POPUP_W / 2;
+var LOSE_POPUP_Y = VIEW_H / 2 - LOSE_POPUP_H / 2;
+var LOSE_BTN_RESTART_X = LOSE_POPUP_X + 34;
+var LOSE_BTN_MENU_X = LOSE_POPUP_X + 266;
+var LOSE_BTN_Y = LOSE_POPUP_Y + 176;
+var LOSE_BTN_W = 160;
+var LOSE_BTN_H = 56;
+var DT = 0.016;
+
+// --- Runtime por processos (modelo winters) ---
+var REQUEST_WORLD_CLEAR = false;
+var REQUEST_EXIT_TO_MENU = false;
+var PLAYER_ID = -1;
+var GOOD_OBJECTS_ACTIVE = 0;
+var BAD_OBJECTS_ACTIVE = 0;
+
+// --- Assets: fundos / botões ---
+var G_BG_DAY = -1;
+var G_BG_DARK = -1;
+var G_BTN_PLAY = -1;
+var G_BTN_CREDITS = -1;
+var G_BTN_MENU = -1; // ficheiro: manu.png
+var G_BTN_WHISTLE = -1;
+
+// --- Assets: personagem ---
+var G_PLAYER_STATIC = -1;
+var G_PLAYER_WALK = [];
+var G_PLAYER_JUMP = [];
+var G_PLAYER_FROZEN = [];
+
+// --- Assets: intro ---
+var G_INTRO = [];
+var INTRO_FPS = 10.0;
+var INTRO_FRAME = 0;
+var INTRO_FRAME_T = 0.0;
+var INTRO_WAIT_T = 0.0;
+var INTRO_STATE_PLAY = 0;
+var INTRO_STATE_WAIT = 1;
+var INTRO_STATE_REWIND = 2;
+var INTRO_STATE_STOP = 3;
+var INTRO_STATE = 0;
+
+// --- Assets: objetos ---
+var G_GOOD_OBJ = [];
+var G_BAD_OBJ = [];
+var G_BAD_FROZEN_OBJ = [];
+
+// --- Audio placeholders ---
+var SFX_PLACEHOLDER_MODE = false; // true: nao tenta carregar ficheiros ainda
+var SOUND_VOLUME_NORMAL = 1.0;
+var SOUND_VOLUME = 1.0;
+var SOUND_MUTED = false;
+var MUSIC_VOLUME_BASE = 0.55;
+var SND_UI_MOVE = -1;
+var SND_UI_OK = -1;
+var SND_PICK_GOOD = -1;
+var SND_PICK_BAD = -1;
+var SND_BAD_ALERT = -1;
+var SND_WHISTLE = -1;
+var SND_LOSE = -1;
+var SND_WIN = -1;
+var MUS_MENU = -1;
+var MUS_CREDITS = -1;
+var MUS_GAME = -1;
+var MUS_CURRENT = -1;
+
+var ASSETS_READY = false;
+var ASSETS_FAILED = 0;
+
+def point_in_rect(px, py, rx, ry, rw, rh)
+{
+    if (px < rx) return false;
+    if (py < ry) return false;
+    if (px > rx + rw) return false;
+    if (py > ry + rh) return false;
+    return true;
+}
+
+def update_pointer()
+{
+    var touch_down = (touch_count() > 0);
+    if (touch_down)
+    {
+        POINTER_X = get_touch_screen_x(0);
+        POINTER_Y = get_touch_screen_y(0);
+    }
+    else
+    {
+        POINTER_X = get_mouse_x();
+        POINTER_Y = get_mouse_y();
+    }
+
+    POINTER_DOWN = (touch_down || mouse_down(0));
+    POINTER_PRESSED = (POINTER_DOWN && !POINTER_WAS_DOWN);
+    POINTER_WAS_DOWN = POINTER_DOWN;
+}
+
+def load_graph_safe(_path)
+{
+    var gid = load_graph(_path);
+    if (!gid) return -1;
+    if (gid < 0) return -1;
+    return gid;
+}
+
+def load_sound_safe(_path)
+{
+    if (SFX_PLACEHOLDER_MODE) return -1;
+    var sid = load_sound(_path);
+    if (!sid) return -1;
+    if (sid < 0) return -1;
+    return sid;
+}
+
+def load_music_safe(_path)
+{
+    if (SFX_PLACEHOLDER_MODE) return -1;
+    var mid = load_music(_path);
+    if (mid < 0) return -1;
+    return mid;
+}
+
+def load_graph_asset(_rel)
+{
+    var gid = load_graph_safe("assets/" + _rel);
+    if (gid >= 0) return gid;
+    gid = load_graph_safe(_rel);
+    if (gid >= 0) return gid;
+    ASSETS_FAILED += 1;
+    return -1;
+}
+
+def load_sound_asset(_rel)
+{
+    var sid = load_sound_safe("assets/" + _rel);
+    if (sid >= 0) return sid;
+    return load_sound_safe(_rel);
+}
+
+def load_music_asset(_rel)
+{
+    var mid = load_music_safe("assets/" + _rel);
+    if (mid >= 0) return mid;
+    return load_music_safe(_rel);
+}
+
+def play_sound_safe(_sid, _vol, _pitch)
+{
+    if (_sid < 0) return;
+    var final_vol = _vol * SOUND_VOLUME;
+    if (final_vol <= 0.0) return;
+    play_sound(_sid, final_vol, _pitch);
+}
+
+def get_music_volume()
+{
+    return SOUND_VOLUME * MUSIC_VOLUME_BASE;
+}
+
+def apply_music_volume_all()
+{
+    var mv = get_music_volume();
+    if (MUS_MENU >= 0) set_music_volume(MUS_MENU, mv);
+    if (MUS_CREDITS >= 0 && MUS_CREDITS != MUS_MENU) set_music_volume(MUS_CREDITS, mv);
+    if (MUS_GAME >= 0 && MUS_GAME != MUS_MENU && MUS_GAME != MUS_CREDITS) set_music_volume(MUS_GAME, mv);
+}
+
+def target_music_for_state()
+{
+    if (GAME_STATE == STATE_MENU) return MUS_MENU;
+    if (GAME_STATE == STATE_CREDITS) return MUS_CREDITS;
+    return MUS_GAME;
+}
+
+def update_music_state()
+{
+    update_music_streams();
+
+    var target = target_music_for_state();
+    if (target < 0)
+    {
+        MUS_CURRENT = -1;
+        return;
+    }
+
+    var mv = get_music_volume();
+    if (MUS_CURRENT != target)
+    {
+        if (MUS_CURRENT >= 0 && MUS_CURRENT != target) stop_music(MUS_CURRENT);
+        set_music_volume(target, mv);
+        play_music(target);
+        MUS_CURRENT = target;
+        return;
+    }
+
+    set_music_volume(target, mv);
+    if (!is_music_playing(target)) play_music(target);
+}
+
+def sound_button_hit(px, py)
+{
+    return point_in_rect(px, py, SOUND_BTN_X, SOUND_BTN_Y, SOUND_BTN_W, SOUND_BTN_H);
+}
+
+def update_sound_toggle()
+{
+    if (!POINTER_PRESSED) return;
+    if (!sound_button_hit(POINTER_X, POINTER_Y)) return;
+
+    if (SOUND_MUTED)
+    {
+        SOUND_MUTED = false;
+        SOUND_VOLUME = SOUND_VOLUME_NORMAL;
+        play_sound_safe(SND_UI_OK, 0.9, 1.0);
+    }
+    else
+    {
+        SOUND_MUTED = true;
+        SOUND_VOLUME = 0.0;
+    }
+
+    apply_music_volume_all();
+
+    // Consome o clique para nao ativar outros botoes no mesmo frame.
+    POINTER_PRESSED = false;
+}
+
+def draw_sound_toggle_button()
+{
+    set_draw_screen(true);
+
+    var hot = sound_button_hit(POINTER_X, POINTER_Y);
+    if (SOUND_MUTED)
+    {
+        if (hot) set_color(126, 76, 76);
+        else set_color(96, 58, 58);
+    }
+    else
+    {
+        if (hot) set_color(84, 122, 90);
+        else set_color(62, 94, 68);
+    }
+    draw_rectangle(SOUND_BTN_X, SOUND_BTN_Y, SOUND_BTN_W, SOUND_BTN_H, true);
+
+    if (SOUND_MUTED) set_color(240, 182, 182);
+    else set_color(192, 240, 204);
+    draw_rectangle(SOUND_BTN_X, SOUND_BTN_Y, SOUND_BTN_W, SOUND_BTN_H, false);
+
+    if (SOUND_MUTED)
+    {
+        set_color(12, 8, 8);
+        draw_text("MUTE", SOUND_BTN_X + 15, SOUND_BTN_Y + 7, 18);
+        set_color(255, 232, 232);
+        draw_text("MUTE", SOUND_BTN_X + 14, SOUND_BTN_Y + 6, 18);
+    }
+    else
+    {
+        set_color(8, 12, 8);
+        draw_text("SND ON", SOUND_BTN_X + 9, SOUND_BTN_Y + 7, 18);
+        set_color(232, 255, 236);
+        draw_text("SND ON", SOUND_BTN_X + 8, SOUND_BTN_Y + 6, 18);
+    }
+    set_draw_screen(false);
+}
+
+def count_valid(_arr)
+{
+    var i = 0;
+    var c = 0;
+    while (i < len(_arr))
+    {
+        if (_arr[i] >= 0) c += 1;
+        i += 1;
+    }
+    return c;
+}
+
+def draw_graph_or_card(_graph, _x, _y, _w, _h, _label)
+{
+    if (_graph >= 0)
+    {
+        draw_graph(_graph, _x, _y);
+        return;
+    }
+    set_color(42, 52, 70);
+    draw_rectangle(_x, _y, _w, _h, true);
+    set_color(120, 145, 175);
+    draw_rectangle(_x, _y, _w, _h, false);
+    set_color(220, 230, 245);
+    draw_text(_label, _x + 16, _y + 20, 24);
+}
+
+def load_assets()
+{
+    ASSETS_FAILED = 0;
+
+    G_PLAYER_WALK.clear();
+    G_PLAYER_JUMP.clear();
+    G_PLAYER_FROZEN.clear();
+    G_INTRO.clear();
+    G_GOOD_OBJ.clear();
+    G_BAD_OBJ.clear();
+    G_BAD_FROZEN_OBJ.clear();
+
+    // Fundos
+    G_BG_DAY = load_graph_asset("fundo/day.png");
+    G_BG_DARK = load_graph_asset("fundo/dark.png");
+
+    // Botões
+    G_BTN_PLAY = load_graph_asset("button/play.png");
+    G_BTN_CREDITS = load_graph_asset("button/creditos.png");
+    G_BTN_MENU = load_graph_asset("button/manu.png");
+    G_BTN_WHISTLE = load_graph_asset("button/apito.png");
+
+    // Personagem
+    G_PLAYER_STATIC = load_graph_asset("boneco/static.png");
+    G_PLAYER_WALK.push(load_graph_asset("boneco/walk/1.png"));
+    G_PLAYER_WALK.push(load_graph_asset("boneco/walk/2.png"));
+    G_PLAYER_WALK.push(load_graph_asset("boneco/walk/3.png"));
+
+    G_PLAYER_JUMP.push(load_graph_asset("boneco/salto/1.png"));
+    G_PLAYER_JUMP.push(load_graph_asset("boneco/salto/2.png"));
+    G_PLAYER_JUMP.push(load_graph_asset("boneco/salto/3.png"));
+    G_PLAYER_JUMP.push(load_graph_asset("boneco/salto/4.png"));
+    G_PLAYER_JUMP.push(load_graph_asset("boneco/salto/5.png"));
+    G_PLAYER_JUMP.push(load_graph_asset("boneco/salto/6.png"));
+    G_PLAYER_JUMP.push(load_graph_asset("boneco/salto/7.png"));
+    G_PLAYER_JUMP.push(load_graph_asset("boneco/salto/8.png"));
+
+    G_PLAYER_FROZEN.push(load_graph_asset("boneco/frozen/1.png"));
+    G_PLAYER_FROZEN.push(load_graph_asset("boneco/frozen/2.png"));
+    G_PLAYER_FROZEN.push(load_graph_asset("boneco/frozen/3.png"));
+    G_PLAYER_FROZEN.push(load_graph_asset("boneco/frozen/4.png"));
+
+    // Intro (racoon a sair do lixo)
+    G_INTRO.push(load_graph_asset("intro/racoon1.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon2.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon3.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon4.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon5.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon6.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon7.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon8.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon9.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon10.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon11.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon12.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon13.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon14.png"));
+    G_INTRO.push(load_graph_asset("intro/racoon15.png"));
+
+    // Objetos bons
+    G_GOOD_OBJ.push(load_graph_asset("objetos/good/donut.png"));
+    G_GOOD_OBJ.push(load_graph_asset("objetos/good/melancia.png"));
+    G_GOOD_OBJ.push(load_graph_asset("objetos/good/pizza.png"));
+    G_GOOD_OBJ.push(load_graph_asset("objetos/good/sumo.png"));
+
+    // Objetos maus (normal)
+    G_BAD_OBJ.push(load_graph_asset("objetos/lixo/agua.png"));
+    G_BAD_OBJ.push(load_graph_asset("objetos/lixo/lata.png"));
+    G_BAD_OBJ.push(load_graph_asset("objetos/lixo/maca.png"));
+    G_BAD_OBJ.push(load_graph_asset("objetos/lixo/sacodolixo.png"));
+
+    // Objetos maus (congelado)
+    G_BAD_FROZEN_OBJ.push(load_graph_asset("objetos/frozen/congagua.png"));
+    G_BAD_FROZEN_OBJ.push(load_graph_asset("objetos/frozen/congllata.png"));
+    G_BAD_FROZEN_OBJ.push(load_graph_asset("objetos/frozen/congmaca.png"));
+    G_BAD_FROZEN_OBJ.push(load_graph_asset("objetos/frozen/congsacodolixo.png"));
+
+    // SFX placeholders (ativos quando os ficheiros existirem)
+    SND_UI_MOVE = load_sound_asset("sfx/switch_143525.ogg");
+    SND_UI_OK = load_sound_asset("sfx/switch_143525.ogg");
+    SND_PICK_GOOD = load_sound_asset("sfx/pick_good.ogg");
+    SND_PICK_BAD = load_sound_asset("sfx/pick_bad.ogg");
+    SND_BAD_ALERT = load_sound_asset("sfx/bad_alert.wav");
+    SND_WHISTLE = load_sound_asset("sfx/whistle.ogg");
+    SND_LOSE = load_sound_asset("sfx/lose.wav");
+    SND_WIN = load_sound_asset("sfx/win.wav");
+
+    // BGM por estado (menu/credits/game)
+    MUS_MENU = load_music_asset("music/menu.wav");
+    MUS_CREDITS = load_music_asset("music/credits.wav");
+    MUS_GAME = load_music_asset("music/game.wav");
+
+    // Fallbacks para garantir música mesmo com ficheiros em falta.
+    if (MUS_CREDITS < 0) MUS_CREDITS = MUS_MENU;
+    if (MUS_GAME < 0) MUS_GAME = MUS_MENU;
+    apply_music_volume_all();
+
+    ASSETS_READY = true;
+}
+
+def start_menu_intro()
+{
+    INTRO_FRAME = 0;
+    INTRO_FRAME_T = 0.0;
+    INTRO_WAIT_T = 0.0;
+    INTRO_STATE = INTRO_STATE_PLAY;
+}
+
+def update_menu_intro(_dt)
+{
+    if (len(G_INTRO) <= 0) return;
+
+    if (INTRO_STATE == INTRO_STATE_PLAY)
+    {
+        var frame_time = 1.0 / INTRO_FPS;
+        INTRO_FRAME_T += _dt;
+        while (INTRO_FRAME_T >= frame_time)
+        {
+            INTRO_FRAME_T -= frame_time;
+            INTRO_FRAME += 1;
+
+            if (INTRO_FRAME >= len(G_INTRO) - 1)
+            {
+                INTRO_FRAME = len(G_INTRO) - 1;
+                INTRO_WAIT_T = 2.0;
+                INTRO_STATE = INTRO_STATE_WAIT;
+                break;
+            }
+        }
+    }
+    elif (INTRO_STATE == INTRO_STATE_WAIT)
+    {
+        INTRO_WAIT_T -= _dt;
+        if (INTRO_WAIT_T <= 0)
+        {
+            INTRO_WAIT_T = 0.0;
+            INTRO_STATE = INTRO_STATE_REWIND;
+        }
+    }
+    elif (INTRO_STATE == INTRO_STATE_REWIND)
+    {
+        var frame_time_back = 1.0 / INTRO_FPS;
+        INTRO_FRAME_T += _dt;
+        while (INTRO_FRAME_T >= frame_time_back)
+        {
+            INTRO_FRAME_T -= frame_time_back;
+            INTRO_FRAME -= 1;
+            if (INTRO_FRAME <= 0)
+            {
+                INTRO_FRAME = 0;
+                INTRO_STATE = INTRO_STATE_STOP;
+                break;
+            }
+        }
+    }
+}
+
+def menu_option_hit(px, py)
+{
+    if (point_in_rect(px, py, BTN_PLAY_X, BTN_PLAY_Y, BTN_W, BTN_H)) return 0;
+    if (point_in_rect(px, py, BTN_CREDITS_X, BTN_CREDITS_Y, BTN_W, BTN_H)) return 1;
+    return -1;
+}
+
+def random_graph_from(_arr)
+{
+    if (len(_arr) <= 0) return -1;
+    var idx = math.rand(0, len(_arr) - 1);
+    return _arr[idx];
+}
+
+def stop_game_now()
+{
+    let_me_alone();
+    PLAYER_ID = -1;
+    GOOD_OBJECTS_ACTIVE = 0;
+    BAD_OBJECTS_ACTIVE = 0;
+    GAME_FROZEN_MODE = false;
+    FREEZE_TIMER = 0.0;
+    FREEZE_TRANSITION_ACTIVE = false;
+    FREEZE_TRANSITION_T = 0.0;
+    STRESS_CLEAR_ACTIVE = false;
+    STRESS_CLEAR_TIMER = 0.0;
+    STRESS_SAFE_TIMER = 0.0;
+    BAD_ALERT_ACTIVE = false;
+    BAD_ALERT_TIMER = 0.0;
+    TIMEOUT_SWEEP_ACTIVE = false;
+    TIMEOUT_SWEEP_TIMER = 0.0;
+    TIMEOUT_SWEEP_WIN = false;
+    TIMEOUT_SURVIVE_BONUS = 0;
+    LOSE_POPUP_ACTIVE = false;
+    LOSE_CAUSE = 0;
+    LOSE_POPUP_DELAY = 0.0;
+    LOSE_POPUP_T = 0.0;
+    LOSE_POPUP_STATE = LOSE_POPUP_STATE_WAIT;
+    LOSE_POPUP_ACTION = LOSE_POPUP_ACTION_NONE;
+}
+
+def stop_game()
+{
+    REQUEST_WORLD_CLEAR = true;
+    PLAYER_ID = -1;
+}
+
+def whistle_button_hit(px, py)
+{
+    return point_in_rect(px, py, WHISTLE_BTN_X, WHISTLE_BTN_Y, WHISTLE_BTN_W, WHISTLE_BTN_H);
+}
+
+def trigger_frozen_mode()
+{
+    BAD_ALERT_ACTIVE = false;
+    BAD_ALERT_TIMER = 0.0;
+    STRESS_CLEAR_ACTIVE = false;
+    STRESS_CLEAR_TIMER = 0.0;
+    STRESS_SAFE_TIMER = 0.0;
+    GAME_FROZEN_MODE = true;
+    FREEZE_TIMER = FREEZE_DURATION;
+    FREEZE_TRANSITION_ACTIVE = true;
+    FREEZE_TRANSITION_T = 0.0;
+    play_sound_safe(SND_WHISTLE, 1.0, 1.0);
+}
+
+def trigger_stress_clear()
+{
+    STRESS_CLEAR_ACTIVE = true;
+    STRESS_CLEAR_TIMER = STRESS_CLEAR_DURATION;
+    STRESS_SAFE_TIMER = STRESS_SAFE_DURATION;
+    BAD_ALERT_ACTIVE = false;
+    BAD_ALERT_TIMER = 0.0;
+    play_sound_safe(SND_WIN, 0.92, 1.04);
+}
+
+def trigger_timeout_sweep()
+{
+    if (TIMEOUT_SWEEP_ACTIVE) return;
+    TIMEOUT_SWEEP_ACTIVE = true;
+    TIMEOUT_SWEEP_TIMER = TIMEOUT_SWEEP_DURATION;
+    TIMEOUT_SWEEP_WIN = true;
+    TIMEOUT_SURVIVE_BONUS = 6 + int(GOOD_COLLECTED * 0.25);
+    if (TIMEOUT_SURVIVE_BONUS < 6) TIMEOUT_SURVIVE_BONUS = 6;
+    GOOD_COLLECTED += TIMEOUT_SURVIVE_BONUS;
+    BAD_ALERT_ACTIVE = false;
+    BAD_ALERT_TIMER = 0.0;
+    GAME_FROZEN_MODE = false;
+    FREEZE_TIMER = 0.0;
+    FREEZE_TRANSITION_ACTIVE = false;
+    FREEZE_TRANSITION_T = 0.0;
+    STRESS_CLEAR_ACTIVE = false;
+    STRESS_CLEAR_TIMER = 0.0;
+    STRESS_SAFE_TIMER = 0.0;
+    play_sound_safe(SND_WIN, 1.0, 1.0);
+}
+
+def open_lose_popup(_cause)
+{
+    if (LOSE_POPUP_ACTIVE) return;
+    LOSE_POPUP_ACTIVE = true;
+    LOSE_CAUSE = _cause;
+    LOSE_POPUP_DELAY = LOSE_POPUP_DELAY_TIME;
+    LOSE_POPUP_T = 0.0;
+    LOSE_POPUP_STATE = LOSE_POPUP_STATE_WAIT;
+    LOSE_POPUP_ACTION = LOSE_POPUP_ACTION_NONE;
+    BAD_ALERT_ACTIVE = false;
+    BAD_ALERT_TIMER = 0.0;
+    TIMEOUT_SWEEP_ACTIVE = false;
+    TIMEOUT_SWEEP_TIMER = 0.0;
+    TIMEOUT_SWEEP_WIN = false;
+    TIMEOUT_SURVIVE_BONUS = 0;
+    GAME_FROZEN_MODE = false;
+    FREEZE_TIMER = 0.0;
+    FREEZE_TRANSITION_ACTIVE = false;
+    FREEZE_TRANSITION_T = 0.0;
+    STRESS_CLEAR_ACTIVE = false;
+    STRESS_CLEAR_TIMER = 0.0;
+    STRESS_SAFE_TIMER = 0.0;
+    play_sound_safe(SND_LOSE, 1.0, 1.0);
+}
+
+def lose_popup_anim_y()
+{
+    var k = math.clamp(LOSE_POPUP_T, 0.0, 1.0);
+    if (LOSE_POPUP_STATE == LOSE_POPUP_STATE_OUT)
+    {
+        var out_k = 1.0 - k;
+        var out_span = (VIEW_H - LOSE_POPUP_Y) + LOSE_POPUP_H + 26;
+        var drop = ease_back_in(out_k);
+        
+        return LOSE_POPUP_Y - drop * out_span ;
+    }
+    var fall = (1.0 - ease_bounce_out(k)) * 260.0;
+    return LOSE_POPUP_Y - fall;
+}
+
+def update_lose_popup_state()
+{
+    if (!LOSE_POPUP_ACTIVE) return 0;
+
+    if (LOSE_POPUP_STATE == LOSE_POPUP_STATE_WAIT)
+    {
+        LOSE_POPUP_DELAY -= DT;
+        if (LOSE_POPUP_DELAY <= 0)
+        {
+            LOSE_POPUP_DELAY = 0.0;
+            LOSE_POPUP_STATE = LOSE_POPUP_STATE_IN;
+        }
+        return 0;
+    }
+
+    if (LOSE_POPUP_STATE == LOSE_POPUP_STATE_IN)
+    {
+        LOSE_POPUP_T += DT / LOSE_POPUP_IN_TIME;
+        if (LOSE_POPUP_T >= 1.0)
+        {
+            LOSE_POPUP_T = 1.0;
+            LOSE_POPUP_STATE = LOSE_POPUP_STATE_IDLE;
+        }
+        return 0;
+    }
+
+    if (LOSE_POPUP_STATE == LOSE_POPUP_STATE_OUT)
+    {
+        LOSE_POPUP_T -= DT / LOSE_POPUP_OUT_TIME;
+        if (LOSE_POPUP_T <= 0.0)
+        {
+            LOSE_POPUP_T = 0.0;
+            var action = LOSE_POPUP_ACTION;
+            LOSE_POPUP_ACTION = LOSE_POPUP_ACTION_NONE;
+            LOSE_POPUP_ACTIVE = false;
+            LOSE_CAUSE = 0;
+            LOSE_POPUP_STATE = LOSE_POPUP_STATE_WAIT;
+            if (action == LOSE_POPUP_ACTION_RESTART) return 1;
+            if (action == LOSE_POPUP_ACTION_MENU) return 2;
+        }
+    }
+    return 0;
+}
+
+def spawn_pick_fx(_x, _y, _bad)
+{
+    if (_bad)
+    {
+        play_sound_safe(SND_PICK_BAD, 0.9, 1.0);
+        score_popup(_x, _y, 1);
+        pickup_particle(_x, _y, 255, 132, 132);
+        pickup_particle(_x, _y, 255, 168, 144);
+        pickup_particle(_x, _y, 255, 208, 188);
+    }
+    else
+    {
+        play_sound_safe(SND_PICK_GOOD, 0.8, 1.0);
+        score_popup(_x, _y, 0);
+        pickup_particle(_x, _y, 160, 255, 180);
+        pickup_particle(_x, _y, 200, 255, 210);
+        pickup_particle(_x, _y, 230, 255, 238);
+    }
+}
+
+def stress_line(_idx)
+{
+    if (_idx == 0) return "Too many bad drops!";
+    if (_idx == 1) return "Whistle now or we are done!";
+    if (_idx == 2) return "Stay sharp, keep dodging!";
+    if (_idx == 3) return "Night panic... focus!";
+    if (_idx == 4) return "One more second, hold on!";
+    if (_idx == 5) return "Watch the red ones!";
+    if (_idx == 6) return "Calm hands, fast feet.";
+    return "Keep moving, keep collecting!";
+}
+
+process stress_manager()
+{
+    z = 6;
+    var msg = "";
+    var msg_life = 0.0;
+    var cooldown = 0.9;
+
+    loop
+    {
+        if (GAME_STATE != STATE_GAME) break;
+        if (LOSE_POPUP_ACTIVE)
+        {
+            frame;
+            continue;
+        }
+
+        if (BAD_ALERT_ACTIVE || GAME_FROZEN_MODE)
+        {
+            cooldown -= DT;
+            if (cooldown <= 0)
+            {
+                msg = stress_line(int(math.rand(0, 7)));
+                msg_life = 1.75;
+                cooldown = math.rand(1.2, 2.2);
+            }
+        }
+        else
+        {
+            msg_life = 0.0;
+            cooldown = 0.9;
+        }
+
+        if (msg_life > 0)
+        {
+            msg_life -= DT;
+            var a = int(math.clamp(msg_life, 0.0, 1.0) * 255);
+            var tx = math.clamp(PLAYER_X - 210, 24, VIEW_W - 430);
+            var ty = PLAYER_Y - 124;
+            if (ty < 154) ty = 154;
+
+            set_draw_screen(true);
+            set_alpha(a);
+            set_color(10, 14, 24);
+            draw_text(msg, tx + 2, ty + 2, 26);
+            if (BAD_ALERT_ACTIVE) set_color(255, 168, 158);
+            else set_color(184, 232, 255);
+            draw_text(msg, tx, ty, 26);
+
+       
+            set_alpha(int(a * 0.28));
+            set_color(150, 196, 235);
+            draw_text(msg, tx, ty + 26, 24);
+            set_alpha(255);
+            set_draw_screen(false);
+        }
+
+        frame;
+    }
+}
+
+process score_popup(px, py, is_bad)
+{
+    x = px;
+    y = py;
+    z = 4;
+
+    var life = 0.95;
+    var t = 0.0;
+    var txt = "+1";
+    var rr = 160;
+    var gg = 255;
+    var bb = 180;
+    var ar = 230;
+    var ag = 255;
+    var ab = 238;
+    var wob_seed = math.rand(0.0, 6.28);
+    var start_y = py;
+    var end_y = py - 96.0;
+    var end_hold = 0.16;
+    if (is_bad)
+    {
+        txt = "-1";
+        rr = 255;
+        gg = 120;
+        bb = 120;
+        ar = 255;
+        ag = 214;
+        ab = 180;
+    }
+
+    loop
+    {
+        if (GAME_STATE != STATE_GAME) break;
+
+        t += DT;
+        var k = t / life;
+        if (k > 1.0) k = 1.0;
+
+        var enter_t = k / 0.45;
+        if (enter_t > 1.0) enter_t = 1.0;
+        var pop = ease_elastic_out(enter_t);
+        var pop_scale = 1.0 + pop * 1.05;
+
+        var move_t = (k - 0.10) / 0.90;
+        if (move_t < 0.0) move_t = 0.0;
+        if (move_t > 1.0) move_t = 1.0;
+        var lift = ease_sine_out(move_t);
+        var settle = 0.0;
+        if (k > 0.78)
+        {
+            var tail = (k - 0.78) / 0.22;
+            if (tail > 1.0) tail = 1.0;
+            settle = (1.0 - ease_bounce_out(tail)) * 13.0;
+        }
+
+        y = start_y - (12.0 + lift * 84.0) - settle;
+        var wob = sin(time() * 22.0 + wob_seed) * (1.0 - k) * (8.0 + pop * 5.0);
+        wob += sin(time() * 51.0 + wob_seed) * (1.0 - enter_t) * 3.0;
+
+        var a = 255;
+        if (k > 0.52)
+        {
+            var fade_t = (k - 0.52) / 0.48;
+            if (fade_t > 1.0) fade_t = 1.0;
+            a = int((1.0 - ease_quad_in(fade_t)) * 255);
+        }
+        if (a < 0) a = 0;
+        var size_txt = int((20.0 * pop_scale) * (1.02 - k * 0.10));
+        if (size_txt < 16) size_txt = 16;
+        var tx = x - 18 + wob;
+        var ty = y - 20;
+
+        set_draw_screen(true);
+
+        // Sombra
+        set_alpha(int(a * 0.82));
+        set_color(8, 12, 20);
+        draw_text(txt, tx + 3, ty + 3, size_txt);
+
+        // Glow
+        set_alpha(int(a * 0.46));
+        set_color(ar, ag, ab);
+        draw_text(txt, tx + 1, ty + 1, size_txt + 2);
+
+        // Texto principal
+        set_alpha(a);
+        set_color(rr, gg, bb);
+        draw_text(txt, tx, ty, size_txt);
+        set_alpha(255);
+        set_draw_screen(false);
+
+        if (k >= 1.0)
+        {
+            if (y < end_y) y = end_y;
+            end_hold -= DT;
+            if (end_hold <= 0) break;
+        }
+        frame;
+    }
+}
+
+process pickup_particle(px, py, rr, gg, bb)
+{
+    x = px;
+    y = py;
+    z = 4;
+
+    var ang = math.rand(0, 359);
+    var speed = math.rand(86, 178);
+    var life = math.rand(0.20, 0.34);
+    var t = 0.0;
+
+    loop
+    {
+        if (GAME_STATE != STATE_GAME) break;
+
+        t += DT;
+        x += get_distx(ang, speed) * DT;
+        y += get_disty(ang, speed) * DT;
+        speed -= 240 * DT;
+        if (speed < 0) speed = 0;
+
+        var a = 255 - int((t / life) * 255);
+        if (a < 0) a = 0;
+
+        set_alpha(a);
+        set_color(rr, gg, bb);
+        draw_circle(x, y, 4, true);
+        set_alpha(255);
+
+        if (t >= life) break;
+        frame;
+    }
+}
+
+process game_background_renderer()
+{
+    x = VIEW_W / 2;
+    y = VIEW_H / 2;
+    z = 0;
+    graph = -1;
+    size = 100;
+    sizex = 1.0;
+    sizey = 1.0;
+
+    loop
+    {
+        var bg = G_BG_DAY;
+        if (GAME_FROZEN_MODE && G_BG_DARK >= 0) bg = G_BG_DARK;
+
+        if (bg >= 0)
+        {
+            graph = bg;
+            var gw = get_graph_width(bg);
+            var gh = get_graph_height(bg);
+            if (gw > 0 && gh > 0)
+            {
+                sizex = VIEW_W / gw;
+                sizey = VIEW_H / gh;
+            }
+            else
+            {
+                sizex = 1.0;
+                sizey = 1.0;
+            }
+        }
+        else
+        {
+            graph = -1;
+        }
+        frame;
+    }
+}
+
+process game_player(start_x, start_y)
+{
+    x = start_x;
+    y = start_y;
+    z = 2;
+    size = 100;
+    set_rect_shape(0, 0, 48, 64);
+
+    loop
+    {
+        if (GAME_STATE != STATE_GAME) break;
+        if (TIMEOUT_SWEEP_ACTIVE)
+        {
+            frame;
+            continue;
+        }
+        if (LOSE_POPUP_ACTIVE)
+        {
+            frame;
+            continue;
+        }
+
+        var move = 0.0;
+        if (key_down(KEY_A) || key_down(KEY_LEFT)) move -= 1.0;
+        if (key_down(KEY_D) || key_down(KEY_RIGHT)) move += 1.0;
+
+        x += move * PLAYER_SPEED * DT;
+        x = math.clamp(x, 40, VIEW_W - 40);
+
+        if (move > 0) PLAYER_FACING_RIGHT = true;
+        elif (move < 0) PLAYER_FACING_RIGHT = false;
+        if (abs(move) > 0.01) PLAYER_WALK_T += DT;
+
+        PLAYER_X = x;
+        PLAYER_Y = y;
+
+        var p_graph = G_PLAYER_STATIC;
+        if (GAME_FROZEN_MODE && len(G_PLAYER_FROZEN) > 0)
+        {
+            p_graph = G_PLAYER_FROZEN[int(time() * 8.0) % len(G_PLAYER_FROZEN)];
+        }
+        elif (abs(move) > 0.01 && len(G_PLAYER_WALK) > 0)
+        {
+            p_graph = G_PLAYER_WALK[int(PLAYER_WALK_T * 10.0) % len(G_PLAYER_WALK)];
+        }
+
+        graph = p_graph;
+        flip_horizontal(!PLAYER_FACING_RIGHT);
+
+        var hit_good = collision(type good_drop, x, y);
+        if (hit_good && hit_good.state == 0)
+        {
+            hit_good.state = 1;
+        }
+
+        var hit_bad = collision(type bad_drop, x, y);
+        if (hit_bad && hit_bad.state == 0)
+        {
+            hit_bad.state = 1;
+            BAD_HITS += 1;
+            spawn_pick_fx(hit_bad.x, hit_bad.y, true);
+        }
+
+        frame;
+    }
+    PLAYER_ID = -1;
+}
+
+process good_drop(start_x)
+{
+    x = start_x;
+    y = -64;
+    z = 3;
+    size = 100;
+    graph = random_graph_from(G_GOOD_OBJ);
+    set_circle_shape(22);
+    var speed = math.rand(150, 280);
+    life = 0.0;
+    alpha = 255;
+    red = 255;
+    green = 255;
+    blue = 255;
+
+    GOOD_OBJECTS_ACTIVE += 1;
+
+    loop
+    {
+        if (GAME_STATE != STATE_GAME) break;
+        if (TIMEOUT_SWEEP_ACTIVE)
+        {
+            frame;
+            continue;
+        }
+        if (LOSE_POPUP_ACTIVE)
+        {
+            frame;
+            continue;
+        }
+
+        if (state == 1)
+        {
+            if (life <= 0.0)
+            {
+                speed = 0;
+            }
+
+            life += DT;
+            var k = life / GOOD_COLLECT_TWEEN_TIME;
+            if (k > 1.0) k = 1.0;
+
+            var move_t = ease_quad_in_out(k);
+            var dx = HUD_FOOD_TARGET_X - x;
+            var dy = HUD_FOOD_TARGET_Y - y;
+            var follow = 0.22 + move_t * 0.36;
+            x += dx * follow;
+            y += dy * follow - sin(k * 3.14159) * 2.2;
+
+            size = 112 - int(move_t * 20);
+            if (size < 90) size = 90;
+            alpha = 255 - int(move_t * 36);
+
+            if (k >= 1.0 || (abs(dx) < 6 && abs(dy) < 6))
+            {
+                x = HUD_FOOD_TARGET_X;
+                y = HUD_FOOD_TARGET_Y;
+                alpha = 255;
+                GOOD_COLLECTED += 1;
+                spawn_pick_fx(HUD_FOOD_TARGET_X, HUD_FOOD_TARGET_Y, false);
+                state = 2;
+            }
+            frame;
+            continue;
+        }
+
+        if (!GAME_FROZEN_MODE) y += speed * DT;
+        size = 100;
+        alpha = 255;
+        if (state > 1) break;
+
+        if (y > VIEW_H + 80) break;
+        frame;
+    }
+
+    GOOD_OBJECTS_ACTIVE -= 1;
+    if (GOOD_OBJECTS_ACTIVE < 0) GOOD_OBJECTS_ACTIVE = 0;
+}
+
+process bad_drop(start_x)
+{
+    x = start_x;
+    y = -64;
+    z = 3;
+    size = 100;
+    var bad_idx = 0;
+    if (len(G_BAD_OBJ) > 0) bad_idx = math.rand(0, len(G_BAD_OBJ) - 1);
+
+    var g_norm = -1;
+    if (len(G_BAD_OBJ) > 0) g_norm = G_BAD_OBJ[bad_idx];
+
+    var g_frozen = -1;
+    if (len(G_BAD_FROZEN_OBJ) > 0)
+    {
+        if (bad_idx < len(G_BAD_FROZEN_OBJ)) g_frozen = G_BAD_FROZEN_OBJ[bad_idx];
+        else g_frozen = G_BAD_FROZEN_OBJ[bad_idx % len(G_BAD_FROZEN_OBJ)];
+    }
+
+    graph = g_norm;
+    set_circle_shape(22);
+    var speed = math.rand(150, 280);
+    if (GAME_FROZEN_MODE) speed = math.rand(360, 620);
+    var wobble_seed = math.rand(0.0, 6.28);
+    red = 255;
+    green = 255;
+    blue = 255;
+
+    BAD_OBJECTS_ACTIVE += 1;
+
+    loop
+    {
+        if (GAME_STATE != STATE_GAME) break;
+        if (TIMEOUT_SWEEP_ACTIVE || STRESS_CLEAR_ACTIVE)
+        {
+            pickup_particle(x, y, 255, 146, 146);
+            pickup_particle(x, y, 255, 182, 172);
+            pickup_particle(x, y, 255, 218, 200);
+            break;
+        }
+        if (LOSE_POPUP_ACTIVE)
+        {
+            frame;
+            continue;
+        }
+
+        if (GAME_FROZEN_MODE)
+        {
+            y += speed * DT;
+            x += sin(time() * 11.0 + wobble_seed) * 85.0 * DT;
+            if (speed < 860) speed += 190 * DT;
+        }
+        else y += speed * DT;
+
+        if (GAME_FROZEN_MODE && g_frozen >= 0) graph = g_frozen;
+        else graph = g_norm;
+
+        if (GAME_FROZEN_MODE || BAD_ALERT_ACTIVE)
+        {
+            var pulse = 0.5 + (sin(time() * 16.0 + wobble_seed) + 1.0) * 0.5;
+            red = 255;
+            green = 116 + int(pulse * 88);
+            blue = 116 + int(pulse * 72);
+            size = 100 + int(pulse * 8);
+        }
+        else
+        {
+            red = 255;
+            green = 255;
+            blue = 255;
+            size = 100;
+        }
+
+        if (state > 0) break;
+        if (y > VIEW_H + 80) break;
+        frame;
+    }
+
+    BAD_OBJECTS_ACTIVE -= 1;
+    if (BAD_OBJECTS_ACTIVE < 0) BAD_OBJECTS_ACTIVE = 0;
+}
+
+process game_spawner()
+{
+    var good_cd = 0.40;
+    var bad_cd = 1.20;
+    loop
+    {
+        if (GAME_STATE != STATE_GAME) break;
+        if (TIMEOUT_SWEEP_ACTIVE)
+        {
+            frame;
+            continue;
+        }
+        if (LOSE_POPUP_ACTIVE)
+        {
+            frame;
+            continue;
+        }
+
+        good_cd -= DT;
+        bad_cd -= DT;
+
+        if (!GAME_FROZEN_MODE)
+        {
+            if (good_cd <= 0)
+            {
+                good_cd = math.rand(0.42, 0.78);
+                good_drop(math.rand(60, VIEW_W - 60));
+            }
+            if (bad_cd <= 0)
+            {
+                bad_cd = math.rand(1.15, 1.95);
+                if (STRESS_SAFE_TIMER <= 0 && !BAD_ALERT_ACTIVE && math.rand(0, 100) < 58)
+                {
+                    bad_drop(math.rand(60, VIEW_W - 60));
+                    BAD_ALERT_ACTIVE = true;
+                    BAD_ALERT_TIMER = BAD_ALERT_WINDOW;
+                    play_sound_safe(SND_BAD_ALERT, 1.0, 1.0);
+                }
+            }
+        }
+        else
+        {
+            if (good_cd <= 0)
+            {
+                good_cd = math.rand(0.95, 1.45);
+                if (math.rand(0, 100) < 18) good_drop(math.rand(60, VIEW_W - 60));
+            }
+            if (bad_cd <= 0)
+            {
+                bad_cd = math.rand(0.07, 0.16);
+                bad_drop(math.rand(60, VIEW_W - 60));
+            }
+        }
+
+        frame;
+    }
+}
+
+process game_director()
+{
+    loop
+    {
+        if (GAME_STATE != STATE_GAME) break;
+        if (LOSE_POPUP_ACTIVE)
+        {
+            frame;
+            continue;
+        }
+
+        GAME_TIME_LEFT -= DT;
+        if (GAME_TIME_LEFT < 0) GAME_TIME_LEFT = 0;
+        if (STRESS_SAFE_TIMER > 0)
+        {
+            STRESS_SAFE_TIMER -= DT;
+            if (STRESS_SAFE_TIMER < 0) STRESS_SAFE_TIMER = 0;
+        }
+        if (STRESS_CLEAR_ACTIVE)
+        {
+            STRESS_CLEAR_TIMER -= DT;
+            if (STRESS_CLEAR_TIMER <= 0)
+            {
+                STRESS_CLEAR_TIMER = 0.0;
+                STRESS_CLEAR_ACTIVE = false;
+            }
+        }
+
+        if (TIMEOUT_SWEEP_ACTIVE)
+        {
+            TIMEOUT_SWEEP_TIMER -= DT;
+            if (TIMEOUT_SWEEP_TIMER <= 0)
+            {
+                TIMEOUT_SWEEP_TIMER = 0.0;
+                if (TIMEOUT_SWEEP_WIN)
+                {
+                    REQUEST_EXIT_TO_MENU = true;
+                    stop_game();
+                    break;
+                }
+                open_lose_popup(LOSE_CAUSE_TIMEOUT);
+            }
+            frame;
+            continue;
+        }
+
+        if (BAD_ALERT_ACTIVE)
+        {
+            BAD_ALERT_TIMER -= DT;
+            if (BAD_ALERT_TIMER <= 0)
+            {
+                BAD_ALERT_TIMER = 0.0;
+                BAD_ALERT_ACTIVE = false;
+                open_lose_popup(LOSE_CAUSE_BAD);
+            }
+        }
+
+        if (FREEZE_TRANSITION_ACTIVE)
+        {
+            FREEZE_TRANSITION_T += DT;
+            if (FREEZE_TRANSITION_T >= FREEZE_TRANSITION_TIME)
+            {
+                FREEZE_TRANSITION_T = FREEZE_TRANSITION_TIME;
+                FREEZE_TRANSITION_ACTIVE = false;
+            }
+        }
+
+        if (GAME_FROZEN_MODE)
+        {
+            FREEZE_TIMER -= DT;
+            if (FREEZE_TIMER <= 0)
+            {
+                FREEZE_TIMER = 0.0;
+                GAME_FROZEN_MODE = false;
+                FREEZE_TRANSITION_ACTIVE = false;
+                FREEZE_TRANSITION_T = 0.0;
+                trigger_stress_clear();
+            }
+        }
+
+        if (!TRANS_ACTIVE)
+        {
+            if (BAD_HITS >= 1)
+            {
+                open_lose_popup(LOSE_CAUSE_BAD);
+            }
+            if (GOOD_COLLECTED >= GOOD_TARGET)
+            {
+                play_sound_safe(SND_WIN, 1.0, 1.0);
+                REQUEST_EXIT_TO_MENU = true;
+                stop_game();
+                break;
+            }
+            if (GAME_TIME_LEFT <= 0)
+            {
+                trigger_timeout_sweep();
+            }
+        }
+        frame;
+    }
+}
+
+def draw_hud_text(_txt, _x, _y, _size, _r, _g, _b)
+{
+    set_color(10, 14, 24);
+    draw_text(_txt, _x + 2, _y + 2, _size);
+    set_color(_r, _g, _b);
+    draw_text(_txt, _x, _y, _size);
+}
+
+process game_hud_renderer()
+{
+    z = 5;
+    loop
+    {
+        if (GAME_STATE != STATE_GAME) break;
+        set_draw_screen(true);
+
+        set_alpha(168);
+        set_color(14, 22, 38);
+        draw_rectangle(12, 12, 320, 140, true);
+        set_alpha(255);
+        set_color(90, 120, 168);
+        draw_rectangle(12, 12, 320, 140, false);
+
+        draw_hud_text(format("TIME: {}", int(GAME_TIME_LEFT)), 24, 20, 28, 255, 230, 130);
+        draw_hud_text(format("FOOD: {}/{}", GOOD_COLLECTED, GOOD_TARGET), 24, 52, 22, 190, 225, 180);
+        draw_hud_text(format("BAD HITS: {}", BAD_HITS), 24, 78, 20, 255, 160, 150);
+        draw_hud_text(format("ACTIVE GOOD: {}", GOOD_OBJECTS_ACTIVE), 24, 106, 18, 190, 206, 232);
+        draw_hud_text(format("ACTIVE BAD: {}", BAD_OBJECTS_ACTIVE), 24, 128, 18, 190, 206, 232);
+
+        if (BAD_ALERT_ACTIVE)
+        {
+            var pulse = 140 + int((sin(time() * 14.0) + 1.0) * 56);
+            set_alpha(pulse);
+            set_color(255, 86, 86);
+            draw_rectangle(WHISTLE_BTN_X - 4, WHISTLE_BTN_Y - 4, WHISTLE_BTN_W-8 , WHISTLE_BTN_H-4 , true);
+            set_alpha(255);
+        }
+        draw_graph_or_card(G_BTN_WHISTLE, WHISTLE_BTN_X, WHISTLE_BTN_Y, WHISTLE_BTN_W, WHISTLE_BTN_H, "WHISTLE");
+        // set_alpha(152);
+        // set_color(14, 22, 38);
+        // draw_rectangle(VIEW_W - 238, 12, 220, 34, true);
+        // set_alpha(255);
+        // draw_hud_text("ESC to leave run", (VIEW_W /2) - 220, 22, 16, 200, 214, 240);
+
+        if (BAD_ALERT_ACTIVE)
+        {
+            var warn_a = 156 + int((sin(time() * 18.0) + 1.0) * 48);
+            set_alpha(warn_a);
+            set_color(72, 18, 18);
+            draw_rectangle(VIEW_W / 2 - 210, 52, 420, 42, true);
+            set_alpha(255);
+            set_color(255, 122, 122);
+            draw_rectangle(VIEW_W / 2 - 210, 52, 420, 42, false);
+            draw_hud_text(format("WHISTLE NOW! {}s", int(BAD_ALERT_TIMER) + 1), VIEW_W / 2 - 166, 60, 24, 255, 204, 196);
+        }
+        elif (GAME_FROZEN_MODE)
+        {
+            draw_hud_text(format("NIGHT PANIC {}s", int(FREEZE_TIMER) + 1), VIEW_W - 258, 52, 18, 176, 235, 255);
+        }
+        elif (STRESS_CLEAR_ACTIVE)
+        {
+            draw_hud_text("BOOM! AREA CLEAR", VIEW_W - 270, 52, 18, 255, 210, 160);
+        }
+        elif (STRESS_SAFE_TIMER > 0)
+        {
+            draw_hud_text(format("SAFE {}s", int(STRESS_SAFE_TIMER) + 1), VIEW_W - 182, 52, 18, 182, 244, 182);
+        }
+        elif (TIMEOUT_SWEEP_ACTIVE && TIMEOUT_SWEEP_WIN)
+        {
+            draw_hud_text(format("SURVIVED! +{} BONUS", TIMEOUT_SURVIVE_BONUS), VIEW_W / 2 - 186, 54, 22, 165, 255, 190);
+        }
+
+        if (FREEZE_TRANSITION_ACTIVE)
+        {
+            var k = FREEZE_TRANSITION_T / FREEZE_TRANSITION_TIME;
+            var anim_a = int(220 - k * 220);
+            if (anim_a < 0) anim_a = 0;
+            set_alpha(anim_a);
+            set_color(170, 224, 255);
+            draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+            set_alpha(255);
+            draw_hud_text("FREEZE!", VIEW_W / 2 - 98, VIEW_H / 2 - 34, 42, 224, 246, 255);
+        }
+
+        if (LOSE_POPUP_ACTIVE)
+        {
+            var overlay_k = LOSE_POPUP_T;
+            if (LOSE_POPUP_STATE == LOSE_POPUP_STATE_WAIT) overlay_k = 0.0;
+            var overlay_a = 96 + int(overlay_k * 108);
+            if (LOSE_POPUP_STATE == LOSE_POPUP_STATE_WAIT) overlay_a = 96 + int((sin(time() * 18.0) + 1.0) * 22);
+            set_alpha(overlay_a);
+            set_color(0, 0, 0);
+            draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+            set_alpha(255);
+
+            if (LOSE_POPUP_STATE != LOSE_POPUP_STATE_WAIT || LOSE_POPUP_T > 0.0)
+            {
+                var pop_x = LOSE_POPUP_X;
+                var pop_y = lose_popup_anim_y();
+                var btn_y = pop_y + 176;
+                var popup_interactive = (LOSE_POPUP_STATE == LOSE_POPUP_STATE_IDLE);
+                var restart_hot = false;
+                var menu_hot = false;
+                if (popup_interactive)
+                {
+                    restart_hot = point_in_rect(POINTER_X, POINTER_Y, LOSE_BTN_RESTART_X, btn_y, LOSE_BTN_W, LOSE_BTN_H);
+                    menu_hot = point_in_rect(POINTER_X, POINTER_Y, LOSE_BTN_MENU_X, btn_y, LOSE_BTN_W, LOSE_BTN_H);
+                }
+
+                set_color(24, 34, 56);
+                draw_rectangle(pop_x, pop_y, LOSE_POPUP_W, LOSE_POPUP_H, true);
+                set_color(120, 168, 228);
+                draw_rectangle(pop_x, pop_y, LOSE_POPUP_W, LOSE_POPUP_H, false);
+
+                set_color(72, 42, 60);
+                draw_rectangle(pop_x, pop_y, LOSE_POPUP_W, 54, true);
+                set_color(230, 176, 186);
+                draw_rectangle(pop_x, pop_y + 54, LOSE_POPUP_W, 2, true);
+
+                draw_hud_text("RUN FAILED", pop_x + 120, pop_y + 12, 40, 255, 208, 198);
+                if (LOSE_CAUSE == LOSE_CAUSE_BAD) draw_hud_text("you got hit by toxic trash", pop_x + 92, pop_y + 84, 22, 212, 228, 246);
+                else draw_hud_text("time is over before target", pop_x + 102, pop_y + 84, 22, 212, 228, 246);
+                draw_hud_text("stay calm and try one more run", pop_x + 96, pop_y + 118, 18, 170, 196, 232);
+
+                if (popup_interactive)
+                {
+                    if (restart_hot) set_color(72, 140, 212);
+                    else set_color(52, 106, 168);
+                    draw_rectangle(LOSE_BTN_RESTART_X, btn_y, LOSE_BTN_W, LOSE_BTN_H, true);
+                    set_color(190, 228, 255);
+                    draw_rectangle(LOSE_BTN_RESTART_X, btn_y, LOSE_BTN_W, LOSE_BTN_H, false);
+
+                    if (menu_hot) set_color(196, 136, 74);
+                    else set_color(154, 102, 50);
+                    draw_rectangle(LOSE_BTN_MENU_X, btn_y, LOSE_BTN_W, LOSE_BTN_H, true);
+                    set_color(255, 226, 176);
+                    draw_rectangle(LOSE_BTN_MENU_X, btn_y, LOSE_BTN_W, LOSE_BTN_H, false);
+
+                    draw_hud_text("RETRY", LOSE_BTN_RESTART_X + 38, btn_y + 18, 24, 236, 246, 255);
+                    draw_hud_text("MENU", LOSE_BTN_MENU_X + 46, btn_y + 18, 24, 255, 242, 216);
+                }
+            }
+        }
+
+        set_draw_screen(false);
+        frame;
+    }
+}
+
+def start_game()
+{
+    stop_game_now();
+    GAME_TIME_LEFT = GAME_TIME_LIMIT;
+    GOOD_COLLECTED = 0;
+    BAD_HITS = 0;
+    GAME_FROZEN_MODE = false;
+    FREEZE_TIMER = 0.0;
+    FREEZE_TRANSITION_ACTIVE = false;
+    FREEZE_TRANSITION_T = 0.0;
+    STRESS_CLEAR_ACTIVE = false;
+    STRESS_CLEAR_TIMER = 0.0;
+    STRESS_SAFE_TIMER = 0.0;
+    BAD_ALERT_ACTIVE = false;
+    BAD_ALERT_TIMER = 0.0;
+    TIMEOUT_SWEEP_ACTIVE = false;
+    TIMEOUT_SWEEP_TIMER = 0.0;
+    TIMEOUT_SWEEP_WIN = false;
+    TIMEOUT_SURVIVE_BONUS = 0;
+    LOSE_POPUP_ACTIVE = false;
+    LOSE_CAUSE = 0;
+    LOSE_POPUP_DELAY = 0.0;
+    LOSE_POPUP_T = 0.0;
+    LOSE_POPUP_STATE = LOSE_POPUP_STATE_WAIT;
+    LOSE_POPUP_ACTION = LOSE_POPUP_ACTION_NONE;
+    PLAYER_X = VIEW_W / 2;
+    PLAYER_Y = VIEW_H - 120;
+    PLAYER_SPEED = 300.0;
+    PLAYER_WALK_T = 0.0;
+    GOOD_OBJECTS_ACTIVE = 0;
+    BAD_OBJECTS_ACTIVE = 0;
+
+    game_background_renderer();
+    var p = game_player(VIEW_W / 2, VIEW_H - 120);
+    if (p) PLAYER_ID = p.id;
+    game_spawner();
+    game_director();
+    game_hud_renderer();
+    stress_manager();
+
+    GAME_STATE = STATE_GAME;
+}
+
+def begin_state_transition(_target_state)
+{
+    if (TRANS_ACTIVE) return;
+    TRANS_ACTIVE = true;
+    TRANS_TARGET_STATE = _target_state;
+    TRANS_PHASE = TRANS_PHASE_OUT;
+    TRANS_ALPHA = 0.0;
+    POINTER_PRESSED = false;
+}
+
+def update_state_transition()
+{
+    if (!TRANS_ACTIVE) return;
+
+    var dt = delta();
+    if (TRANS_PHASE == TRANS_PHASE_OUT)
+    {
+        TRANS_ALPHA += TRANS_SPEED * dt;
+        if (TRANS_ALPHA >= 255.0)
+        {
+            TRANS_ALPHA = 255.0;
+            GAME_STATE = TRANS_TARGET_STATE;
+
+            if (GAME_STATE == STATE_MENU)
+            {
+                start_menu_intro();
+                MENU_INDEX = 0;
+                MENU_INPUT_GUARD = 0.20;
+            }
+            elif (GAME_STATE == STATE_CREDITS)
+            {
+                MENU_INPUT_GUARD = 0.15;
+            }
+
+            TRANS_PHASE = TRANS_PHASE_IN;
+        }
+    }
+    else
+    {
+        TRANS_ALPHA -= TRANS_SPEED * dt;
+        if (TRANS_ALPHA <= 0.0)
+        {
+            TRANS_ALPHA = 0.0;
+            TRANS_ACTIVE = false;
+        }
+    }
+}
+
+def draw_state_transition()
+{
+    if (!TRANS_ACTIVE) return;
+    set_draw_screen(true);
+    set_alpha(int(TRANS_ALPHA));
+    set_color(0, 0, 0);
+    draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+    set_alpha(255);
+    set_draw_screen(false);
+}
+
+def update_menu()
+{
+    var dt = delta();
+    update_menu_intro(dt);
+
+    var hover = menu_option_hit(POINTER_X, POINTER_Y);
+    var prev = MENU_INDEX;
+
+    if (!TRANS_ACTIVE && MENU_INPUT_GUARD > 0)
+    {
+        MENU_INPUT_GUARD -= dt;
+        if (MENU_INPUT_GUARD < 0) MENU_INPUT_GUARD = 0;
+    }
+    elif (!TRANS_ACTIVE)
+    {
+        if (hover != -1) MENU_INDEX = hover;
+        if (key_pressed(KEY_UP) || key_pressed(KEY_W))
+        {
+            MENU_INDEX -= 1;
+            if (MENU_INDEX < 0) MENU_INDEX = 1;
+        }
+        if (key_pressed(KEY_DOWN) || key_pressed(KEY_S))
+        {
+            MENU_INDEX += 1;
+            if (MENU_INDEX > 1) MENU_INDEX = 0;
+        }
+    }
+
+    var activate = false;
+    if (!TRANS_ACTIVE && MENU_INPUT_GUARD <= 0 && key_pressed(KEY_ENTER)) activate = true;
+    if (!TRANS_ACTIVE && MENU_INPUT_GUARD <= 0 && POINTER_PRESSED && hover != -1)
+    {
+        MENU_INDEX = hover;
+        activate = true;
+    }
+
+    if (activate)
+    {
+        play_sound_safe(SND_UI_OK, 1.0, 1.0);
+        if (MENU_INDEX == 0)
+        {
+            start_game();
+            return;
+        }
+        begin_state_transition(STATE_CREDITS);
+        return;
+    }
+
+    if (!TRANS_ACTIVE && key_pressed(KEY_ESCAPE)) close_window();
+
+    set_draw_screen(true);
+
+    if (G_BG_DAY >= 0) draw_graph_ex(G_BG_DAY, VIEW_W / 2 , VIEW_H / 2, 0, 1.6, 1.0,false, false);
+    else
+    {
+        set_color(24, 32, 48);
+        draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+    }
+
+    // Intro animada no menu
+    if (len(G_INTRO) > 0)
+    {
+        var intro_g = G_INTRO[INTRO_FRAME];
+        if (intro_g >= 0) draw_graph_ex(intro_g,   90, VIEW_H-120, 0, 0.2, 0.2,false, false);
+    }
+
+    set_color(255, 233, 174);
+    draw_text("FREEZ JAM", VIEW_W / 2 - 120, 44, 46);
+    set_color(220, 232, 250);
+    draw_text("Collect food and survive the bad drops", VIEW_W / 2 - 206, 90, 20);
+
+    if (MENU_INDEX == 0) set_color(255, 255, 255); else set_color(196, 210, 236);
+    draw_graph_or_card(G_BTN_PLAY, BTN_PLAY_X, BTN_PLAY_Y, BTN_W, BTN_H, "PLAY");
+
+    if (MENU_INDEX == 1) set_color(255, 255, 255); else set_color(196, 210, 236);
+    draw_graph_or_card(G_BTN_CREDITS, BTN_CREDITS_X, BTN_CREDITS_Y, BTN_W, BTN_H, "CREDITS");
+
+    if (MENU_INDEX != prev)
+    {
+        play_sound_safe(SND_UI_MOVE, 0.9, 1.0);
+    }
+
+    // set_color(180, 200, 226);
+    // draw_text("ENTER/click to select  |  ESC to close", 154, VIEW_H - 56, 18);
+    set_draw_screen(false);
+}
+
+def update_credits()
+{
+    var back_hot = point_in_rect(POINTER_X, POINTER_Y, BTN_BACK_X, BTN_BACK_Y, BTN_BACK_W, BTN_BACK_H);
+    if (!TRANS_ACTIVE && (key_pressed(KEY_ESCAPE) || key_pressed(KEY_ENTER) || (POINTER_PRESSED && back_hot)))
+    {
+        begin_state_transition(STATE_MENU);
+        return;
+    }
+
+    set_draw_screen(true);
+
+    // Retro C64 background
+    set_color(10, 36, 106);
+    draw_rectangle(0, 0, VIEW_W, VIEW_H, true);
+    set_color(28, 74, 170);
+    draw_rectangle(0, 36, VIEW_W, VIEW_H - 72, true);
+
+    // Scanlines
+    var sy = 36;
+    set_alpha(44);
+    set_color(12, 52, 132);
+    while (sy < VIEW_H - 36)
+    {
+        draw_rectangle(0, sy, VIEW_W, 2, true);
+        sy += 6;
+    }
+    set_alpha(255);
+
+    set_color(174, 214, 255);
+    draw_text("CREDITS", VIEW_W / 2 - 96, 62, 42);
+    set_color(214, 236, 255);
+
+
+    // Wave text rows
+    var t = time();
+
+    var row1 = "PROGRAMMING  LUIS SANTOS AKA DJOKER";
+    var row2 = "PROJECT MANAGER  DANIELA SANTOS";
+    var row3 = "GRAPHICS DESIGN  DANIELA SANTOS";
+    var x1 = 274 + sin(t * 2.4) * 18;
+    var y1 = 198 + sin(t * 3.2) * 9;
+    var x2 = 274 + sin(t * 2.4 + 0.8) * 18;
+    var y2 = 252 + sin(t * 3.2 + 0.8) * 9;
+    var x3 = 274 + sin(t * 2.4 + 1.6) * 18;
+    var y3 = 306 + sin(t * 3.2 + 1.6) * 9;
+
+    set_color(8, 34, 92);
+    draw_text(row1, x1 + 2, y1 + 2, 24);
+    draw_text(row2, x2 + 2, y2 + 2, 24);
+    draw_text(row3, x3 + 2, y3 + 2, 24);
+
+    set_color(255, 255, 150);
+    draw_text(row1, x1, y1, 24);
+    set_color(172, 255, 226);
+    draw_text(row2, x2, y2, 24);
+    set_color(255, 194, 238);
+    draw_text(row3, x3, y3, 24);
+
+  
+    var crawl = "  >>> FREEZ JAM CREDITS  *  PROGRAMMING LUIS SANTOS AKA DJOKER  *  PROJECT MANAGER DANIELA SANTOS  *  GRAPHICS DESIGN DANIELA SANTOS  <<<  ";
+    var char_step = 18;
+    var crawl_w = len(crawl) * char_step;
+    var span = VIEW_W + crawl_w;
+    var travel = int(t * 150) % span;
+    var cx = VIEW_W - travel;
+    var cy = 522 + sin(t * 4.8) * 6;
+
+
+    var i = 0;
+    while (i < len(crawl))
+    {
+        var ch = crawl[i];
+        var off = i * char_step;
+        var wave = sin(t * 7.0 + i * 0.42) * 5;
+
+        set_color(8, 34, 92);
+        draw_text(ch, cx + off + 1, cy + wave + 1, 22);
+        draw_text(ch, cx + span + off + 1, cy + wave + 1, 22);
+
+        set_color(255, 236, 148);
+        draw_text(ch, cx + off, cy + wave, 22);
+        draw_text(ch, cx + span + off, cy + wave, 22);
+        i += 1;
+    }
+
+    //draw_graph_or_card(G_BTN_MENU, BTN_BACK_X, BTN_BACK_Y, BTN_BACK_W, BTN_BACK_H, "MENU");
+    set_color(206, 226, 255);
+    draw_text("ESC / ENTER / tap button to return", 20, VIEW_H - 90, 18);
+    set_draw_screen(false);
+}
+
+def update_gameplay()
+{
+    if (!TRANS_ACTIVE && LOSE_POPUP_ACTIVE)
+    {
+        var lose_event = update_lose_popup_state();
+        if (lose_event == 1)
+        {
+            start_game();
+            return;
+        }
+        if (lose_event == 2)
+        {
+            REQUEST_EXIT_TO_MENU = false;
+            stop_game();
+            begin_state_transition(STATE_MENU);
+            return;
+        }
+
+        if (LOSE_POPUP_STATE != LOSE_POPUP_STATE_IDLE) return;
+
+        var popup_y = lose_popup_anim_y();
+        var btn_y = popup_y + 176;
+        var restart_hot = point_in_rect(POINTER_X, POINTER_Y, LOSE_BTN_RESTART_X, btn_y, LOSE_BTN_W, LOSE_BTN_H);
+        var menu_hot = point_in_rect(POINTER_X, POINTER_Y, LOSE_BTN_MENU_X, btn_y, LOSE_BTN_W, LOSE_BTN_H);
+
+        if (key_pressed(KEY_ENTER) || (POINTER_PRESSED && restart_hot))
+        {
+            play_sound_safe(SND_UI_OK, 1.0, 1.0);
+            LOSE_POPUP_ACTION = LOSE_POPUP_ACTION_RESTART;
+            LOSE_POPUP_STATE = LOSE_POPUP_STATE_OUT;
+            return;
+        }
+        if (key_pressed(KEY_ESCAPE) || (POINTER_PRESSED && menu_hot))
+        {
+            play_sound_safe(SND_UI_OK, 1.0, 0.95);
+            LOSE_POPUP_ACTION = LOSE_POPUP_ACTION_MENU;
+            LOSE_POPUP_STATE = LOSE_POPUP_STATE_OUT;
+            return;
+        }
+        return;
+    }
+
+    if (!TRANS_ACTIVE && REQUEST_EXIT_TO_MENU)
+    {
+        REQUEST_EXIT_TO_MENU = false;
+        begin_state_transition(STATE_MENU);
+        return;
+    }
+
+    if (!TRANS_ACTIVE && key_pressed(KEY_ESCAPE))
+    {
+        REQUEST_EXIT_TO_MENU = false;
+        stop_game();
+        begin_state_transition(STATE_MENU);
+    }
+
+    if (!TRANS_ACTIVE && POINTER_PRESSED && whistle_button_hit(POINTER_X, POINTER_Y))
+    {
+        if (BAD_ALERT_ACTIVE)
+        {
+            trigger_frozen_mode();
+        }
+    }
+}
+
+set_window_size(VIEW_W, VIEW_H);
+set_window_title("Freez Jam - Setup");
+set_design_resolution(VIEW_W, VIEW_H);
+set_virtual_screen_enabled(true);
+init_collision(0, 0,  VIEW_W, VIEW_H);
+load_assets();
+start_menu_intro();
+
+loop
+{
+    DT = delta();
+    set_alpha(255);
+    update_pointer();
+    update_sound_toggle();
+    update_music_state();
+
+    if (REQUEST_WORLD_CLEAR)
+    {
+        stop_game_now();
+        REQUEST_WORLD_CLEAR = false;
+    }
+
+    if (GAME_STATE == STATE_MENU) update_menu();
+    elif (GAME_STATE == STATE_CREDITS) update_credits();
+    else update_gameplay();
+
+    update_state_transition();
+    draw_sound_toggle_button();
+    draw_state_transition();
+
+    frame;
+}

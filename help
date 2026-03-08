@@ -78,3 +78,16 @@ packager/packager <release> android --repo /media/projectos/projects/cpp/crossid
 
 # AAB (Play Store)
 packager/packager <release> aab --repo /media/projectos/projects/cpp/crosside --bugame /media/projectos/projects/cpp/crosside --runner /media/projectos/projects/cpp/crosside/projects/runner
+
+
+cd /media/projectos/projects/cpp/crosside
+
+./builder/bin/builder build runner web --build-modules --release freez
+cp projects/runner/Web/freez.js projects/runner/Web/runner.js
+cp projects/runner/Web/freez.wasm projects/runner/Web/runner.wasm
+cp projects/runner/Web/freez.data projects/runner/Web/runner.data
+cp projects/runner/Web/freez.html projects/runner/Web/runner.html
+
+./release_one_click.sh freez web
+python3 -m http.server 8080 --directory export/freez/web
+

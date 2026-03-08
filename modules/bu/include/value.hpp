@@ -268,7 +268,7 @@ struct Value
       return (int)as.boolean;
     default:
 #ifdef DEBUG
-      Error("Cannot convert to int!");
+      Error("Cannot convert to int! TypeId: %d", (int)type);
 #endif
       return 0;
     }
@@ -294,7 +294,7 @@ struct Value
       return (float)as.boolean;
     default:
 #ifdef DEBUG
-      Error("Cannot convert to float!");
+      Error("Cannot convert to float! TypeId: %d", (int)type);
 #endif
       return 0.0f;
     }
@@ -322,7 +322,7 @@ struct Value
       return (double)as.boolean;
     default:
 #ifdef DEBUG
-      Error("Cannot convert to double!");
+      Error("Cannot convert to double! TypeId: %d", (int)type);
 #endif
       return 0.0;
     }

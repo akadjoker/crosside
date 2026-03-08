@@ -1,0 +1,7 @@
+O jogo comeca no menu era fixe ter a animacao do bixo a sair do lixo,
+dps comeca e temos que coletar x objetos bons ate o tempo acabar, mas as vezes aparece um objeto mau, nao pode ser SEMPRE, quando aparece tem que se clicar no apito
+quando clicas no apito o jogo congela (tem ai uma animacao para
+quando isso acontece entao apita e dps aparece a animacao e dps muda para o fundo da noite, mas os objetos ficam no mesmo sitio e caem mais objetos maus soque congelados)
+tem que evitar levar com os objetos maus senao perde, essa parte e mais frenetica com eles a cair bue e tem um timer de alguns segundos ate a voltar ao normal.
+pode ser tipo 1 minuto 30 objetos e vao caindo mais objetos maus, se nao apertar o apito quando aparece objeto mau o jogo acaba 
+~e acho que e isso objetivo e apanhar a comida 
